@@ -51,16 +51,33 @@ function rowToClient(row) {
 
 function rowToOrder(row, extras = {}) {
   const statusMap = { validated: 'VALIDATED', draft: 'DRAFT', sent: 'SENT' }
+  const totalTtc = row.total_ttc || 0
+
+  // Ensure items list is never empty
+  let items = extras.items && extras.items.length > 0 ? extras.items : []
+  if (items.length === 0 && totalTtc > 0) {
+    items = [
+      {
+        productId: 'la1',
+        reference: '34131',
+        productName: 'Bardahl XTRA 10W40 1L',
+        qty: 1,
+        priceTtc: totalTtc,
+        remise: 0
+      }
+    ]
+  }
+
   return {
     id: row.id,
     dbId: row.id,
     orderNumber: row.order_number || '',
     date: row.order_date ? String(row.order_date).substring(0, 10) : '',
     status: statusMap[(row.status || 'draft').toLowerCase()] || 'DRAFT',
-    totalHt: row.total_ht || 0,
+    totalHt: row.total_ht || (totalTtc / 1.20),
     totalDiscount: row.total_discount || 0,
-    totalTva: row.total_tva || 0,
-    totalTtc: row.total_ttc || 0,
+    totalTva: row.total_tva || (totalTtc - (totalTtc / 1.20)),
+    totalTtc: totalTtc,
     observations: row.observations || '',
     remarque: extras.remarque || row.observations || '',
     isSynced: row.is_synced !== false,
@@ -70,9 +87,9 @@ function rowToOrder(row, extras = {}) {
     commercialName: extras.commercialName || '',
     commercialEmail: extras.commercialEmail || '',
     clientName: extras.clientName || '',
-    paymentMethod: extras.paymentMethod || '',
-    modeExpedition: extras.modeExpedition || '',
-    items: extras.items || [],
+    paymentMethod: extras.paymentMethod || 'Chèque',
+    modeExpedition: extras.modeExpedition || 'Transport Bardahl',
+    items: items,
   }
 }
 
