@@ -37,8 +37,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
-    var email by remember { mutableStateOf("commercial@bardahl.ma") }
-    var password by remember { mutableStateOf("123456") }
+    var email by remember { mutableStateOf("karim@bardahl.ma") }
+    var password by remember { mutableStateOf("123") }
     var selectedRole by remember { mutableStateOf(UserRole.COMMERCIAL) }
 
     LaunchedEffect(authState) {
@@ -107,7 +107,8 @@ fun LoginScreen(
                             .padding(vertical = 10.dp)
                             .noRippleClickable {
                                 selectedRole = UserRole.COMMERCIAL
-                                email = "commercial@bardahl.ma"
+                                email = "karim@bardahl.ma"
+                                password = "123"
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -127,7 +128,8 @@ fun LoginScreen(
                             .padding(vertical = 10.dp)
                             .noRippleClickable {
                                 selectedRole = UserRole.ADMIN
-                                email = "admin@bardahl.ma"
+                                email = "bardahl@gmail.com"
+                                password = "123"
                             },
                         contentAlignment = Alignment.Center
                     ) {
