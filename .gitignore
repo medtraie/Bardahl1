@@ -1,0 +1,28 @@
+# Node & React Web
+node_modules/
+dist/
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android & Gradle
+.gradle/
+.idea/
+.kotlin/
+build/
+app/build/
+local.properties
+captures/
+.externalNativeBuild
+.cxx/
+*.apk
+*.aar
+
+# Temporary scratch & test files
+test_*.js
+discover_*.js
+seed_*.js
+audit_*.js
+find_*.js

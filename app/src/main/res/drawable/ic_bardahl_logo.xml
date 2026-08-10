@@ -1,0 +1,67 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="400dp"
+    android:height="300dp"
+    android:viewportWidth="400"
+    android:viewportHeight="300">
+
+    <!-- Bardahl Yellow Main Badge Background with Black Border -->
+    <!-- Main Badge Polygon Base -->
+    <path
+        android:fillColor="#FFD000"
+        android:strokeColor="#000000"
+        android:strokeWidth="5"
+        android:pathData="M 30,130 L 30,225 Q 30,235 40,235 L 360,235 Q 370,235 370,225 L 370,130 Q 370,120 360,120 L 40,120 Q 30,120 30,130 Z" />
+
+    <!-- Checkered Flag Base Shape (Yellow Background) -->
+    <path
+        android:fillColor="#FFD000"
+        android:strokeColor="#000000"
+        android:strokeWidth="5"
+        android:pathData="M 60,30 C 130,5 200,60 270,30 C 270,30 250,110 250,110 C 180,135 110,85 50,105 Z" />
+
+    <!-- Checkered Flag Black Grid Squares -->
+    <!-- Row 1 -->
+    <path android:fillColor="#000000" android:pathData="M 65,33 C 85,28 105,30 115,38 L 108,60 C 95,52 80,48 62,52 Z" />
+    <path android:fillColor="#000000" android:pathData="M 140,43 C 160,48 180,48 200,40 L 195,62 C 178,70 160,68 135,62 Z" />
+    <path android:fillColor="#000000" android:pathData="M 225,35 C 240,32 255,30 265,32 L 258,54 C 248,52 235,55 220,58 Z" />
+
+    <!-- Row 2 -->
+    <path android:fillColor="#000000" android:pathData="M 108,60 C 122,66 132,65 140,62 L 132,84 C 122,87 110,85 98,80 Z" />
+    <path android:fillColor="#000000" android:pathData="M 170,66 C 185,68 198,62 210,57 L 202,78 C 190,83 178,85 162,84 Z" />
+    <path android:fillColor="#000000" android:pathData="M 235,55 C 245,53 252,50 258,49 L 252,70 C 246,71 240,73 230,76 Z" />
+
+    <!-- Row 3 -->
+    <path android:fillColor="#000000" android:pathData="M 54,78 C 70,74 85,73 98,80 L 90,100 C 76,96 62,98 48,104 Z" />
+    <path android:fillColor="#000000" android:pathData="M 132,84 C 145,86 158,86 168,84 L 160,105 C 148,107 135,106 122,102 Z" />
+    <path android:fillColor="#000000" android:pathData="M 202,78 C 215,75 228,70 238,65 L 232,86 C 222,90 210,94 195,96 Z" />
+
+    <!-- Flag Pole (Black Diagonal Pole) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M 40,20 L 52,25 L 180,260 L 168,255 Z" />
+
+    <!-- BARDAHL Text (Bold Custom Block Letters) -->
+    <!-- B -->
+    <path android:fillColor="#000000" android:pathData="M 48,145 H 70 C 78,145 84,149 84,156 C 84,161 80,165 74,166 C 82,167 86,172 86,180 C 86,188 78,193 68,193 H 48 Z M 60,154 V 163 H 68 C 71,163 73,161 73,158 C 73,155 71,154 68,154 Z M 60,173 V 184 H 70 C 73,184 76,182 76,178 C 76,175 73,173 70,173 Z" />
+
+    <!-- A -->
+    <path android:fillColor="#000000" android:pathData="M 94,193 L 110,145 H 124 L 140,193 H 127 L 123,180 H 110 L 106,193 Z M 113,169 H 120 L 117,156 Z" />
+
+    <!-- R -->
+    <path android:fillColor="#000000" android:pathData="M 148,145 H 170 C 178,145 184,150 184,158 C 184,165 179,170 171,171 L 186,193 H 172 L 159,172 H 160 V 193 H 148 Z M 160,155 V 164 H 169 C 172,164 174,162 174,159 C 174,156 172,155 169,155 Z" />
+
+    <!-- D -->
+    <path android:fillColor="#000000" android:pathData="M 192,145 H 212 C 225,145 234,154 234,169 C 234,184 225,193 212,193 H 192 Z M 204,155 V 183 H 211 C 218,183 222,177 222,169 C 222,161 218,155 211,155 Z" />
+
+    <!-- A -->
+    <path android:fillColor="#000000" android:pathData="M 242,193 L 258,145 H 272 L 288,193 H 275 L 271,180 H 258 L 254,193 Z M 261,169 H 268 L 265,156 Z" />
+
+    <!-- H -->
+    <path android:fillColor="#000000" android:pathData="M 296,145 H 308 V 163 H 322 V 145 H 334 V 193 H 322 V 174 H 308 V 193 H 296 Z" />
+
+    <!-- L -->
+    <path android:fillColor="#000000" android:pathData="M 342,145 H 354 V 182 H 370 V 193 H 342 Z" />
+
+    <!-- Registered Trademark ® Symbol -->
+    <path android:fillColor="#000000" android:pathData="M 120,204 C 115,204 111,208 111,213 C 111,218 115,222 120,222 C 125,222 129,218 129,213 C 129,208 125,204 120,204 Z M 120,206 C 124,206 127,209 127,213 C 127,217 124,220 120,220 C 116,220 113,217 113,213 C 113,209 116,206 120,206 Z M 117,209 H 121 C 123,209 124,210 124,212 C 124,213 123,214 121,214 L 124,217 H 122 L 120,214 H 119 V 217 H 117 Z M 119,211 V 213 H 121 C 122,213 122,212 122,212 C 122,211 122,211 121,211 Z" />
+</vector>

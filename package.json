@@ -1,0 +1,12 @@
+{
+  "name": "bardahl-maroc-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd react-web && npm install && npm run build",
+    "dev": "cd react-web && npm run dev"
+  },
+  "devDependencies": {
+    "vite": "^5.4.2"
+  }
+}

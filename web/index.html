@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bardahl Maroc - Application Commerciale Web 2026</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for BI Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- jsPDF for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- CSS Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-obsidian text-slate">
+
+    <!-- LOGIN MODAL / SCREEN -->
+    <div id="login-screen" class="login-overlay active">
+        <div class="glass-card login-box animate-fade-in">
+            <div class="brand-badge-lg">
+                <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <h1 class="brand-title">BARDAHL MAROC</h1>
+            <p class="brand-sub">RIEN NE VOUS ARRÊTERA</p>
+
+            <div class="role-tabs">
+                <button class="role-btn active" id="btn-role-commercial" onclick="selectLoginRole('COMMERCIAL')">COMMERCIAL</button>
+                <button class="role-btn" id="btn-role-admin" onclick="selectLoginRole('ADMIN')">ADMINISTRATEUR</button>
+            </div>
+
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="input-group">
+                    <label><i class="fa-solid fa-envelope"></i> Adresse Email</label>
+                    <input type="email" id="login-email" value="commercial@bardahl.ma" required>
+                </div>
+                <div class="input-group">
+                    <label><i class="fa-solid fa-lock"></i> Mot de passe</label>
+                    <input type="password" id="login-password" value="123456" required>
+                </div>
+                <div id="login-error" class="error-msg hidden">Identifiants invalides. Veuillez réessayer.</div>
+                <button type="submit" class="btn-bardahl btn-block">
+                    <i class="fa-solid fa-right-to-bracket"></i> SE CONNECTER
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APPLICATION CONTAINER -->
+    <div id="app-container" class="app-layout hidden">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-badge">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="title">BARDAHL</span>
+                    <span class="subtitle">MAROC 2026</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-target="panel-dashboard" onclick="navigate('panel-dashboard', this)">
+                    <i class="fa-solid fa-chart-pie"></i> Tableau de Bord
+                </a>
+                <a href="#" class="nav-item" data-target="panel-clients" onclick="navigate('panel-clients', this)">
+                    <i class="fa-solid fa-users"></i> Clients
+                </a>
+                <a href="#" class="nav-item" data-target="panel-products" onclick="navigate('panel-products', this)">
+                    <i class="fa-solid fa-boxes-stacked"></i> Catalogue Produits
+                </a>
+                <a href="#" class="nav-item" data-target="panel-orders" onclick="navigate('panel-orders', this)">
+                    <i class="fa-solid fa-file-invoice-dollar"></i> Bons de Commande
+                </a>
+                <a href="#" class="nav-item admin-only" data-target="panel-commercials" onclick="navigate('panel-commercials', this)">
+                    <i class="fa-solid fa-id-card-clip"></i> Équipe Commerciale
+                </a>
+                <a href="#" class="nav-item" data-target="panel-analytics" onclick="navigate('panel-analytics', this)">
+                    <i class="fa-solid fa-chart-line"></i> Analyses Ventes
+                </a>
+                <a href="#" class="nav-item" data-target="panel-settings" onclick="navigate('panel-settings', this)">
+                    <i class="fa-solid fa-gears"></i> Paramètres
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-pill">
+                    <div class="avatar" id="user-avatar-initials">KB</div>
+                    <div class="user-info">
+                        <div class="name" id="user-name-display">Karim Benjelloun</div>
+                        <div class="role-badge" id="user-role-display">Commercial</div>
+                    </div>
+                </div>
+                <button class="btn-logout" onclick="handleLogout()" title="Déconnexion">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+
+            <!-- TOP NAVBAR HEADER -->
+            <header class="top-header">
+                <div class="header-left">
+                    <h2 id="header-panel-title">Tableau de Bord</h2>
+                    <span class="header-subtitle">RIEN NE VOUS ARRÊTERA</span>
+                </div>
+                <div class="header-right">
+                    <div class="sync-badge">
+                        <span class="sync-dot"></span> Supabase Connecté
+                    </div>
+                    <button class="btn-bardahl btn-sm" onclick="openNewOrderModal()">
+                        <i class="fa-solid fa-circle-plus"></i> Nouveau Bon
+                    </button>
+                </div>
+            </header>
+
+            <!-- PANELS CONTAINER -->
+            <div class="panels-wrapper">
+
+                <!-- 1. DASHBOARD PANEL -->
+                <section id="panel-dashboard" class="panel-section active">
+                    <!-- KPI Cards Grid -->
+                    <div class="kpi-grid">
+                        <div class="glass-card kpi-card">
+                            <div class="kpi-info">
+                                <span class="label">Commandes du Mois</span>
+                                <span class="value" id="kpi-orders-month">18</span>
+                                <span class="sub text-emerald"><i class="fa-solid fa-arrow-trend-up"></i> +14% ce mois</span>
+                            </div>
+                            <div class="kpi-icon yellow"><i class="fa-solid fa-receipt"></i></div>
+                        </div>
+
+                        <div class="glass-card kpi-card">
+                            <div class="kpi-info">
+                                <span class="label">Chiffre d'Affaires TTC</span>
+                                <span class="value" id="kpi-revenue">148,500 DH</span>
+                                <span class="sub">Objectif: 150,000 DH</span>
+                            </div>
+                            <div class="kpi-icon green"><i class="fa-solid fa-sack-dollar"></i></div>
+                        </div>
+
+                        <div class="glass-card kpi-card">
+                            <div class="kpi-info">
+                                <span class="label">Commandes du Jour</span>
+                                <span class="value" id="kpi-orders-today">3</span>
+                                <span class="sub text-blue">Aujourd'hui</span>
+                            </div>
+                            <div class="kpi-icon blue"><i class="fa-solid fa-calendar-day"></i></div>
+                        </div>
+
+                        <div class="glass-card kpi-card">
+                            <div class="kpi-info">
+                                <span class="label">Clients Actifs</span>
+                                <span class="value" id="kpi-clients-count">14</span>
+                                <span class="sub">Portefeuille Actif</span>
+                            </div>
+                            <div class="kpi-icon orange"><i class="fa-solid fa-users"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Charts & Recent Orders Row -->
+                    <div class="grid-2col mt-6">
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-chart-column"></i> Évolution Mensuelle des Ventes (DH)</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chart-monthly-sales"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Commandes Récentes</h3>
+                                <button class="btn-link" onclick="navigate('panel-orders')">Voir tout</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="custom-table">
+                                    <thead>
+                                        <tr>
+                                            <th>N° Bon</th>
+                                            <th>Client</th>
+                                            <th>Date</th>
+                                            <th>Total TTC</th>
+                                            <th>Statut</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dashboard-recent-orders-body">
+                                        <!-- Injected via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. CLIENTS PANEL -->
+                <section id="panel-clients" class="panel-section">
+                    <div class="section-toolbar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="search-clients" placeholder="Rechercher par Nom, ICE, Ville..." oninput="filterClients()">
+                        </div>
+                        <button class="btn-bardahl" onclick="openAddClientModal()">
+                            <i class="fa-solid fa-user-plus"></i> Ajouter Client
+                        </button>
+                    </div>
+
+                    <div class="grid-cards" id="clients-cards-container">
+                        <!-- Injected via JS -->
+                    </div>
+                </section>
+
+                <!-- 3. PRODUCTS CATALOG PANEL -->
+                <section id="panel-products" class="panel-section">
+                    <div class="section-toolbar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="search-products" placeholder="Rechercher par Produit, Réf, Viscosité..." oninput="filterProducts()">
+                        </div>
+                        <div class="filter-pills" id="category-filter-pills">
+                            <button class="pill active" onclick="filterCategory('ALL', this)">Tous</button>
+                            <button class="pill" onclick="filterCategory('LUB_AUTO', this)">Lubrifiants Auto</button>
+                            <button class="pill" onclick="filterCategory('IND_GRAISSES', this)">Graisses</button>
+                            <button class="pill" onclick="filterCategory('IND_AEROSOLS', this)">Aérosols</button>
+                            <button class="pill" onclick="filterCategory('IND_ALIM', this)">Alimentaire</button>
+                            <button class="pill" onclick="filterCategory('FLUIDES_LR', this)">Fluides & LR</button>
+                        </div>
+                    </div>
+
+                    <div class="grid-cards" id="products-cards-container">
+                        <!-- Injected via JS -->
+                    </div>
+                </section>
+
+                <!-- 4. ORDERS PANEL -->
+                <section id="panel-orders" class="panel-section">
+                    <div class="section-toolbar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="search-orders" placeholder="Rechercher par N° Bon, Client..." oninput="filterOrders()">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-secondary" onclick="exportOrdersToExcel()">
+                                <i class="fa-solid fa-file-excel"></i> Export Excel
+                            </button>
+                            <button class="btn-bardahl" onclick="openNewOrderModal()">
+                                <i class="fa-solid fa-plus"></i> Créer Bon
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="glass-card mt-4">
+                        <div class="table-responsive">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>N° Bon</th>
+                                        <th>Date</th>
+                                        <th>Commercial</th>
+                                        <th>Client</th>
+                                        <th>Total HT</th>
+                                        <th>TVA (20%)</th>
+                                        <th>Total TTC</th>
+                                        <th>Statut</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orders-table-body">
+                                    <!-- Injected via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. COMMERCIALS MANAGEMENT PANEL (ADMIN ONLY) -->
+                <section id="panel-commercials" class="panel-section">
+                    <div class="section-toolbar">
+                        <h3><i class="fa-solid fa-users-gear"></i> Équipe Commerciale & Objectifs</h3>
+                        <button class="btn-bardahl" onclick="alert('Module de création commercial prêt')">
+                            <i class="fa-solid fa-user-shield"></i> Ajouter Commercial
+                        </button>
+                    </div>
+
+                    <div class="grid-cards" id="commercials-cards-container">
+                        <!-- Injected via JS -->
+                    </div>
+                </section>
+
+                <!-- 6. ANALYTICS PANEL -->
+                <section id="panel-analytics" class="panel-section">
+                    <div class="grid-2col">
+                        <div class="glass-card">
+                            <h3><i class="fa-solid fa-chart-pie"></i> Répartition des Ventes par Catégorie</h3>
+                            <div class="chart-container">
+                                <canvas id="chart-category-sales"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="glass-card">
+                            <h3><i class="fa-solid fa-trophy"></i> Top 5 Produits les Plus Vendus</h3>
+                            <ul class="top-list" id="top-products-list">
+                                <!-- Injected via JS -->
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 7. SETTINGS PANEL -->
+                <section id="panel-settings" class="panel-section">
+                    <div class="grid-2col">
+                        <div class="glass-card">
+                            <h3><i class="fa-solid fa-building"></i> Informations Entreprise Bardahl</h3>
+                            <form class="mt-4">
+                                <div class="input-group">
+                                    <label>Raison Sociale</label>
+                                    <input type="text" value="BARDAHL MAGHREB S.A" readonly>
+                                </div>
+                                <div class="grid-2col">
+                                    <div class="input-group">
+                                        <label>ICE (15 chiffres)</label>
+                                        <input type="text" value="001524389000045" readonly>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Registre du Commerce (RC)</label>
+                                        <input type="text" value="123456" readonly>
+                                    </div>
+                                </div>
+                                <div class="grid-2col">
+                                    <div class="input-group">
+                                        <label>Identifiant Fiscal (IF)</label>
+                                        <input type="text" value="9876543" readonly>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Patente</label>
+                                        <input type="text" value="456789" readonly>
+                                    </div>
+                                </div>
+                                <div class="input-group">
+                                    <label>TVA par défaut (%)</label>
+                                    <input type="text" value="20.00%" readonly>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="glass-card">
+                            <h3><i class="fa-solid fa-sliders"></i> Préférences & Synchronisation</h3>
+                            <div class="mt-4">
+                                <div class="setting-item">
+                                    <div>
+                                        <strong>Mode Sombre 2026</strong>
+                                        <p class="text-sub">Design System Bardahl Obsidian Gold</p>
+                                    </div>
+                                    <input type="checkbox" checked disabled>
+                                </div>
+                                <hr class="divider">
+                                <div class="setting-item">
+                                    <div>
+                                        <strong>Mynchronisation Supabase Real-time</strong>
+                                        <p class="text-sub">Base PostgreSQL Cloud</p>
+                                    </div>
+                                    <button class="btn-secondary" onclick="alert('Synchronisation Supabase réussie!')">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Synchroniser
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL: ADD CLIENT -->
+    <div id="modal-add-client" class="modal-overlay hidden">
+        <div class="glass-card modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-user-plus"></i> Nouveau Client Bardahl</h3>
+                <button class="btn-close" onclick="closeModal('modal-add-client')">&times;</button>
+            </div>
+            <form onsubmit="saveNewClient(event)" class="modal-body">
+                <div class="input-group">
+                    <label>Raison Sociale *</label>
+                    <input type="text" id="client-company-name" required placeholder="Ex: Auto Service Ain Sebaa">
+                </div>
+                <div class="grid-2col">
+                    <div class="input-group">
+                        <label>ICE (15 chiffres) *</label>
+                        <input type="text" id="client-ice" required placeholder="001548792000088">
+                    </div>
+                    <div class="input-group">
+                        <label>RC</label>
+                        <input type="text" id="client-rc" placeholder="45892">
+                    </div>
+                </div>
+                <div class="grid-2col">
+                    <div class="input-group">
+                        <label>Adresse *</label>
+                        <input type="text" id="client-address" required placeholder="Zone Ind. Ain Sebaa">
+                    </div>
+                    <div class="input-group">
+                        <label>Ville *</label>
+                        <input type="text" id="client-city" required placeholder="Casablanca">
+                    </div>
+                </div>
+                <div class="grid-2col">
+                    <div class="input-group">
+                        <label>Téléphone *</label>
+                        <input type="text" id="client-phone" required placeholder="+212 5 22 00 11 22">
+                    </div>
+                    <div class="input-group">
+                        <label>Type Client</label>
+                        <select id="client-type">
+                            <option value="Garage">Garage</option>
+                            <option value="Station">Station Service</option>
+                            <option value="Flotte">Flotte Automobile</option>
+                            <option value="Industriel">Industriel</option>
+                            <option value="Grossiste">Grossiste</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeModal('modal-add-client')">Annuler</button>
+                    <button type="submit" class="btn-bardahl">Enregistrer Client</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NEW BON DE COMMANDE WIZARD -->
+    <div id="modal-new-order" class="modal-overlay hidden">
+        <div class="glass-card modal-box modal-lg">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-file-signature"></i> Assistant Bon de Commande Bardahl</h3>
+                <button class="btn-close" onclick="closeModal('modal-new-order')">&times;</button>
+            </div>
+            <div class="modal-body">
+                
+                <!-- Step 1: Select Client -->
+                <div class="wizard-step">
+                    <h4>1. Sélectionner le Client</h4>
+                    <select id="order-select-client" class="select-lg" onchange="onOrderClientSelected()">
+                        <option value="">-- Choisir un client dans votre portefeuille --</option>
+                    </select>
+                </div>
+
+                <!-- Step 2: Add Products Table -->
+                <div class="wizard-step mt-4">
+                    <div class="flex-between mb-2">
+                        <h4>2. Articles de la Commande</h4>
+                        <select id="order-add-product-select" onchange="addSelectedProductToOrder(this)">
+                            <option value="">+ Ajouter un produit du catalogue</option>
+                        </select>
+                    </div>
+
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Réf.</th>
+                                <th>Désignation Produit</th>
+                                <th>Qté</th>
+                                <th>Prix U. TTC</th>
+                                <th>Remise (%)</th>
+                                <th>Total TTC</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="order-items-table-body">
+                            <!-- Items added dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Step 3: Totals & Signature Canvas -->
+                <div class="grid-2col mt-4">
+                    <div>
+                        <h4>3. Signature Electronique du Client</h4>
+                        <div class="signature-container">
+                            <canvas id="signature-canvas" width="380" height="130"></canvas>
+                            <button type="button" class="btn-link btn-xs" onclick="clearSignature()">Effacer Signature</button>
+                        </div>
+                    </div>
+
+                    <div class="order-totals-card">
+                        <div class="total-row">
+                            <span>Total HT :</span>
+                            <span id="order-calc-ht">0.00 DH</span>
+                        </div>
+                        <div class="total-row">
+                            <span>TVA (20%) :</span>
+                            <span id="order-calc-tva">0.00 DH</span>
+                        </div>
+                        <hr class="divider">
+                        <div class="total-row main">
+                            <span>TOTAL TTC :</span>
+                            <span id="order-calc-ttc">0.00 DH</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeModal('modal-new-order')">Annuler</button>
+                <button type="button" class="btn-bardahl" onclick="submitNewOrder()">
+                    <i class="fa-solid fa-check"></i> Valider et Générer PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
