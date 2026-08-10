@@ -57,6 +57,9 @@ interface OrderDao {
     suspend fun insertOrder(order: OrderEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrders(orders: List<OrderEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrderItems(items: List<OrderItemEntity>)
 
     @Query("UPDATE local_orders SET status = :status, isSynced = :isSynced WHERE id = :orderId")
