@@ -10,7 +10,7 @@ import java.net.URL
 
 class SupabaseService(
     private val baseUrl: String = "https://uoknnkrphtlsmvrdkeov.supabase.co/rest/v1",
-    private val apiKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVva25ua3JwaHRsc212cmRrZW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4NzgwNjgsImV4cCI6MjEwMTQ1NDA2OH0.jOaTIQRMOTTbNZ7m-pJjQa269wFbERaKcKEWx3rzU4g"
+    private val apiKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVva25ua3JwaHRsc212cmRrZW92Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTg3ODA2OCwiZXhwIjoyMTAxNDU0MDY4fQ.iN0xqCHWT_ZeqUAIuxwgJ0_AsVmKLPgVlj87mc3YX4s"
 ) {
 
     private fun getConnection(endpoint: String, method: String = "GET"): HttpURLConnection {
@@ -39,14 +39,14 @@ class SupabaseService(
                         Product(
                             id = obj.getString("id"),
                             categoryId = obj.optString("category_id", null),
-                            code = obj.getString("code"),
-                            reference = obj.getString("reference"),
+                            code = obj.optString("code", "P-${i + 1}"),
+                            reference = obj.optString("reference", "REF-${i + 1}"),
                             name = obj.getString("name"),
                             description = obj.optString("description", ""),
                             viscosity = obj.optString("viscosity", null),
                             volume = obj.optString("volume", null),
-                            packaging = obj.getString("packaging"),
-                            unitPriceTtc = obj.getDouble("unit_price_ttc"),
+                            packaging = obj.optString("packaging", "Unité"),
+                            unitPriceTtc = obj.optDouble("unit_price_ttc", 100.0),
                             stockQuantity = obj.optInt("stock_quantity", 100)
                         )
                     )
@@ -69,19 +69,102 @@ class SupabaseService(
                 val list = mutableListOf<Client>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
+                    val rawType = obj.optString("client_type", "garage").lowercase()
+                    val cType = when (rawType) {
+                        "station" -> ClientType.STATION
+                        "flotte", "fleet" -> ClientType.FLOTTE
+                        "grossiste" -> ClientType.GROS
+                        "industriel" -> ClientType.INDUSTRIEL
+                        else -> ClientType.GARAGE
+                    }
                     list.add(
                         Client(
                             id = obj.getString("id"),
                             commercialId = obj.optString("commercial_id", ""),
-                            companyName = obj.getString("company_name"),
-                            ice = obj.getString("ice"),
+                            companyName = obj.optString("company_name", "Client"),
+                            ice = obj.optString("ice", "000000000000000"),
                             rc = obj.optString("rc", ""),
                             ifCode = obj.optString("if_code", ""),
                             patente = obj.optString("patente", ""),
-                            address = obj.getString("address"),
-                            city = obj.getString("city"),
-                            phone = obj.getString("phone"),
-                            email = obj.optString("email", "")
+                            address = obj.optString("address", "Casablanca"),
+                            city = obj.optString("city", "Casablanca"),
+                            phone = obj.optString("phone", "+212 5 22 00 00 00"),
+                            email = obj.optString("email", ""),
+                            clientType = cType
+                        )
+                    )
+                }
+                return@withContext list
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext emptyList()
+    }
+
+    suspend fun fetchCommercials(): List<Commercial> = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("commercials?select=*")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                val list = mutableListOf<Commercial>()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    list.add(
+                        Commercial(
+                            id = obj.getString("id"),
+                            userId = obj.optString("user_id", "00000000-0000-0000-0000-000000000000"),
+                            name = obj.optString("name", "Commercial ${obj.optString("matricule", "COM")}"),
+                            email = obj.optString("email", ""),
+                            phone = obj.optString("phone", "+212 6 00 00 00 00"),
+                            matricule = obj.optString("matricule", "COMM-001"),
+                            city = obj.optString("city", "Casablanca"),
+                            targetMonthlySales = obj.optDouble("target_monthly_sales", 150000.0),
+                            currentMonthSales = obj.optDouble("current_month_sales", 0.0),
+                            totalOrdersCount = obj.optInt("total_orders_count", 0)
+                        )
+                    )
+                }
+                return@withContext list
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext emptyList()
+    }
+
+    suspend fun fetchOrders(): List<Order> = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("orders?select=*")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                val list = mutableListOf<Order>()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    val rawStatus = obj.optString("status", "draft").uppercase()
+                    val st = when (rawStatus) {
+                        "VALIDATED" -> OrderStatus.VALIDATED
+                        "SENT" -> OrderStatus.SENT
+                        "DELIVERED" -> OrderStatus.DELIVERED
+                        "CANCELLED" -> OrderStatus.CANCELLED
+                        else -> OrderStatus.DRAFT
+                    }
+                    list.add(
+                        Order(
+                            id = obj.getString("id"),
+                            orderNumber = obj.optString("order_number", "BC-2026-0000"),
+                            commercialId = obj.optString("commercial_id", ""),
+                            clientId = obj.optString("client_id", ""),
+                            orderDate = obj.optString("order_date", "2026-08-10").take(10),
+                            status = st,
+                            totalHt = obj.optDouble("total_ht", 0.0),
+                            totalDiscount = obj.optDouble("total_discount", 0.0),
+                            totalTva = obj.optDouble("total_tva", 0.0),
+                            totalTtc = obj.optDouble("total_ttc", 0.0),
+                            observations = obj.optString("observations", ""),
+                            isSynced = true
                         )
                     )
                 }

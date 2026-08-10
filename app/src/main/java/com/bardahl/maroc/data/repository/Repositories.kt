@@ -30,7 +30,7 @@ class ClientRepository(
                     city = e.city,
                     phone = e.phone,
                     email = e.email,
-                    clientType = try { ClientType.valueOf(e.clientType) } catch (ex: Exception) { ClientType.DETAIL }
+                    clientType = try { ClientType.valueOf(e.clientType) } catch (ex: Exception) { ClientType.GARAGE }
                 )
             }
         }
@@ -55,7 +55,7 @@ class ClientRepository(
         clientDao.insertClient(entity)
     }
 
-    suspend fun syncRemoteClients(commercialId: String? = null) {
+    suspend fun fetchRemoteClientsDirectly(commercialId: String? = null): List<Client> {
         val remote = supabaseService.fetchClients(commercialId)
         if (remote.isNotEmpty()) {
             val entities = remote.map { c ->
@@ -77,6 +77,7 @@ class ClientRepository(
             }
             clientDao.insertClients(entities)
         }
+        return remote
     }
 }
 
@@ -105,7 +106,7 @@ class ProductRepository(
         }
     }
 
-    suspend fun syncRemoteProducts() {
+    suspend fun fetchRemoteProductsDirectly(): List<Product> {
         val remote = supabaseService.fetchProducts()
         if (remote.isNotEmpty()) {
             val entities = remote.map { p ->
@@ -126,6 +127,7 @@ class ProductRepository(
             }
             productDao.insertProducts(entities)
         }
+        return remote
     }
 }
 
@@ -162,6 +164,32 @@ class OrderRepository(
         }
     }
 
+    suspend fun fetchRemoteOrdersDirectly(): List<Order> {
+        val remote = supabaseService.fetchOrders()
+        if (remote.isNotEmpty()) {
+            val entities = remote.map { o ->
+                OrderEntity(
+                    id = o.id,
+                    orderNumber = o.orderNumber,
+                    commercialId = o.commercialId,
+                    commercialName = o.commercialName,
+                    clientId = o.clientId,
+                    clientName = o.clientName,
+                    orderDate = o.orderDate,
+                    status = o.status.name,
+                    totalHt = o.totalHt,
+                    totalDiscount = o.totalDiscount,
+                    totalTva = o.totalTva,
+                    totalTtc = o.totalTtc,
+                    observations = o.observations,
+                    isSynced = true
+                )
+            }
+            orderDao.insertOrders(entities)
+        }
+        return remote
+    }
+
     suspend fun saveOrder(order: Order) {
         val entity = OrderEntity(
             id = order.id,
@@ -195,7 +223,7 @@ class OrderRepository(
         orderDao.insertOrder(entity)
         orderDao.insertOrderItems(items)
 
-        // Try syncing online or queue for background sync
+        // Try syncing online
         val success = supabaseService.postOrder(order)
         if (success) {
             orderDao.updateOrderStatus(order.id, order.status.name, true)

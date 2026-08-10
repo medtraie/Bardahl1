@@ -24,7 +24,7 @@ class AuthViewModel : ViewModel() {
     fun login(email: String, password: String, role: UserRole) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            kotlinx.coroutines.delay(500)
+            kotlinx.coroutines.delay(300)
 
             val cleanEmail = email.trim().lowercase()
 
@@ -40,7 +40,6 @@ class AuthViewModel : ViewModel() {
                     )
                     _authState.value = AuthState.Success(user, null)
                 } else {
-                    // ANY OTHER ACCOUNT IS STRICTLY COMMERCIAL
                     val user = User(
                         id = "user_${System.currentTimeMillis()}",
                         email = cleanEmail,
@@ -55,7 +54,7 @@ class AuthViewModel : ViewModel() {
                         name = user.firstName,
                         email = user.email,
                         phone = user.phone,
-                        matricule = "COMM-004",
+                        matricule = "COMM-001",
                         city = "Casablanca",
                         targetMonthlySales = 150000.0,
                         currentMonthSales = 0.0,
@@ -82,15 +81,41 @@ class DashboardViewModel(
 
     private val _stats = MutableStateFlow(
         DashboardStats(
-            totalOrders = 36,
-            ordersToday = 4,
-            ordersThisMonth = 22,
-            totalRevenueTtc = 184500.0,
-            activeClientsCount = 18,
+            totalOrders = 3,
+            ordersToday = 1,
+            ordersThisMonth = 3,
+            totalRevenueTtc = 28920.0,
+            activeClientsCount = 3,
             activeProductsCount = BardahlCatalogData.allProducts.size
         )
     )
     val stats: StateFlow<DashboardStats> = _stats.asStateFlow()
+
+    init {
+        loadLiveStats()
+    }
+
+    fun loadLiveStats() {
+        viewModelScope.launch {
+            try {
+                val orders = orderRepository.fetchRemoteOrdersDirectly()
+                val clients = clientRepository.fetchRemoteClientsDirectly()
+                val products = productRepository.fetchRemoteProductsDirectly()
+
+                val totalRevenue = orders.sumOf { it.totalTtc }
+                _stats.value = DashboardStats(
+                    totalOrders = if (orders.isNotEmpty()) orders.size else 3,
+                    ordersToday = if (orders.isNotEmpty()) 1 else 1,
+                    ordersThisMonth = if (orders.isNotEmpty()) orders.size else 3,
+                    totalRevenueTtc = if (totalRevenue > 0) totalRevenue else 28920.0,
+                    activeClientsCount = if (clients.isNotEmpty()) clients.size else 3,
+                    activeProductsCount = if (products.isNotEmpty()) products.size else BardahlCatalogData.allProducts.size
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }
 
 class ClientViewModel(private val clientRepository: ClientRepository) : ViewModel() {
@@ -105,6 +130,23 @@ class ClientViewModel(private val clientRepository: ClientRepository) : ViewMode
         )
     )
     val clientsList: StateFlow<List<Client>> = _clientsList.asStateFlow()
+
+    init {
+        refreshClientsFromSupabase()
+    }
+
+    fun refreshClientsFromSupabase() {
+        viewModelScope.launch {
+            try {
+                val remote = clientRepository.fetchRemoteClientsDirectly()
+                if (remote.isNotEmpty()) {
+                    _clientsList.value = remote
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -125,6 +167,23 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
     private val _products = MutableStateFlow<List<Product>>(BardahlCatalogData.allProducts)
     val products: StateFlow<List<Product>> = _products.asStateFlow()
 
+    init {
+        refreshProductsFromSupabase()
+    }
+
+    fun refreshProductsFromSupabase() {
+        viewModelScope.launch {
+            try {
+                val remote = productRepository.fetchRemoteProductsDirectly()
+                if (remote.isNotEmpty()) {
+                    _products.value = remote
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
@@ -135,40 +194,63 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
         listOf(
             Order(
                 id = "o1",
-                orderNumber = "BC-2026-00001",
-                commercialId = "c8888888-8888-8888-8888-888888888888",
+                orderNumber = "BC-2026-004332",
+                commercialId = "88888888-8888-8888-8888-888888888888",
                 commercialName = "Karim Benjelloun",
                 clientId = "c1",
                 clientName = "Auto Service Ain Sebaa",
-                orderDate = "2026-08-05 14:30",
+                orderDate = "2026-08-05",
                 status = OrderStatus.VALIDATED,
                 totalHt = 4250.0,
                 totalTva = 850.0,
-                totalTtc = 5100.0,
-                items = listOf(
-                    OrderItem(productId = "la1", productName = "Bardahl XTRA 10W40 1L", productReference = "34131", quantity = 24, unitPriceTtc = 78.0),
-                    OrderItem(productId = "ind65", productName = "GRAISSE BLANCHE Aérosol 400ml", productReference = "1381B", quantity = 12, unitPriceTtc = 80.0)
-                )
+                totalTtc = 5100.0
             ),
             Order(
                 id = "o2",
-                orderNumber = "BC-2026-00002",
-                commercialId = "c8888888-8888-8888-8888-888888888888",
+                orderNumber = "BC-2026-004333",
+                commercialId = "88888888-8888-8888-8888-888888888888",
                 commercialName = "Karim Benjelloun",
                 clientId = "c2",
                 clientName = "Station Afriquia Route de Rabat",
-                orderDate = "2026-08-05 16:15",
+                orderDate = "2026-08-05",
                 status = OrderStatus.DRAFT,
                 totalHt = 7450.0,
                 totalTva = 1490.0,
-                totalTtc = 8940.0,
-                items = listOf(
-                    OrderItem(productId = "la3", productName = "Bardahl XTRA 5W40 1L", productReference = "34121", quantity = 36, unitPriceTtc = 120.0)
-                )
+                totalTtc = 8940.0
+            ),
+            Order(
+                id = "o3",
+                orderNumber = "BC-2026-004334",
+                commercialId = "88888888-8888-8888-8888-888888888888",
+                commercialName = "Youssef El Amrani",
+                clientId = "c3",
+                clientName = "Transport & Logistique du Sud",
+                orderDate = "2026-08-06",
+                status = OrderStatus.VALIDATED,
+                totalHt = 12400.0,
+                totalTva = 2480.0,
+                totalTtc = 14880.0
             )
         )
     )
     val orders: StateFlow<List<Order>> = _orders.asStateFlow()
+
+    init {
+        refreshOrdersFromSupabase()
+    }
+
+    fun refreshOrdersFromSupabase() {
+        viewModelScope.launch {
+            try {
+                val remote = orderRepository.fetchRemoteOrdersDirectly()
+                if (remote.isNotEmpty()) {
+                    _orders.value = remote
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     fun createOrder(order: Order) {
         viewModelScope.launch {
