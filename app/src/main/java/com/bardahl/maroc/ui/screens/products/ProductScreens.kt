@@ -49,12 +49,10 @@ fun ProductCatalogScreen(
 
     val categories = listOf(
         CategoryFilterItem("ALL", "Tous"),
-        CategoryFilterItem("LUB_AUTO", "Lubrifiants Auto"),
-        CategoryFilterItem("ADDITIFS", "Additifs"),
-        CategoryFilterItem("FLUIDES_LR", "Fluides & Refroidissement"),
-        CategoryFilterItem("IND_GRAISSES", "Graisses"),
-        CategoryFilterItem("IND_AEROSOLS", "Aérosols"),
-        CategoryFilterItem("IND_ALIM", "Alimentaire")
+        CategoryFilterItem("Additifs", "Additifs"),
+        CategoryFilterItem("Fluides", "Fluides & LR"),
+        CategoryFilterItem("Lubrifiants", "Lubrifiants Auto"),
+        CategoryFilterItem("Industrie", "Industrie & Specs")
     )
 
     // Filter Logic
@@ -63,7 +61,12 @@ fun ProductCatalogScreen(
                             product.code.contains(searchQuery, ignoreCase = true) ||
                             product.reference.contains(searchQuery, ignoreCase = true) ||
                             (product.viscosity != null && product.viscosity.contains(searchQuery, ignoreCase = true))
-        val matchesCategory = selectedCategoryCode == "ALL" || product.categoryId == selectedCategoryCode
+        val cat = product.categoryId ?: ""
+        val matchesCategory = selectedCategoryCode == "ALL" ||
+            (selectedCategoryCode == "Additifs" && (cat == "ADDITIFS" || cat == "Additifs")) ||
+            (selectedCategoryCode == "Fluides" && (cat == "FLUIDES_LR" || cat == "Fluides")) ||
+            (selectedCategoryCode == "Lubrifiants" && (cat == "LUB_AUTO" || cat == "Lubrifiants")) ||
+            (selectedCategoryCode == "Industrie" && (cat == "IND_GRAISSES" || cat == "IND_AEROSOLS" || cat == "IND_ALIM" || cat == "Industrie"))
         matchesSearch && matchesCategory
     }
 

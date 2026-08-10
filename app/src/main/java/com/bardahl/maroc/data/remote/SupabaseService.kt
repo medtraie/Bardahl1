@@ -28,7 +28,7 @@ class SupabaseService(
 
     suspend fun fetchProducts(): List<Product> = withContext(Dispatchers.IO) {
         try {
-            val conn = getConnection("products?select=*")
+            val conn = getConnection("products?select=*&limit=1000")
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val jsonArray = JSONArray(jsonStr)

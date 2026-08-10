@@ -176,10 +176,16 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
             try {
                 val remote = productRepository.fetchRemoteProductsDirectly()
                 if (remote.isNotEmpty()) {
-                    _products.value = remote
+                    val map = mutableMapOf<String, Product>()
+                    BardahlCatalogData.allProducts.forEach { map[it.id] = it }
+                    remote.forEach { map[it.id] = it }
+                    _products.value = map.values.toList()
+                } else {
+                    _products.value = BardahlCatalogData.allProducts
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                _products.value = BardahlCatalogData.allProducts
             }
         }
     }
