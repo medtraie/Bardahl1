@@ -202,6 +202,8 @@ fun MainAppNavHost(
                     DashboardScreen(
                         dashboardViewModel = dashboardViewModel,
                         orderViewModel = orderViewModel,
+                        clientViewModel = clientViewModel,
+                        authViewModel = authViewModel,
                         onCreateOrderClick = { navController.navigate(Screen.CreateOrder.route) },
                         onSettingsClick = navigateToSettings
                     )

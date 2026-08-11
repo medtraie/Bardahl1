@@ -45,9 +45,13 @@ fun ClientListScreen(
         val userCommId = currentUser?.id ?: ""
         val userEmail = currentUser?.email?.lowercase() ?: ""
         clients.filter { c ->
-            c.commercialId == userCommId ||
-            (userEmail.contains("karim") && (c.commercialId.contains("8888") || c.commercialId.isBlank())) ||
-            (userEmail.contains("youssef") && c.commercialId.contains("9999")) ||
+            val commIdClean = c.commercialId.lowercase().replace("c", "")
+            val userCommIdClean = userCommId.lowercase().replace("c", "")
+
+            (userCommId.isNotBlank() && c.commercialId == userCommId) ||
+            (commIdClean.isNotBlank() && userCommIdClean.isNotBlank() && commIdClean == userCommIdClean) ||
+            (userEmail.contains("karim") && (c.commercialId.contains("8888") || c.companyName.contains("Ain Sebaa", ignoreCase = true) || c.companyName.contains("Afriquia", ignoreCase = true) || c.commercialId.isBlank() || c.id == "c1" || c.id == "c2")) ||
+            (userEmail.contains("youssef") && (c.commercialId.contains("9999") || c.companyName.contains("Transport", ignoreCase = true) || c.companyName.contains("Sud", ignoreCase = true) || c.id == "c3")) ||
             (userEmail.contains("mehdi") && c.commercialId.contains("7777"))
         }
     }

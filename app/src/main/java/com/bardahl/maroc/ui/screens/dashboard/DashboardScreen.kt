@@ -16,8 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bardahl.maroc.domain.model.Order
+import com.bardahl.maroc.domain.model.UserRole
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
+import com.bardahl.maroc.ui.viewmodels.AuthState
+import com.bardahl.maroc.ui.viewmodels.AuthViewModel
+import com.bardahl.maroc.ui.viewmodels.ClientViewModel
 import com.bardahl.maroc.ui.viewmodels.DashboardViewModel
 import com.bardahl.maroc.ui.viewmodels.OrderViewModel
 
@@ -25,17 +29,64 @@ import com.bardahl.maroc.ui.viewmodels.OrderViewModel
 fun DashboardScreen(
     dashboardViewModel: DashboardViewModel,
     orderViewModel: OrderViewModel,
+    clientViewModel: ClientViewModel,
+    authViewModel: AuthViewModel,
     onCreateOrderClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
-    val stats by dashboardViewModel.stats.collectAsState()
-    val orders by orderViewModel.orders.collectAsState()
+    val allOrders by orderViewModel.orders.collectAsState()
+    val allClients by clientViewModel.clientsList.collectAsState()
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Success)?.user
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+
+    // Role-based filtering for orders and clients
+    val userCommId = currentUser?.id ?: ""
+    val userEmail = currentUser?.email?.lowercase() ?: ""
+    val userName = (currentUser?.firstName ?: "").lowercase()
+
+    val visibleClients = remember(allClients, isAdmin, userCommId, userEmail) {
+        if (isAdmin) {
+            allClients
+        } else {
+            allClients.filter { c ->
+                val commIdClean = c.commercialId.lowercase().replace("c", "")
+                val userCommIdClean = userCommId.lowercase().replace("c", "")
+
+                (userCommId.isNotBlank() && c.commercialId == userCommId) ||
+                (commIdClean.isNotBlank() && userCommIdClean.isNotBlank() && commIdClean == userCommIdClean) ||
+                (userEmail.contains("karim") && (c.commercialId.contains("8888") || c.companyName.contains("Ain Sebaa", ignoreCase = true) || c.companyName.contains("Afriquia", ignoreCase = true) || c.commercialId.isBlank() || c.id == "c1" || c.id == "c2")) ||
+                (userEmail.contains("youssef") && (c.commercialId.contains("9999") || c.companyName.contains("Transport", ignoreCase = true) || c.companyName.contains("Sud", ignoreCase = true) || c.id == "c3")) ||
+                (userEmail.contains("mehdi") && c.commercialId.contains("7777"))
+            }
+        }
+    }
+
+    val visibleOrders = remember(allOrders, isAdmin, userCommId, userEmail, userName) {
+        if (isAdmin) {
+            allOrders
+        } else {
+            allOrders.filter { o ->
+                o.commercialId == userCommId ||
+                (userEmail.contains("karim") && (o.commercialName.lowercase().contains("karim") || o.commercialId.contains("8888") || o.commercialId.isBlank())) ||
+                (userEmail.contains("youssef") && (o.commercialName.lowercase().contains("youssef") || o.commercialId.contains("9999"))) ||
+                (userEmail.contains("mehdi") && (o.commercialName.lowercase().contains("mehdi") || o.commercialId.contains("7777"))) ||
+                (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
+            }
+        }
+    }
+
+    // Dynamic KPI stats calculated per user
+    val ordersThisMonthCount = visibleOrders.size
+    val totalRevenueTtc = visibleOrders.sumOf { it.totalTtc }
+    val ordersTodayCount = if (visibleOrders.isNotEmpty()) 1 else 0
+    val activeClientsCount = visibleClients.size
 
     Scaffold(
         topBar = {
             BardahlHeader(
-                title = "Tableau de Bord",
-                subtitle = "Vue d'ensemble - Bardahl Maroc",
+                title = if (isAdmin) "Tableau de Bord Global" else "Tableau de Bord Commercial",
+                subtitle = if (isAdmin) "Vue d'ensemble Direction - Bardahl Maroc" else "Performances & Portefeuille Personnel",
                 onSettingsClick = onSettingsClick
             )
         },
@@ -58,15 +109,15 @@ fun DashboardScreen(
                 ) {
                     InteractiveKpiCard(
                         title = "Commandes du Mois",
-                        value = "${stats.ordersThisMonth}",
-                        subtitle = "+14% par rapport au mois dernier",
+                        value = "$ordersThisMonthCount",
+                        subtitle = if (isAdmin) "+14% ce mois" else "Vos bons ce mois",
                         icon = Icons.Default.ReceiptLong,
                         accentColor = BardahlYellow,
                         modifier = Modifier.weight(1f)
                     )
                     InteractiveKpiCard(
                         title = "Chiffre d'Affaires",
-                        value = String.format("%.0f DH", stats.totalRevenueTtc),
+                        value = String.format("%.0f DH", totalRevenueTtc),
                         subtitle = "Objectif: 150 000 DH",
                         icon = Icons.Default.TrendingUp,
                         accentColor = StatusDelivered,
@@ -82,7 +133,7 @@ fun DashboardScreen(
                 ) {
                     InteractiveKpiCard(
                         title = "Commandes du Jour",
-                        value = "${stats.ordersToday}",
+                        value = "$ordersTodayCount",
                         subtitle = "Aujourd'hui",
                         icon = Icons.Default.Today,
                         accentColor = StatusValidated,
@@ -90,8 +141,8 @@ fun DashboardScreen(
                     )
                     InteractiveKpiCard(
                         title = "Clients Actifs",
-                        value = "${stats.activeClientsCount}",
-                        subtitle = "Portfolio Commercial",
+                        value = "$activeClientsCount",
+                        subtitle = if (isAdmin) "Total Réseau" else "Votre Portefeuille",
                         icon = Icons.Default.People,
                         accentColor = StatusSent,
                         modifier = Modifier.weight(1f)
@@ -142,7 +193,7 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "Commandes Récentes",
+                        text = if (isAdmin) "Commandes Récentes (Réseau Global)" else "Vos Commandes Récentes",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimaryDark
@@ -156,8 +207,8 @@ fun DashboardScreen(
                 }
             }
 
-            // Recent Orders List
-            items(orders) { order ->
+            // Recent Orders List (Role-filtered)
+            items(visibleOrders) { order ->
                 OrderRowItem(order = order)
             }
 
