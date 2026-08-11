@@ -136,6 +136,11 @@ class SupabaseService(
 
     suspend fun fetchOrders(): List<Order> = withContext(Dispatchers.IO) {
         try {
+            val clientsList = fetchClients()
+            val commercialsList = fetchCommercials()
+            val clientsMap = clientsList.associateBy { it.id }
+            val commercialsMap = commercialsList.associateBy { it.id }
+
             val conn = getConnection("orders?select=*")
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
@@ -151,12 +156,23 @@ class SupabaseService(
                         "CANCELLED" -> OrderStatus.CANCELLED
                         else -> OrderStatus.DRAFT
                     }
+                    val cId = obj.optString("client_id", "")
+                    val commId = obj.optString("commercial_id", "")
+
+                    val clientObj = clientsMap[cId]
+                    val commObj = commercialsMap[commId]
+
+                    val clientName = clientObj?.companyName ?: obj.optString("client_name", "Client Bardahl")
+                    val commName = commObj?.name ?: obj.optString("commercial_name", "Karim Benjelloun")
+
                     list.add(
                         Order(
                             id = obj.getString("id"),
                             orderNumber = obj.optString("order_number", "BC-2026-0000"),
-                            commercialId = obj.optString("commercial_id", ""),
-                            clientId = obj.optString("client_id", ""),
+                            commercialId = commId,
+                            commercialName = commName,
+                            clientId = cId,
+                            clientName = clientName,
                             orderDate = obj.optString("order_date", "2026-08-10").take(10),
                             status = st,
                             totalHt = obj.optDouble("total_ht", 0.0),
@@ -164,6 +180,8 @@ class SupabaseService(
                             totalTva = obj.optDouble("total_tva", 0.0),
                             totalTtc = obj.optDouble("total_ttc", 0.0),
                             observations = obj.optString("observations", ""),
+                            paymentMethod = obj.optString("payment_method", "Chèque"),
+                            modeExpedition = obj.optString("mode_expedition", "Transport Bardahl"),
                             isSynced = true
                         )
                     )

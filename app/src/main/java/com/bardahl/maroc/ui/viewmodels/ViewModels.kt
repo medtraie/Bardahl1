@@ -40,18 +40,30 @@ class AuthViewModel : ViewModel() {
                     )
                     _authState.value = AuthState.Success(user, null)
                 } else {
+                    val matchedCommName = when {
+                        cleanEmail.contains("youssef") -> "Youssef El Amrani"
+                        cleanEmail.contains("mehdi") -> "Mehdi Tazi"
+                        cleanEmail.contains("kawtar") -> "Kawtar BAHJAJI"
+                        else -> "Karim Benjelloun"
+                    }
+                    val matchedCommId = when {
+                        cleanEmail.contains("youssef") -> "c9999999-9999-9999-9999-999999999999"
+                        cleanEmail.contains("mehdi") -> "c7777777-7777-7777-7777-777777777777"
+                        cleanEmail.contains("kawtar") -> "c6666666-6666-6666-6666-666666666666"
+                        else -> "88888888-8888-8888-8888-888888888888"
+                    }
                     val user = User(
-                        id = "user_${System.currentTimeMillis()}",
+                        id = matchedCommId,
                         email = cleanEmail,
                         role = UserRole.COMMERCIAL,
-                        firstName = cleanEmail.substringBefore("@").uppercase(),
-                        lastName = "Commercial",
+                        firstName = matchedCommName,
+                        lastName = "",
                         phone = "+212 6 61 00 11 22"
                     )
                     val commercial = Commercial(
-                        id = "comm_${System.currentTimeMillis()}",
+                        id = matchedCommId,
                         userId = user.id,
-                        name = user.firstName,
+                        name = matchedCommName,
                         email = user.email,
                         phone = user.phone,
                         matricule = "COMM-001",

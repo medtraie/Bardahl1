@@ -209,6 +209,7 @@ fun MainAppNavHost(
                 composable(Screen.Clients.route) {
                     ClientListScreen(
                         clientViewModel = clientViewModel,
+                        authViewModel = authViewModel,
                         onSettingsClick = navigateToSettings
                     )
                 }
@@ -221,6 +222,7 @@ fun MainAppNavHost(
                 composable(Screen.Orders.route) {
                     OrderListScreen(
                         orderViewModel = orderViewModel,
+                        authViewModel = authViewModel,
                         onCreateOrderClick = { navController.navigate(Screen.CreateOrder.route) },
                         onSettingsClick = navigateToSettings
                     )

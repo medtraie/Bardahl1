@@ -36,15 +36,38 @@ import com.bardahl.maroc.ui.viewmodels.OrderViewModel
 import com.bardahl.maroc.ui.viewmodels.ProductViewModel
 import com.bardahl.maroc.util.ExcelExporter
 import com.bardahl.maroc.util.PdfGenerator
+import com.bardahl.maroc.domain.model.UserRole
+import com.bardahl.maroc.ui.viewmodels.AuthState
+import com.bardahl.maroc.ui.viewmodels.AuthViewModel
 
 @Composable
 fun OrderListScreen(
     orderViewModel: OrderViewModel,
+    authViewModel: AuthViewModel,
     onCreateOrderClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val orders by orderViewModel.orders.collectAsState()
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Success)?.user
+    val isAdmin = currentUser?.role == UserRole.ADMIN
     val context = LocalContext.current
+
+    // Role-based order filtering matching Web app
+    val visibleOrders = if (isAdmin) {
+        orders
+    } else {
+        val userCommId = currentUser?.id ?: ""
+        val userEmail = currentUser?.email?.lowercase() ?: ""
+        val userName = (currentUser?.firstName ?: "").lowercase()
+        orders.filter { o ->
+            o.commercialId == userCommId ||
+            (userEmail.contains("karim") && (o.commercialName.lowercase().contains("karim") || o.commercialId.contains("8888") || o.commercialId.isBlank())) ||
+            (userEmail.contains("youssef") && (o.commercialName.lowercase().contains("youssef") || o.commercialId.contains("9999"))) ||
+            (userEmail.contains("mehdi") && (o.commercialName.lowercase().contains("mehdi") || o.commercialId.contains("7777"))) ||
+            (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -83,7 +106,7 @@ fun OrderListScreen(
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
-            items(orders) { order ->
+            items(visibleOrders) { order ->
                 OrderCardDetailed(
                     order = order,
                     onPdfClick = {

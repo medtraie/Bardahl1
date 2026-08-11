@@ -18,19 +18,41 @@ import androidx.compose.ui.unit.sp
 import com.bardahl.maroc.domain.model.Client
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
+import com.bardahl.maroc.domain.model.UserRole
+import com.bardahl.maroc.ui.viewmodels.AuthState
+import com.bardahl.maroc.ui.viewmodels.AuthViewModel
 import com.bardahl.maroc.ui.viewmodels.ClientViewModel
 
 @Composable
 fun ClientListScreen(
     clientViewModel: ClientViewModel,
+    authViewModel: AuthViewModel,
     onSettingsClick: () -> Unit
 ) {
     val clients by clientViewModel.clientsList.collectAsState()
     val searchQuery by clientViewModel.searchQuery.collectAsState()
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Success)?.user
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedDetailClient by remember { mutableStateOf<Client?>(null) }
 
-    val filteredClients = clients.filter {
+    // Role-based client filtering matching Web app
+    val visibleClients = if (isAdmin) {
+        clients
+    } else {
+        val userCommId = currentUser?.id ?: ""
+        val userEmail = currentUser?.email?.lowercase() ?: ""
+        clients.filter { c ->
+            c.commercialId == userCommId ||
+            (userEmail.contains("karim") && (c.commercialId.contains("8888") || c.commercialId.isBlank())) ||
+            (userEmail.contains("youssef") && c.commercialId.contains("9999")) ||
+            (userEmail.contains("mehdi") && c.commercialId.contains("7777"))
+        }
+    }
+
+    val filteredClients = visibleClients.filter {
         it.companyName.contains(searchQuery, ignoreCase = true) ||
         it.ice.contains(searchQuery) ||
         it.city.contains(searchQuery, ignoreCase = true)
