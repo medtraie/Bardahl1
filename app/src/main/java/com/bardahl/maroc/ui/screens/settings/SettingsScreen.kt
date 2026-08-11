@@ -2,6 +2,7 @@ package com.bardahl.maroc.ui.screens.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,18 +16,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bardahl.maroc.domain.model.UserRole
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
+import com.bardahl.maroc.ui.viewmodels.AuthState
+import com.bardahl.maroc.ui.viewmodels.AuthViewModel
 
 @Composable
-fun SettingsScreen(onLogoutClick: () -> Unit) {
+fun SettingsScreen(
+    authViewModel: AuthViewModel,
+    onLogoutClick: () -> Unit
+) {
     val context = LocalContext.current
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Success)?.user
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+
+    // Dynamic User Profile State
+    var userNameInput by remember(currentUser) {
+        mutableStateOf(
+            if (currentUser != null) "${currentUser.firstName} ${currentUser.lastName}".trim()
+            else "Direction Bardahl"
+        )
+    }
+    var userEmailInput by remember(currentUser) {
+        mutableStateOf(currentUser?.email ?: "bardahl@gmail.com")
+    }
+    var userPhoneInput by remember(currentUser) {
+        mutableStateOf(currentUser?.phone ?: "+212 5 22 11 22 33")
+    }
+    var userCityInput by remember { mutableStateOf("Casablanca") }
+
+    // Interactive System Switches
     var isDarkMode by remember { mutableStateOf(true) }
     var selectedLang by remember { mutableStateOf("Français") }
-    var userNameInput by remember { mutableStateOf("Karim Benjelloun") }
-    var userPhoneInput by remember { mutableStateOf("+212 6 61 22 33 44") }
-    
-    // Interactive Notification Switches
     var alertStockLow by remember { mutableStateOf(true) }
     var notifyOrderCreated by remember { mutableStateOf(true) }
     var notifyCloudSync by remember { mutableStateOf(true) }
@@ -34,8 +57,8 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
     Scaffold(
         topBar = {
             BardahlHeader(
-                title = "Paramètres & Preferences",
-                subtitle = "Configuration Système Bardahl Maghreb"
+                title = "Paramètres & Configuration",
+                subtitle = "Gestion du Profil et du Système Bardahl Maghreb"
             )
         },
         containerColor = DarkBackground
@@ -49,7 +72,7 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
-            // User Profile Settings Card
+            // 1. User Profile & Account Settings Card (Dynamic Admin vs Commercial)
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -57,11 +80,50 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Profil Agent Commercial", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
-                        Icon(Icons.Default.Person, contentDescription = null, tint = BardahlYellow)
+                        Text(
+                            text = if (isAdmin) "Profil Administrateur Global" else "Profil Agent Commercial",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BardahlYellow
+                        )
+                        Icon(
+                            imageVector = if (isAdmin) Icons.Default.Shield else Icons.Default.Person,
+                            contentDescription = null,
+                            tint = BardahlYellow
+                        )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Role Badge
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isAdmin) BardahlYellow.copy(alpha = 0.15f) else StatusDelivered.copy(alpha = 0.15f))
+                            .border(1.dp, if (isAdmin) BardahlYellow else StatusDelivered, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isAdmin) Icons.Default.VerifiedUser else Icons.Default.Badge,
+                                contentDescription = null,
+                                tint = if (isAdmin) BardahlYellow else StatusDelivered,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isAdmin) "Rôle : Administrateur Global Bardahl (Direction)" else "Rôle : Agent Commercial Autorisé",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimaryDark
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Full Name Input
                     OutlinedTextField(
                         value = userNameInput,
                         onValueChange = { userNameInput = it },
@@ -75,23 +137,58 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
+                    // Email Identifiant (Read-only)
                     OutlinedTextField(
-                        value = userPhoneInput,
-                        onValueChange = { userPhoneInput = it },
-                        label = { Text("Téléphone Direct", color = TextSecondaryDark, fontSize = 12.sp) },
+                        value = userEmailInput,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Adresse Email Identifiant (Connecté)", color = TextSecondaryDark, fontSize = 12.sp) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = BardahlYellow,
                             unfocusedBorderColor = BardahlCardBorder,
-                            focusedTextColor = TextPrimaryDark,
-                            unfocusedTextColor = TextPrimaryDark
+                            focusedTextColor = BardahlYellow,
+                            unfocusedTextColor = BardahlYellow
                         )
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
-                    
+
+                    // Phone & City Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = userPhoneInput,
+                            onValueChange = { userPhoneInput = it },
+                            label = { Text("Téléphone", color = TextSecondaryDark, fontSize = 12.sp) },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = BardahlYellow,
+                                unfocusedBorderColor = BardahlCardBorder,
+                                focusedTextColor = TextPrimaryDark,
+                                unfocusedTextColor = TextPrimaryDark
+                            )
+                        )
+                        OutlinedTextField(
+                            value = userCityInput,
+                            onValueChange = { userCityInput = it },
+                            label = { Text("Secteur / Ville", color = TextSecondaryDark, fontSize = 12.sp) },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = BardahlYellow,
+                                unfocusedBorderColor = BardahlCardBorder,
+                                focusedTextColor = TextPrimaryDark,
+                                unfocusedTextColor = TextPrimaryDark
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     Button(
                         onClick = {
                             Toast.makeText(context, "Profil mis à jour avec succès !", Toast.LENGTH_SHORT).show()
@@ -99,12 +196,14 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                         colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("ENREGISTRER PROFIL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ENREGISTRER LE PROFIL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            // Notifications & Alertes System Card
+            // 2. Notifications & Alertes System Card
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -112,7 +211,7 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Notifications & Alertes", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                        Text("Notifications & Alertes Automatiques", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
                         Icon(Icons.Default.Notifications, contentDescription = null, tint = BardahlYellow)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -160,7 +259,7 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Synchronisation Cloud", fontSize = 13.sp, color = TextPrimaryDark, fontWeight = FontWeight.SemiBold)
-                            Text("Mises à jour du Cloud", fontSize = 11.sp, color = TextSecondaryDark)
+                            Text("Mises à jour du Cloud en temps réel", fontSize = 11.sp, color = TextSecondaryDark)
                         }
                         Switch(
                             checked = notifyCloudSync,
@@ -171,7 +270,7 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                 }
             }
 
-            // Sync Card & Cloud Status
+            // 3. Performance & Cloud System Status
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -180,8 +279,8 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Synchronisation Cloud", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
-                            Text("Statut: Connecté & En direct", fontSize = 12.sp, color = BardahlYellow)
+                            Text("Performance & Cloud System", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                            Text("Statut: Connecté & En direct", fontSize = 12.sp, color = StatusDelivered, fontWeight = FontWeight.Bold)
                         }
                         IconButton(onClick = {
                             Toast.makeText(context, "Base de données Cloud 100% synchronisée!", Toast.LENGTH_SHORT).show()
@@ -192,7 +291,7 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                 }
             }
 
-            // Language & Appearance
+            // 4. Language & Appearance
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text("Préférences & Apparence", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
@@ -231,15 +330,17 @@ fun SettingsScreen(onLogoutClick: () -> Unit) {
                 }
             }
 
-            // Logout Button
+            // 5. Logout Button
             item {
                 BardahlButton(
-                    text = "DÉCONNEXION",
+                    text = "DÉCONNEXION SÉCURISÉE",
                     icon = Icons.Default.Logout,
                     onClick = onLogoutClick,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+
+            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }

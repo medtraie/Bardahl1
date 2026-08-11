@@ -241,6 +241,7 @@ fun MainAppNavHost(
                 }
                 composable(Screen.Settings.route) {
                     SettingsScreen(
+                        authViewModel = authViewModel,
                         onLogoutClick = {
                             authViewModel.logout()
                             navController.navigate(Screen.Login.route) {
