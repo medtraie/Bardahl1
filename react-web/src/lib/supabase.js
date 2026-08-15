@@ -101,6 +101,7 @@ export async function dbGetClients() {
       .from('clients')
       .select('*')
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to)
 
     if (error) {

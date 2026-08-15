@@ -71,14 +71,19 @@ export default function Clients() {
   const handleEditSubmit = async (e) => {
     e.preventDefault()
     if (!editingClient) return
-    const res = await updateClient({
+    const payload = {
       ...editingClient,
-      ...formData
-    })
+      ...formData,
+      id: editingClient.dbId || editingClient.id,
+      dbId: editingClient.dbId || editingClient.id
+    }
+    const res = await updateClient(payload)
     if (res) {
       alert(`Client "${res.companyName}" modifié et enregistré avec succès dans Supabase !`)
     }
     setEditingClient(null)
+    setShowAddModal(false)
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: '' })
   }
 
   const handleDelete = (client) => {
