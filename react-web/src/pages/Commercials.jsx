@@ -72,7 +72,7 @@ export default function Commercials() {
 
       addCommercial(newComm)
       setShowModal(false)
-      alert(`Compte Commercial pour ${newComm.name} (${newComm.email}) créé et synchronisé sur Supabase !`)
+      alert(`Compte Commercial pour ${newComm.name} (${newComm.email}) créé avec succès !`)
     }
 
     setFormData({ name: '', city: '', matricule: '', phone: '', email: '', password: '', target: 150000, current: 0 })
@@ -84,9 +84,9 @@ export default function Commercials() {
       {/* Header & Actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF' }}>Équipe Commerciale Bardahl & Comptes Supabase</h1>
+          <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF' }}>Équipe Commerciale Bardahl</h1>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Gestion de l'équipe commerciale ({commercials.length}) - Ajouter, Modifier, Supprimer & Synchronisation Supabase
+            Gestion de l'équipe commerciale ({commercials.length}) - Ajouter, Modifier, Supprimer
           </p>
         </div>
 
@@ -101,7 +101,7 @@ export default function Commercials() {
           </button>
 
           <button onClick={handleOpenAddModal} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
-            <UserPlus style={{ width: '16px', height: '16px' }} /> Ajouter Compte Commercial
+            <UserPlus style={{ width: '16px', height: '16px' }} /> Ajouter Commercial
           </button>
         </div>
       </div>
@@ -179,7 +179,7 @@ export default function Commercials() {
               {/* Card Footer with Modifier & Supprimer Buttons */}
               <div style={{ paddingTop: '12px', marginTop: '14px', borderTop: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <ShieldCheck style={{ width: '12px', height: '12px' }} /> Compte Supabase
+                  <ShieldCheck style={{ width: '12px', height: '12px' }} /> Actif
                 </span>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -219,7 +219,7 @@ export default function Commercials() {
           <div className="glass-card" style={{ width: '100%', maxWidth: '480px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Contact style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} />
-              {editingCommercial ? `Modifier le Compte de ${editingCommercial.name}` : 'Créer Un Compte Commercial (Email & Mdps)'}
+              {editingCommercial ? `Modifier le Profil de ${editingCommercial.name}` : 'Nouveau Commercial (Email & Mdps)'}
             </h3>
             
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
