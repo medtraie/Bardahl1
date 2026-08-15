@@ -27,20 +27,28 @@ function rowToCommercial(row) {
 }
 
 function rowToClient(row) {
-  const typeMap = { garage: 'Garage', station: 'Station', flotte: 'Flotte' }
+  const typeMap = {
+    gros: 'Grossiste',
+    garage: 'Grossiste',
+    station: 'Revendeur',
+    detail: 'Particulier',
+    flotte: 'Grand compte',
+    fleet: 'Grand compte',
+    industriel: 'Grand compte'
+  }
   return {
     id: row.id,
     dbId: row.id,
     companyName: row.company_name || '',
     ice: row.ice || '',
     rc: row.rc || '',
-    ifCode: row.if_code || '',
-    patente: row.patente || '',
+    codeClient: row.if_code || '',
+    region: row.patente || '',
     address: row.address || '',
     city: row.city || '',
     phone: row.phone || '',
     clientEmail: row.email || '',
-    type: typeMap[(row.client_type || 'garage').toLowerCase()] || 'Garage',
+    type: typeMap[(row.client_type || 'gros').toLowerCase()] || 'Grossiste',
     isActive: row.is_active !== false,
     commercialDbId: row.commercial_id,
     // Will be enriched after fetch

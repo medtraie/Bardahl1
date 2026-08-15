@@ -98,18 +98,32 @@ export async function dbGetClients() {
 }
 
 export async function dbAddClient(c) {
+  const typeMapToDb = {
+    'Grossiste': 'gros',
+    'Revendeur': 'station',
+    'Particulier': 'detail',
+    'Grand compte': 'flotte',
+    'gros': 'gros',
+    'station': 'station',
+    'detail': 'detail',
+    'flotte': 'flotte',
+    'Garage': 'garage',
+    'garage': 'garage',
+    'Station': 'station',
+    'Flotte': 'flotte'
+  }
   const { data, error } = await supabase.from('clients').insert([{
     commercial_id: c.commercialDbId || null,
     company_name: c.companyName || '',
     ice: c.ice || '',
     rc: c.rc || '',
-    if_code: c.ifCode || '',
-    patente: c.patente || '',
+    if_code: c.codeClient || '',
+    patente: c.region || '',
     address: c.address || '',
     city: c.city || 'Casablanca',
     phone: c.phone || '',
     email: c.clientEmail || '',
-    client_type: { 'Garage':'garage','garage':'garage','Station':'station','station':'station','Flotte':'flotte','flotte':'flotte','fleet':'flotte' }[c.type] || 'garage',
+    client_type: typeMapToDb[c.type] || 'gros',
     is_active: true,
   }]).select().single()
   if (error) { console.error('dbAddClient:', error.message); return null }
@@ -117,18 +131,32 @@ export async function dbAddClient(c) {
 }
 
 export async function dbUpdateClient(c) {
+  const typeMapToDb = {
+    'Grossiste': 'gros',
+    'Revendeur': 'station',
+    'Particulier': 'detail',
+    'Grand compte': 'flotte',
+    'gros': 'gros',
+    'station': 'station',
+    'detail': 'detail',
+    'flotte': 'flotte',
+    'Garage': 'garage',
+    'garage': 'garage',
+    'Station': 'station',
+    'Flotte': 'flotte'
+  }
   const { data, error } = await supabase.from('clients').update({
     commercial_id: c.commercialDbId || undefined,
     company_name: c.companyName || '',
     ice: c.ice || '',
     rc: c.rc || '',
-    if_code: c.ifCode || '',
-    patente: c.patente || '',
+    if_code: c.codeClient || '',
+    patente: c.region || '',
     address: c.address || '',
     city: c.city || 'Casablanca',
     phone: c.phone || '',
     email: c.clientEmail || '',
-    client_type: (c.type || 'garage').toLowerCase(),
+    client_type: typeMapToDb[c.type] || 'gros',
   }).eq('id', c.id).select().single()
   if (error) { console.error('dbUpdateClient:', error.message); return null }
   return data

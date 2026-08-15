@@ -11,7 +11,7 @@ export default function Clients() {
   const [selectedDetailClient, setSelectedDetailClient] = useState(null)
   
   const [formData, setFormData] = useState({
-    companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Garage'
+    companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: ''
   })
 
   const filteredClients = clients.filter(c => 
@@ -21,7 +21,7 @@ export default function Clients() {
   )
 
   const handleOpenAddModal = () => {
-    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Garage' })
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '' })
     setShowAddModal(true)
   }
 
@@ -34,7 +34,9 @@ export default function Clients() {
       address: client.address || '',
       city: client.city || '',
       phone: client.phone || '',
-      type: client.type || 'Garage'
+      type: client.type || 'Grossiste',
+      region: client.region || '',
+      codeClient: client.codeClient || ''
     })
   }
 
@@ -45,7 +47,7 @@ export default function Clients() {
       ...formData
     })
     setShowAddModal(false)
-    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Garage' })
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '' })
   }
 
   const handleEditSubmit = (e) => {
@@ -131,17 +133,23 @@ export default function Clients() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>{c.companyName}</h3>
-                  <span className="badge-status VALIDATED" style={{ fontSize: '10px' }}>{c.type || 'Garage'}</span>
+                  <span className="badge-status VALIDATED" style={{ fontSize: '10px' }}>{c.type || 'Grossiste'}</span>
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: '12px 0' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Hash style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
-                    <span>ICE : <strong style={{ color: '#FFFFFF' }}>{c.ice}</strong> | RC : {c.rc}</span>
+                    <span>
+                      {c.codeClient && <>Code : <strong style={{ color: '#FFFFFF' }}>{c.codeClient}</strong> | </>}
+                      ICE : <strong style={{ color: '#FFFFFF' }}>{c.ice}</strong> | RC : {c.rc}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <MapPin style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
-                    <span>{c.address}, <strong style={{ color: '#FFFFFF' }}>{c.city}</strong></span>
+                    <span>
+                      {c.address}{c.city ? `, ${c.city}` : ''}
+                      {c.region && <> (<strong style={{ color: '#FFFFFF' }}>{c.region}</strong>)</>}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Phone style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
@@ -208,10 +216,12 @@ export default function Clients() {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF' }}>{selectedDetailClient.companyName}</h3>
-                    <span className="badge-status VALIDATED" style={{ fontSize: '11px' }}>{selectedDetailClient.type || 'Garage'}</span>
+                    <span className="badge-status VALIDATED" style={{ fontSize: '11px' }}>{selectedDetailClient.type || 'Grossiste'}</span>
                   </div>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    {selectedDetailClient.codeClient && <>Code : <strong style={{ color: '#FFFFFF' }}>{selectedDetailClient.codeClient}</strong> | </>}
                     ICE : <strong style={{ color: '#FFFFFF' }}>{selectedDetailClient.ice}</strong> | RC : {selectedDetailClient.rc} | Ville : <strong style={{ color: '#FFFFFF' }}>{selectedDetailClient.city}</strong>
+                    {selectedDetailClient.region && <> | Région : <strong style={{ color: '#FFFFFF' }}>{selectedDetailClient.region}</strong></>}
                   </p>
                 </div>
 
@@ -358,10 +368,9 @@ export default function Clients() {
             
             <form onSubmit={editingClient ? handleEditSubmit : handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Raison Sociale *</label>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Raison Sociale</label>
                 <input
                   type="text"
-                  required
                   value={formData.companyName}
                   onChange={e => setFormData({...formData, companyName: e.target.value})}
                   className="input-field"
@@ -371,10 +380,32 @@ export default function Clients() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>ICE (15 chiffres) *</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Code Client</label>
                   <input
                     type="text"
-                    required
+                    value={formData.codeClient}
+                    onChange={e => setFormData({...formData, codeClient: e.target.value})}
+                    className="input-field"
+                    placeholder="Ex: CL-100"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Région</label>
+                  <input
+                    type="text"
+                    value={formData.region}
+                    onChange={e => setFormData({...formData, region: e.target.value})}
+                    className="input-field"
+                    placeholder="Ex: Casablanca-Settat"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>ICE (15 chiffres)</label>
+                  <input
+                    type="text"
                     value={formData.ice}
                     onChange={e => setFormData({...formData, ice: e.target.value})}
                     className="input-field"
@@ -395,10 +426,9 @@ export default function Clients() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Adresse *</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Adresse</label>
                   <input
                     type="text"
-                    required
                     value={formData.address}
                     onChange={e => setFormData({...formData, address: e.target.value})}
                     className="input-field"
@@ -406,10 +436,9 @@ export default function Clients() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Ville *</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Ville</label>
                   <input
                     type="text"
-                    required
                     value={formData.city}
                     onChange={e => setFormData({...formData, city: e.target.value})}
                     className="input-field"
@@ -420,10 +449,9 @@ export default function Clients() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Téléphone *</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Téléphone</label>
                   <input
                     type="text"
-                    required
                     value={formData.phone}
                     onChange={e => setFormData({...formData, phone: e.target.value})}
                     className="input-field"
@@ -437,11 +465,10 @@ export default function Clients() {
                     onChange={e => setFormData({...formData, type: e.target.value})}
                     className="input-field"
                   >
-                    <option value="Garage">Garage</option>
-                    <option value="Station">Station Service</option>
-                    <option value="Flotte">Flotte Automobile</option>
-                    <option value="Industriel">Industriel</option>
                     <option value="Grossiste">Grossiste</option>
+                    <option value="Revendeur">Revendeur</option>
+                    <option value="Particulier">Particulier</option>
+                    <option value="Grand compte">Grand compte</option>
                   </select>
                 </div>
               </div>
