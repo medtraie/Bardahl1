@@ -89,12 +89,38 @@ export async function dbDeleteCommercial(id) {
 // ─── CLIENTS ─────────────────────────────────────────────────────────────────
 
 export async function dbGetClients() {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .order('created_at', { ascending: true })
-  if (error) { console.error('dbGetClients:', error.message); return [] }
-  return data || []
+  const allClients = []
+  const pageSize = 1000
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const from = page * pageSize
+    const to = from + pageSize - 1
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .range(from, to)
+
+    if (error) {
+      console.error('dbGetClients error:', error.message)
+      break
+    }
+
+    if (data && data.length > 0) {
+      allClients.push(...data)
+      if (data.length < pageSize) {
+        hasMore = false
+      } else {
+        page++
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  return allClients
 }
 
 export async function dbAddClient(c) {
