@@ -214,7 +214,7 @@ export default function Clients() {
                 </div>
 
                 {/* Quick CA Preview Badge */}
-                <div style={{ background: '#14171F', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
+                <div style={{ background: 'var(--bg-obsidian)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>CA Réalisé :</span>
                   <span style={{ fontSize: '13px', color: 'var(--bardahl-yellow)', fontWeight: '900' }}>
                     {totalCaTtc.toFixed(2)} DH <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>({totalOrders} bon{totalOrders > 1 ? 's' : ''})</span>
@@ -330,7 +330,7 @@ export default function Clients() {
 
               {/* KPI Financial Cards Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-                <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--bardahl-yellow)' }}>
+                <div style={{ background: 'var(--bg-obsidian)', padding: '14px', borderRadius: '12px', border: '1px solid var(--bardahl-yellow)' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <TrendingUp style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} /> Chiffre d'Affaires Total
                   </div>
@@ -340,21 +340,21 @@ export default function Clients() {
                   <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>Total TTC cumulé</div>
                 </div>
 
-                <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                <div style={{ background: 'var(--bg-obsidian)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <DollarSign style={{ width: '14px', height: '14px', color: '#007AFF' }} /> Total HT (Net)
                   </div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
                     {totalHt.toFixed(2)} DH
                   </div>
                   <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>TVA (20%): {totalTva.toFixed(2)} DH</div>
                 </div>
 
-                <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                <div style={{ background: 'var(--bg-obsidian)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <ShoppingBag style={{ width: '14px', height: '14px', color: '#34C759' }} /> Total Commandes
                   </div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
                     {totalOrders} Bon{totalOrders > 1 ? 's' : ''}
                   </div>
                   <div style={{ fontSize: '10px', color: '#34C759', marginTop: '2px', fontWeight: '700' }}>

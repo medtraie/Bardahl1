@@ -24,9 +24,9 @@
 }
 
 [data-theme="light"] {
-  --bardahl-yellow: #D97706; /* Golden Amber */
-  --bardahl-yellow-dark: #B45309;
-  --bardahl-yellow-glow: rgba(217, 119, 6, 0.25);
+  --bardahl-yellow: #FFD000;
+  --bardahl-yellow-dark: #E5B800;
+  --bardahl-yellow-glow: rgba(255, 208, 0, 0.25);
   
   --bg-obsidian: #F1F5F9; /* Clean Light Slate Background */
   --bg-card: #FFFFFF;
@@ -110,21 +110,44 @@ button {
 
 [data-theme="light"] [style*="color: #FFFFFF"],
 [data-theme="light"] [style*="color:#FFFFFF"],
-[data-theme="light"] [style*="color: rgb(255, 255, 255)"] {
+[data-theme="light"] [style*="color: rgb(255, 255, 255)"],
+[data-theme="light"] [style*="color:rgb(255, 255, 255)"] {
   color: #0F172A !important;
 }
 
 [data-theme="light"] [style*="background: #14171F"],
 [data-theme="light"] [style*="background:#14171F"],
 [data-theme="light"] [style*="background: #0D0F12"],
-[data-theme="light"] [style*="background:#0D0F12"] {
-  background: #F8FAFC !important;
-  border-color: #E2E8F0 !important;
+[data-theme="light"] [style*="background:#0D0F12"],
+[data-theme="light"] [style*="background: #181C24"],
+[data-theme="light"] [style*="background:#181C24"],
+[data-theme="light"] [style*="background: rgb(20, 23, 31)"],
+[data-theme="light"] [style*="background:rgb(20, 23, 31)"],
+[data-theme="light"] [style*="background: rgb(13, 15, 18)"],
+[data-theme="light"] [style*="background:rgb(13, 15, 18)"],
+[data-theme="light"] [style*="background: rgb(24, 28, 36)"],
+[data-theme="light"] [style*="background:rgb(24, 28, 36)"],
+[data-theme="light"] [style*="background-color: rgb(20, 23, 31)"],
+[data-theme="light"] [style*="background-color:rgb(20, 23, 31)"],
+[data-theme="light"] [style*="background-color: rgb(13, 15, 18)"],
+[data-theme="light"] [style*="background-color:rgb(13, 15, 18)"],
+[data-theme="light"] [style*="background-color: rgb(24, 28, 36)"],
+[data-theme="light"] [style*="background-color:rgb(24, 28, 36)"] {
+  background: var(--bg-surface) !important;
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-card) !important;
 }
 
 [data-theme="light"] div[style*="background: rgba(0, 0, 0, 0.75)"],
 [data-theme="light"] div[style*="background:rgba(0,0,0,0.75)"] {
   background: rgba(15, 23, 42, 0.55) !important;
+}
+
+/* Specific button/badge overrides to keep text dark on yellow elements in light mode */
+[data-theme="light"] .btn-bardahl,
+[data-theme="light"] .badge-status.SENT,
+[data-theme="light"] [style*="background: var(--bardahl-yellow)"] {
+  color: #0D0F12 !important;
 }
 
 /* Responsive Grid System */

@@ -157,7 +157,7 @@ export default function Commercials() {
                 </div>
 
                 {/* Progress Bar & Performance Target */}
-                <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                <div style={{ background: 'var(--bg-obsidian)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', marginBottom: '8px' }}>
                     <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Target style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} /> Réalisé ce mois

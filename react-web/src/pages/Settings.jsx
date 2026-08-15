@@ -97,7 +97,7 @@ export default function Settings() {
                 value={currentUser?.email || "bardahl@gmail.com"}
                 readOnly
                 className="input-field"
-                style={{ background: '#0D0F12', color: 'var(--bardahl-yellow)', fontWeight: '800' }}
+                style={{ background: 'var(--bg-obsidian)', color: 'var(--bardahl-yellow)', fontWeight: '800' }}
               />
             </div>
 
@@ -124,9 +124,9 @@ export default function Settings() {
 
             <div>
               <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Rôle Système d'Accès</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)' }}>
                 <ShieldCheck style={{ width: '18px', height: '18px', color: 'var(--bardahl-yellow)' }} />
-                <span style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-primary)' }}>
                   {currentUser?.role === 'ADMIN' ? 'Administrateur Global Bardahl' : 'Agent Commercial Autorisé'}
                 </span>
               </div>
@@ -259,9 +259,9 @@ export default function Settings() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)', marginTop: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)', marginTop: '6px' }}>
               <div>
-                <strong style={{ fontSize: '13px', color: '#FFFFFF', display: 'block' }}>Affichage Tableau Compact</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block' }}>Affichage Tableau Compact</strong>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Réduire l'espacement dans les tableaux de bons</span>
               </div>
               <input
@@ -276,14 +276,14 @@ export default function Settings() {
 
         {/* Card 3: System Notifications & Alerts */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '18px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '18px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Bell style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} /> Notifications & Alertes Automatiques
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)' }}>
               <div>
-                <strong style={{ fontSize: '13px', color: '#FFFFFF', display: 'block' }}>Alertes de Stock Bas</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block' }}>Alertes de Stock Bas</strong>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Avertir si le stock d'un produit passe sous 20 unités</span>
               </div>
               <input
@@ -294,9 +294,9 @@ export default function Settings() {
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)' }}>
               <div>
-                <strong style={{ fontSize: '13px', color: '#FFFFFF', display: 'block' }}>Validation Bon de Commande</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block' }}>Validation Bon de Commande</strong>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Notification dès la création d'un nouveau bon</span>
               </div>
               <input
@@ -307,9 +307,9 @@ export default function Settings() {
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)' }}>
               <div>
-                <strong style={{ fontSize: '13px', color: '#FFFFFF', display: 'block' }}>Alertes de Synchronisation Cloud</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block' }}>Alertes de Synchronisation Cloud</strong>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Signaler les mises à jour de données cloud en temps réel</span>
               </div>
               <input
@@ -324,12 +324,12 @@ export default function Settings() {
 
         {/* Card 4: Base de données Cloud & Cache System */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '18px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '18px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Database style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} /> Performance & Cloud System
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ padding: '12px', borderRadius: '10px', background: '#14171F', border: '1px solid var(--border-card)' }}>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'var(--bg-obsidian)', border: '1px solid var(--border-card)' }}>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Statut Serveur Cloud :</span>
               <span style={{ fontSize: '13px', fontWeight: '800', color: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CheckCircle2 style={{ width: '14px', height: '14px' }} /> {syncStatus}
