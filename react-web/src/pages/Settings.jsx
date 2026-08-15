@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { User, Bell, Sliders, Database, RefreshCw, Trash2, CheckCircle2, ShieldCheck, Globe, Lock, Save, Moon } from 'lucide-react'
+import { User, Bell, Sliders, Database, RefreshCw, Trash2, CheckCircle2, ShieldCheck, Globe, Lock, Save, Moon, Sun } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Settings() {
-  const { currentUser, logout } = useApp()
+  const { currentUser, logout, theme, setTheme } = useApp()
   
   // Interactive User Profile State
   const [profileName, setProfileName] = useState(currentUser?.name || "Direction Bardahl")
@@ -173,6 +173,55 @@ export default function Settings() {
             </div>
 
             <div>
+              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '600' }}>Thème Visuel de l'Application</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setTheme('dark')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    background: theme === 'dark' ? 'rgba(255, 208, 0, 0.15)' : 'var(--bg-surface)',
+                    color: theme === 'dark' ? 'var(--bardahl-yellow)' : 'var(--text-secondary)',
+                    border: theme === 'dark' ? '2px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Moon style={{ width: '16px', height: '16px' }} /> 🌙 Mode Sombre (Actuel)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('light')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    background: theme === 'light' ? 'rgba(217, 155, 0, 0.15)' : 'var(--bg-surface)',
+                    color: theme === 'light' ? '#D97706' : 'var(--text-secondary)',
+                    border: theme === 'light' ? '2px solid #D97706' : '1px solid var(--border-card)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Sun style={{ width: '16px', height: '16px' }} /> ☀️ Mode Clair
+                </button>
+              </div>
+            </div>
+
+            <div>
               <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Langue d'Affichage de l'Application</label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
@@ -184,7 +233,7 @@ export default function Settings() {
                     borderRadius: '8px',
                     fontSize: '12px',
                     fontWeight: '800',
-                    background: language === 'fr' ? 'var(--bardahl-yellow)' : '#14171F',
+                    background: language === 'fr' ? 'var(--bardahl-yellow)' : 'var(--bg-surface)',
                     color: language === 'fr' ? '#0D0F12' : 'var(--text-secondary)',
                     border: language === 'fr' ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
                   }}
@@ -200,7 +249,7 @@ export default function Settings() {
                     borderRadius: '8px',
                     fontSize: '12px',
                     fontWeight: '800',
-                    background: language === 'ar' ? 'var(--bardahl-yellow)' : '#14171F',
+                    background: language === 'ar' ? 'var(--bardahl-yellow)' : 'var(--bg-surface)',
                     color: language === 'ar' ? '#0D0F12' : 'var(--text-secondary)',
                     border: language === 'ar' ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
                   }}

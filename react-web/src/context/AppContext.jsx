@@ -127,6 +127,22 @@ export function AppProvider({ children }) {
     localStorage.setItem('bardahl_order_extras', JSON.stringify(orderExtras))
   }, [orderExtras])
 
+  // Theme State: 'dark' (default) or 'light'
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('bardahl_theme') || 'dark' }
+    catch { return 'dark' }
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try { localStorage.setItem('bardahl_theme', theme) }
+    catch (e) { console.error('Theme storage error:', e) }
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }, [])
+
   useEffect(() => {
     if (currentUser) localStorage.setItem('bardahl_session', JSON.stringify(currentUser))
     else localStorage.removeItem('bardahl_session')
@@ -382,6 +398,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       currentUser, login, logout, loading,
+      theme, setTheme, toggleTheme,
       clients: visibleClients, allClients: clients,
       addClient, updateClient, deleteClient,
       products: localProducts, addProduct, updateProduct, deleteProduct,
