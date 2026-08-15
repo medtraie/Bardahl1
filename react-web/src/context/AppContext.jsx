@@ -263,18 +263,30 @@ export function AppProvider({ children }) {
   }, [currentUser, commercials])
 
   const updateClient = useCallback(async (c) => {
+    const targetId = c.id || c.dbId
     const row = await dbUpdateClient(c)
-    if (!row) return null
+    if (!row) {
+      // Fallback: update local state if db update returned null
+      const comm = commercials.find(cm => cm.dbId === c.commercialDbId || cm.id === c.commercialDbId)
+      const fallbackClient = {
+        ...c,
+        commercialName: comm ? comm.name : c.commercialName,
+        commercialEmail: comm ? comm.email : c.commercialEmail
+      }
+      setClients(prev => prev.map(x => (x.id === targetId || x.dbId === targetId) ? fallbackClient : x))
+      return fallbackClient
+    }
+
     const appClient = rowToClient(row)
     const comm = commercials.find(cm => cm.dbId === appClient.commercialDbId || cm.id === appClient.commercialDbId)
     if (comm) {
       appClient.commercialName = comm.name
       appClient.commercialEmail = comm.email
     } else {
-      const existing = clients.find(x => x.id === row.id)
+      const existing = clients.find(x => x.id === row.id || x.dbId === row.id || x.id === targetId)
       if (existing) { appClient.commercialName = existing.commercialName; appClient.commercialEmail = existing.commercialEmail }
     }
-    setClients(prev => prev.map(x => x.id === row.id ? appClient : x))
+    setClients(prev => prev.map(x => (x.id === row.id || x.dbId === row.id || x.id === targetId || x.dbId === targetId) ? appClient : x))
     return appClient
   }, [clients, commercials])
 

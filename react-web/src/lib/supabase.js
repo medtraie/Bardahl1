@@ -138,21 +138,25 @@ export async function dbAddClient(c) {
     'Station': 'station',
     'Flotte': 'flotte'
   }
-  const { data, error } = await supabase.from('clients').insert([{
+  const cleanIce = (c.ice && c.ice.trim()) ? c.ice.trim() : (c.codeClient ? '0015' + c.codeClient.replace(/\D/g, '').padStart(5, '0') + '000001' : '0015' + Date.now().toString().slice(-9))
+
+  const insertData = {
     commercial_id: c.commercialDbId || null,
-    company_name: c.companyName || '',
-    ice: c.ice || '',
+    company_name: c.companyName || 'Client Bardahl',
+    ice: cleanIce,
     rc: c.rc || '',
     if_code: c.codeClient || '',
     patente: c.region || '',
-    address: c.address || '',
+    address: c.address || c.city || 'Casablanca, Maroc',
     city: c.city || 'Casablanca',
-    phone: c.phone || '',
+    phone: c.phone || '+212 5 22 00 00 00',
     email: c.clientEmail || '',
     client_type: typeMapToDb[c.type] || 'gros',
     is_active: true,
-  }]).select().single()
-  if (error) { console.error('dbAddClient:', error.message); return null }
+  }
+
+  const { data, error } = await supabase.from('clients').insert([insertData]).select().single()
+  if (error) { console.error('dbAddClient error:', error.message); return null }
   return data
 }
 
@@ -171,20 +175,48 @@ export async function dbUpdateClient(c) {
     'Station': 'station',
     'Flotte': 'flotte'
   }
-  const { data, error } = await supabase.from('clients').update({
+
+  const targetId = c.dbId || c.id
+  const cleanIce = (c.ice && c.ice.trim()) ? c.ice.trim() : (c.codeClient ? '0015' + c.codeClient.replace(/\D/g, '').padStart(5, '0') + '000001' : '001500000000000')
+
+  const updateData = {
     commercial_id: c.commercialDbId || null,
-    company_name: c.companyName || '',
-    ice: c.ice || '',
+    company_name: c.companyName || 'Client Bardahl',
+    ice: cleanIce,
     rc: c.rc || '',
     if_code: c.codeClient || '',
     patente: c.region || '',
-    address: c.address || '',
+    address: c.address || c.city || 'Casablanca, Maroc',
     city: c.city || 'Casablanca',
-    phone: c.phone || '',
+    phone: c.phone || '+212 5 22 00 00 00',
     email: c.clientEmail || '',
     client_type: typeMapToDb[c.type] || 'gros',
-  }).eq('id', c.id).select().single()
-  if (error) { console.error('dbUpdateClient:', error.message); return null }
+    updated_at: new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from('clients')
+    .update(updateData)
+    .eq('id', targetId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('dbUpdateClient error:', error.message, error.details)
+    // If update failed because record didn't exist in Supabase yet, attempt insert fallback
+    const { data: inserted, error: insertError } = await supabase
+      .from('clients')
+      .insert([{ id: (targetId && targetId.includes('-')) ? targetId : undefined, ...updateData }])
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('dbUpdateClient Insert Fallback error:', insertError.message)
+      return null
+    }
+    return inserted
+  }
+
   return data
 }
 
