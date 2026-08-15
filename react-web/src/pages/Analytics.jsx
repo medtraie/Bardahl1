@@ -56,17 +56,17 @@ export default function Analytics() {
       value: '72,000 DH (9% du CA Global)',
       description: 'Comprend les liquides de refroidissement XCL et fluides de frein DOT4. Demande constante en station service et centres auto.'
     },
-    'Karim Benjelloun': {
+    'Mohammed amine': {
       category: 'Commercial Top Performer',
       color: '#FFD000',
       value: '148,500 DH / mois (102% de l\'objectif)',
-      description: 'Commercial responsable de la zone Casablanca & Mohammedia. Performance exceptionnelle avec un portefeuille de 45 clients actifs.'
+      description: 'Commercial responsable de la zone Casablanca & Mohammedia. Performance remarquable sur le portefeuille clients.'
     },
-    'Youssef El Amrani': {
+    'Bahjaji': {
       category: 'Commercial Senior',
       color: '#2EC4B6',
-      value: '118,200 DH / mois (98% de l\'objectif)',
-      description: 'Commercial responsable du secteur Rabat, Kénitra et Salé. Excellente pénétration des grands comptes flottes et grands garages.'
+      value: '165,200 DH / mois (110% de l\'objectif)',
+      description: 'Commercial responsable du secteur Rabat et Centre. Plus grand portefeuille avec plus de 1 600 clients actifs.'
     },
     'Objectif Moyen Mensuel': {
       category: 'Cible Réseau Bardahl',
@@ -170,7 +170,7 @@ export default function Analytics() {
     labels: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août'],
     datasets: [
       {
-        label: 'Karim Benjelloun',
+        label: 'Mohammed amine',
         data: [110000, 125000, 118000, 138000, 142000, 148500, 152000, 160000],
         borderColor: '#FFD000',
         backgroundColor: '#FFD000',
@@ -179,8 +179,8 @@ export default function Analytics() {
         pointRadius: 4
       },
       {
-        label: 'Youssef El Amrani',
-        data: [85000, 92000, 88000, 105000, 112000, 118200, 122000, 128000],
+        label: 'Bahjaji',
+        data: [120000, 135000, 140000, 150000, 155000, 165200, 170000, 175000],
         borderColor: '#2EC4B6',
         backgroundColor: '#2EC4B6',
         tension: 0.4,
@@ -445,8 +445,8 @@ export default function Analytics() {
         {/* Interactive Legend Chips for Chart 2 */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
           {[
-            { name: 'Karim Benjelloun', color: '#FFD000' },
-            { name: 'Youssef El Amrani', color: '#2EC4B6' },
+            { name: 'Mohammed amine', color: '#FFD000' },
+            { name: 'Bahjaji', color: '#2EC4B6' },
             { name: 'Objectif Moyen Mensuel', color: '#34C759' }
           ].map(c => (
             <button

@@ -65,7 +65,7 @@ export function generateOrderPdf(order) {
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(74, 85, 104)
   doc.text("Raison Sociale : " + (order.clientName || "-"), 18, 77)
-  doc.text("Commercial Responsable : " + (order.commercialName || "Karim Benjelloun"), 18, 83)
+  doc.text("Commercial Responsable : " + (order.commercialName || "Mohammed amine"), 18, 83)
 
   doc.text("Mode de Paiement : " + (order.paymentMethod || "Chèque"), 115, 77)
   doc.text("Mode d'Expédition : " + (order.modeExpedition || "Transport Bardahl"), 115, 83)
@@ -269,7 +269,7 @@ export function generateClientPdf(client, clientOrders = []) {
 
   doc.text("Ville / Adresse : " + (client.city || "-") + " (" + (client.address || "-") + ")", 115, 77)
   doc.text("Téléphone : " + (client.phone || "-"), 115, 83)
-  doc.text("Commercial Suivi : " + (client.commercialName || "Karim Benjelloun"), 115, 89)
+  doc.text("Commercial Suivi : " + (client.commercialName || "Mohammed amine"), 115, 89)
 
   // 4. Financial Calculations Summary Box (4 Perfectly Centered Columns)
   const totalCaTtc = clientOrders.reduce((sum, o) => sum + (parseFloat(o.totalTtc) || 0), 0)
