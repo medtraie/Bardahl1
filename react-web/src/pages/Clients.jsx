@@ -10,6 +10,8 @@ export default function Clients() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingClient, setEditingClient] = useState(null)
   const [selectedDetailClient, setSelectedDetailClient] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 60
   
   const [formData, setFormData] = useState({
     companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: ''
@@ -30,6 +32,9 @@ export default function Clients() {
 
     return matchesSearch && matchesComm
   })
+
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE))
+  const paginatedClients = filteredClients.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const handleOpenAddModal = () => {
     const defaultCommId = selectedCommFilter !== 'ALL' ? selectedCommFilter : (commercials[0]?.dbId || commercials[0]?.id || '')
@@ -125,7 +130,7 @@ export default function Clients() {
               type="text"
               placeholder="Rechercher par Nom, ICE, Ville..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
               className="input-field"
               style={{ paddingLeft: '40px' }}
             />
@@ -134,7 +139,7 @@ export default function Clients() {
           <div style={{ position: 'relative' }}>
             <select
               value={selectedCommFilter}
-              onChange={(e) => setSelectedCommFilter(e.target.value)}
+              onChange={(e) => { setSelectedCommFilter(e.target.value); setCurrentPage(1); }}
               className="input-field"
               style={{ fontSize: '13px', minWidth: '200px' }}
             >
@@ -168,7 +173,7 @@ export default function Clients() {
 
       {/* 3-Column Responsive Glassmorphic Cards Grid */}
       <div className="clients-grid">
-        {filteredClients.map(c => {
+        {paginatedClients.map(c => {
           const { totalCaTtc, totalOrders } = getClientFinancials(c)
           return (
             <div key={c.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -246,6 +251,35 @@ export default function Clients() {
           )
         })}
       </div>
+
+      {/* Pagination Bar */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginTop: '12px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+          <button
+            type="button"
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="btn-secondary"
+            style={{ padding: '6px 14px', fontSize: '12px', opacity: currentPage === 1 ? 0.4 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+          >
+            ← Précédent
+          </button>
+          
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Page <strong style={{ color: 'var(--bardahl-yellow)' }}>{currentPage}</strong> sur <strong style={{ color: '#FFFFFF' }}>{totalPages}</strong> ({filteredClients.length} clients)
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="btn-secondary"
+            style={{ padding: '6px 14px', fontSize: '12px', opacity: currentPage === totalPages ? 0.4 : 1, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
+          >
+            Suivant →
+          </button>
+        </div>
+      )}
 
       {/* Modal 1: Détails & Chiffre d'Affaires Client */}
       {selectedDetailClient && (() => {
