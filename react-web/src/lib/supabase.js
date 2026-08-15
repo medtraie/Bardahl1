@@ -146,7 +146,7 @@ export async function dbUpdateClient(c) {
     'Flotte': 'flotte'
   }
   const { data, error } = await supabase.from('clients').update({
-    commercial_id: c.commercialDbId || undefined,
+    commercial_id: c.commercialDbId || null,
     company_name: c.companyName || '',
     ice: c.ice || '',
     rc: c.rc || '',

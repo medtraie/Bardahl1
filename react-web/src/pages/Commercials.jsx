@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { Contact, UserPlus, MapPin, Target, Phone, Mail, Award, CheckCircle2, Lock, ShieldCheck, Edit3, Trash2 } from 'lucide-react'
+import { Contact, UserPlus, MapPin, Target, Phone, Mail, Award, CheckCircle2, Lock, ShieldCheck, Edit3, Trash2, FileText, Download } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { generatePortfolioByCommercialPdf } from '../utils/pdfGenerator'
 
 export default function Commercials() {
-  const { commercials, addCommercial, updateCommercial, deleteCommercial } = useApp()
+  const { commercials, clients = [], addCommercial, updateCommercial, deleteCommercial } = useApp()
   const [showModal, setShowModal] = useState(false)
   const [editingCommercial, setEditingCommercial] = useState(null)
 
@@ -89,9 +90,20 @@ export default function Commercials() {
           </p>
         </div>
 
-        <button onClick={handleOpenAddModal} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
-          <UserPlus style={{ width: '16px', height: '16px' }} /> Ajouter Compte Commercial
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => generatePortfolioByCommercialPdf(clients, commercials)}
+            className="btn-secondary"
+            style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--bardahl-yellow)', borderColor: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Télécharger l'état consolidé du portefeuille clients par représentant (PDF)"
+          >
+            <Download style={{ width: '16px', height: '16px' }} /> PDF Portefeuille (Tous)
+          </button>
+
+          <button onClick={handleOpenAddModal} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
+            <UserPlus style={{ width: '16px', height: '16px' }} /> Ajouter Compte Commercial
+          </button>
+        </div>
       </div>
 
       {/* 3-Column Commercials Grid */}
@@ -171,6 +183,14 @@ export default function Commercials() {
                 </span>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={() => generatePortfolioByCommercialPdf(clients, commercials, c.dbId || c.id)}
+                    className="btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: '11px', color: '#007AFF', borderColor: '#007AFF', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    title="Télécharger la liste des clients de ce commercial en PDF"
+                  >
+                    <FileText style={{ width: '13px', height: '13px' }} /> Clients PDF
+                  </button>
                   <button
                     onClick={() => handleOpenEditModal(c)}
                     className="btn-secondary"

@@ -247,7 +247,8 @@ export function AppProvider({ children }) {
 
   // ── CLIENTS CRUD ─────────────────────────────────────────────────────────────
   const addClient = useCallback(async (c) => {
-    const commDbId = currentUser?.commercialDbId ||
+    const commDbId = c.commercialDbId ||
+      currentUser?.commercialDbId ||
       commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())?.dbId ||
       null
 
@@ -255,7 +256,7 @@ export function AppProvider({ children }) {
     if (!row) return null
 
     const appClient = rowToClient(row)
-    const comm = commercials.find(cm => cm.dbId === commDbId)
+    const comm = commercials.find(cm => cm.dbId === commDbId || cm.id === commDbId)
     if (comm) { appClient.commercialName = comm.name; appClient.commercialEmail = comm.email }
     setClients(prev => [...prev, appClient])
     return appClient
@@ -265,12 +266,17 @@ export function AppProvider({ children }) {
     const row = await dbUpdateClient(c)
     if (!row) return null
     const appClient = rowToClient(row)
-    // Preserve commercial info
-    const existing = clients.find(x => x.id === row.id)
-    if (existing) { appClient.commercialName = existing.commercialName; appClient.commercialEmail = existing.commercialEmail }
+    const comm = commercials.find(cm => cm.dbId === appClient.commercialDbId || cm.id === appClient.commercialDbId)
+    if (comm) {
+      appClient.commercialName = comm.name
+      appClient.commercialEmail = comm.email
+    } else {
+      const existing = clients.find(x => x.id === row.id)
+      if (existing) { appClient.commercialName = existing.commercialName; appClient.commercialEmail = existing.commercialEmail }
+    }
     setClients(prev => prev.map(x => x.id === row.id ? appClient : x))
     return appClient
-  }, [clients])
+  }, [clients, commercials])
 
   const deleteClient = useCallback(async (id) => {
     const ok = await dbDeleteClient(id)

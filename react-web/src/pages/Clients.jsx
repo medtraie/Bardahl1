@@ -1,27 +1,39 @@
 import React, { useState } from 'react'
-import { Search, UserPlus, MapPin, Phone, Building, Hash, ShieldCheck, Edit3, Trash2, Eye, FileText, Download, TrendingUp, DollarSign, ShoppingBag, CheckCircle2 } from 'lucide-react'
+import { Search, UserPlus, MapPin, Phone, Building, Hash, ShieldCheck, Edit3, Trash2, Eye, FileText, Download, TrendingUp, DollarSign, ShoppingBag, CheckCircle2, Filter } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { generateClientPdf, generateOrderPdf } from '../utils/pdfGenerator'
+import { generateClientPdf, generateOrderPdf, generatePortfolioByCommercialPdf } from '../utils/pdfGenerator'
 
 export default function Clients() {
-  const { clients, orders, addClient, updateClient, deleteClient } = useApp()
+  const { clients, orders, commercials = [], addClient, updateClient, deleteClient } = useApp()
   const [search, setSearch] = useState('')
+  const [selectedCommFilter, setSelectedCommFilter] = useState('ALL')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingClient, setEditingClient] = useState(null)
   const [selectedDetailClient, setSelectedDetailClient] = useState(null)
   
   const [formData, setFormData] = useState({
-    companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: ''
+    companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: ''
   })
 
-  const filteredClients = clients.filter(c => 
-    (c.companyName || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.ice || '').includes(search) ||
-    (c.city || '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredClients = clients.filter(c => {
+    const matchesSearch =
+      (c.companyName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.ice || '').includes(search) ||
+      (c.city || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.codeClient || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.region || '').toLowerCase().includes(search.toLowerCase())
+
+    const matchesComm = selectedCommFilter === 'ALL' ||
+      c.commercialDbId === selectedCommFilter ||
+      (c.commercialName && c.commercialName === selectedCommFilter) ||
+      Boolean(commercials.find(cm => (cm.id === selectedCommFilter || cm.dbId === selectedCommFilter) && cm.name === c.commercialName))
+
+    return matchesSearch && matchesComm
+  })
 
   const handleOpenAddModal = () => {
-    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '' })
+    const defaultCommId = selectedCommFilter !== 'ALL' ? selectedCommFilter : (commercials[0]?.dbId || commercials[0]?.id || '')
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: defaultCommId })
     setShowAddModal(true)
   }
 
@@ -36,7 +48,8 @@ export default function Clients() {
       phone: client.phone || '',
       type: client.type || 'Grossiste',
       region: client.region || '',
-      codeClient: client.codeClient || ''
+      codeClient: client.codeClient || '',
+      commercialDbId: client.commercialDbId || ''
     })
   }
 
@@ -47,7 +60,7 @@ export default function Clients() {
       ...formData
     })
     setShowAddModal(false)
-    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '' })
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: '' })
   }
 
   const handleEditSubmit = (e) => {
@@ -106,7 +119,7 @@ export default function Clients() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', width: '280px' }}>
+          <div style={{ position: 'relative', width: '240px' }}>
             <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
@@ -117,6 +130,35 @@ export default function Clients() {
               style={{ paddingLeft: '40px' }}
             />
           </div>
+
+          <div style={{ position: 'relative' }}>
+            <select
+              value={selectedCommFilter}
+              onChange={(e) => setSelectedCommFilter(e.target.value)}
+              className="input-field"
+              style={{ fontSize: '13px', minWidth: '200px' }}
+            >
+              <option value="ALL">Tous les Représentants ({clients.length})</option>
+              {commercials.map(comm => {
+                const count = clients.filter(c => c.commercialDbId === comm.dbId || c.commercialDbId === comm.id || c.commercialName === comm.name).length
+                return (
+                  <option key={comm.id || comm.dbId} value={comm.dbId || comm.id}>
+                    {comm.name} ({count} clients)
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+
+          <button
+            onClick={() => generatePortfolioByCommercialPdf(clients, commercials, selectedCommFilter === 'ALL' ? null : selectedCommFilter)}
+            className="btn-secondary"
+            style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--bardahl-yellow)', borderColor: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Exporter le rapport PDF consolidé du portefeuille clients par représentant"
+          >
+            <Download style={{ width: '16px', height: '16px' }} />
+            PDF Portefeuille (Par Représentant)
+          </button>
 
           <button onClick={handleOpenAddModal} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
             <UserPlus style={{ width: '16px', height: '16px' }} /> Ajouter Client
@@ -154,6 +196,7 @@ export default function Clients() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Phone style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
                     <span>{c.phone}</span>
+                    {c.commercialName && <> | Commercial : <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.commercialName}</strong></>}
                   </div>
                 </div>
 
@@ -471,6 +514,22 @@ export default function Clients() {
                     <option value="Grand compte">Grand compte</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Représentant Commercial</label>
+                <select
+                  value={formData.commercialDbId}
+                  onChange={e => setFormData({...formData, commercialDbId: e.target.value})}
+                  className="input-field"
+                >
+                  <option value="">-- Sélectionner un Représentant --</option>
+                  {commercials.map(comm => (
+                    <option key={comm.id || comm.dbId} value={comm.dbId || comm.id}>
+                      {comm.name} ({comm.city || 'Casablanca'})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-card)' }}>
