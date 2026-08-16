@@ -21,6 +21,12 @@ export default function Orders({ onNewOrderClick }) {
   const [remisePercent, setRemisePercent] = useState(0)
   const [selectedProducts, setSelectedProducts] = useState([])
 
+  // Searchable Select States
+  const [clientSearchQuery, setClientSearchQuery] = useState('')
+  const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [showProductDropdown, setShowProductDropdown] = useState(false)
+
   const suggestedOrderNumber = `BC-2026-00${4332 + orders.length + 1}`
   const activeOrderNumber = customOrderNumber.trim() || suggestedOrderNumber
 
@@ -37,6 +43,7 @@ export default function Orders({ onNewOrderClick }) {
     setEditingOrder(null)
     setCustomOrderNumber('')
     setSelectedClient('')
+    setClientSearchQuery('')
     setPaymentMethod('Chèque')
     setModeExpedition('Transport Bardahl')
     setRemarque('')
@@ -50,6 +57,11 @@ export default function Orders({ onNewOrderClick }) {
     setCustomOrderNumber(order.orderNumber || '')
     const matchedClient = clients.find(c => c.companyName === order.clientName)
     setSelectedClient(matchedClient ? matchedClient.id : '')
+    if (matchedClient) {
+      setClientSearchQuery(`${matchedClient.codeClient ? '[' + matchedClient.codeClient + '] ' : ''}${matchedClient.companyName} (${matchedClient.city})`)
+    } else {
+      setClientSearchQuery(order.clientName || '')
+    }
     setPaymentMethod(order.paymentMethod || 'Chèque')
     setModeExpedition(order.modeExpedition || 'Transport Bardahl')
     setRemarque(order.remarque || '')
@@ -64,6 +76,7 @@ export default function Orders({ onNewOrderClick }) {
     })) : [])
     setShowOrderWizard(true)
   }
+
 
   const handleDeleteOrder = (order) => {
     if (window.confirm(`Voulez-vous vraiment supprimer le bon de commande ${order.orderNumber} ?`)) {
@@ -98,6 +111,20 @@ export default function Orders({ onNewOrderClick }) {
       setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: parseInt(newQty) } : p))
     }
   }
+
+  React.useEffect(() => {
+    if (!showOrderWizard) return
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.client-search-container')) {
+        setShowClientDropdown(false)
+      }
+      if (!e.target.closest('.product-search-container')) {
+        setShowProductDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showOrderWizard])
 
   // Financial Calculations
   const grossTotalTtc = selectedProducts.reduce((sum, item) => sum + (item.priceTtc * item.qty), 0)
@@ -171,6 +198,22 @@ export default function Orders({ onNewOrderClick }) {
     setRemisePercent(0)
     setSelectedProducts([])
   }
+
+  const filteredClientOptions = clients.filter(c => {
+    const query = clientSearchQuery.toLowerCase()
+    const nameMatches = (c.companyName || '').toLowerCase().includes(query)
+    const codeMatches = (c.codeClient || '').toLowerCase().includes(query)
+    const cityMatches = (c.city || '').toLowerCase().includes(query)
+    return nameMatches || codeMatches || cityMatches
+  })
+
+  const filteredProductOptions = products.filter(p => {
+    const query = productSearchQuery.toLowerCase()
+    const nameMatches = (p.name || '').toLowerCase().includes(query)
+    const codeMatches = (p.code || '').toLowerCase().includes(query)
+    const refMatches = (p.reference || '').toLowerCase().includes(query)
+    return nameMatches || codeMatches || refMatches
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -345,7 +388,7 @@ export default function Orders({ onNewOrderClick }) {
                 <FileText style={{ width: '22px', height: '22px', color: 'var(--bardahl-yellow)' }} />
                 {editingOrder ? `Modifier Bon de Commande ${editingOrder.orderNumber}` : 'Création Bon de Commande Bardahl'}
               </h3>
-              <button onClick={() => { setShowOrderWizard(false); setEditingOrder(null); }} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer' }}>
+              <button onClick={() => { setShowOrderWizard(false); setEditingOrder(null); setClientSearchQuery(''); setProductSearchQuery(''); }} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer' }}>
                 &times;
               </button>
             </div>
@@ -368,20 +411,70 @@ export default function Orders({ onNewOrderClick }) {
               </div>
 
               {/* Step 1: Select Client */}
-              <div>
+              <div className="client-search-container" style={{ position: 'relative' }}>
                 <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
                   1. Sélectionner le Client *
                 </label>
-                <select
-                  value={selectedClient}
-                  onChange={e => setSelectedClient(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="">-- Choisir un client dans votre portefeuille --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.companyName} ({c.city}) - ICE: {c.ice}</option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="🔎 Rechercher par code client (ex: CL00477) ou par nom..."
+                    value={clientSearchQuery}
+                    onChange={e => {
+                      setClientSearchQuery(e.target.value)
+                      setShowClientDropdown(true)
+                      if (!e.target.value) {
+                        setSelectedClient('')
+                      }
+                    }}
+                    onFocus={() => setShowClientDropdown(true)}
+                  />
+                  {showClientDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-card)',
+                      borderRadius: '12px',
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      zIndex: 1010,
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                    }}>
+                      {filteredClientOptions.length === 0 ? (
+                        <div style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '13px' }}>Aucun client trouvé</div>
+                      ) : (
+                        filteredClientOptions.slice(0, 100).map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedClient(c.id)
+                              setClientSearchQuery(`${c.codeClient ? '[' + c.codeClient + '] ' : ''}${c.companyName} (${c.city})`)
+                              setShowClientDropdown(false)
+                            }}
+                            style={{
+                              padding: '10px 14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid rgba(255,255,255,0.05)',
+                              fontSize: '13px',
+                              background: selectedClient === c.id ? 'rgba(255,208,0,0.15)' : 'transparent',
+                              color: selectedClient === c.id ? 'var(--bardahl-yellow)' : 'var(--text-primary)',
+                              transition: 'background 0.2s'
+                            }}
+                            onMouseEnter={e => e.target.style.background = 'rgba(255,208,0,0.08)'}
+                            onMouseLeave={e => e.target.style.background = selectedClient === c.id ? 'rgba(255,208,0,0.15)' : 'transparent'}
+                          >
+                            <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.codeClient ? `[${c.codeClient}] ` : ''}</strong>
+                            {c.companyName} ({c.city}) - ICE: {c.ice}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Step 2: Mode de Paiement & Mode d'Expédition (Dual Column) */}
@@ -437,16 +530,69 @@ export default function Orders({ onNewOrderClick }) {
                   <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase' }}>
                     4. Articles de la Commande *
                   </label>
-                  <select
-                    onChange={e => { handleAddProduct(e.target.value); e.target.value = '' }}
-                    className="input-field"
-                    style={{ width: 'auto', fontSize: '12px', padding: '6px 12px' }}
-                  >
-                    <option value="">+ Ajouter un produit du catalogue (194 produits)</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} - {p.priceTtc} DH</option>
-                    ))}
-                  </select>
+                  <div className="product-search-container" style={{ position: 'relative', width: '320px' }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      style={{ fontSize: '12px', padding: '6px 12px' }}
+                      placeholder="🔎 Réf, Code Article ou Désignation..."
+                      value={productSearchQuery}
+                      onChange={e => {
+                        setProductSearchQuery(e.target.value)
+                        setShowProductDropdown(true)
+                      }}
+                      onFocus={() => setShowProductDropdown(true)}
+                    />
+                    {showProductDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-card)',
+                        borderRadius: '12px',
+                        maxHeight: '250px',
+                        overflowY: 'auto',
+                        zIndex: 1010,
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                      }}>
+                        {filteredProductOptions.length === 0 ? (
+                          <div style={{ padding: '10px', color: 'var(--text-secondary)', fontSize: '12px' }}>Aucun produit trouvé</div>
+                        ) : (
+                          filteredProductOptions.slice(0, 100).map(p => (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                handleAddProduct(p.id)
+                                setProductSearchQuery('')
+                                setShowProductDropdown(false)
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                fontSize: '12px',
+                                color: 'var(--text-primary)',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseEnter={e => e.target.style.background = 'rgba(255,208,0,0.08)'}
+                              onMouseLeave={e => e.target.style.background = 'transparent'}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700' }}>
+                                <span style={{ color: 'var(--bardahl-yellow)' }}>Ref: {p.reference}</span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{p.code}</span>
+                              </div>
+                              <div style={{ marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                                <span>{p.name}</span>
+                                <strong style={{ color: 'var(--text-primary)' }}>{p.priceTtc} DH</strong>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ borderRadius: '12px', border: '1px solid var(--border-card)', overflow: 'hidden' }}>
