@@ -52,8 +52,8 @@ fun AnalyticsScreen(onSettingsClick: () -> Unit) {
             "Additifs & Aérosols" to SegmentInfo("Additifs & Aérosols", "Gamme Marge Forte", Color(0xFFFF9F43), "165,000 DH (26% du CA Global)", "Comprend les nettoyeurs d'injecteurs, traitement anti-fumée et nettoyants freins. Génère la plus forte marge commerciale unitaire."),
             "Industrie & Graisses" to SegmentInfo("Industrie & Graisses", "Gamme Technique Spécialisée", Color(0xFFFF5252), "115,000 DH (18% du CA Global)", "Comprend les graisses au lithium, huiles hydrauliques et lubrifiants agro-alimentaires H1 destinés aux usines et flottes de transport."),
             "Fluides & LR" to SegmentInfo("Fluides & LR", "Gamme Refroidissement", Color(0xFF0077B6), "72,000 DH (14% du CA Global)", "Comprend les liquides de refroidissement XCL et fluides de frein DOT4. Demande constante en station service et centres auto."),
-            "Karim Benjelloun" to SegmentInfo("Karim Benjelloun", "Commercial Top Performer", Color(0xFFFFD000), "148,500 DH / mois (102% de l'objectif)", "Commercial responsable de la zone Casablanca & Mohammedia. Performance exceptionnelle avec un portefeuille de 45 clients actifs."),
-            "Youssef El Amrani" to SegmentInfo("Youssef El Amrani", "Commercial Senior", Color(0xFF2EC4B6), "118,200 DH / mois (98% de l'objectif)", "Commercial responsable du secteur Rabat, Kénitra et Salé. Excellente pénétration des grands comptes flottes et grands garages."),
+            "Mohammed amine" to SegmentInfo("Mohammed amine", "Commercial Top Performer", Color(0xFFFFD000), "148,500 DH / mois (102% de l'objectif)", "Commercial responsable de la zone Casablanca & Mohammedia. Performance exceptionnelle avec un portefeuille de clients actifs."),
+            "Bahjaji" to SegmentInfo("Bahjaji", "Commercial Senior", Color(0xFF2EC4B6), "165,200 DH / mois (110% de l'objectif)", "Commercial responsable du secteur Rabat et Centre. Plus grand portefeuille avec plus de 1 600 clients actifs."),
             "Casablanca" to SegmentInfo("Casablanca", "Secteur Capital Économique", Color(0xFFFFD000), "95,000 Unités / 520,000 DH TTC", "Premier secteur de vente au Maroc avec plus de 60% de la demande concentrée sur Ain Sebaa, Lissasfa et Zone Industrielle."),
             "Rabat" to SegmentInfo("Rabat", "Secteur Capitale & Flottes", Color(0xFF2EC4B6), "78,000 Unités / 380,000 DH TTC", "Secteur en forte croissance tiré par les marchés publics, flottes administratives et stations services autoroutières."),
             "Tanger" to SegmentInfo("Tanger", "Secteur Nord & Logistique", Color(0xFF9B51E0), "82,000 Unités / 410,000 DH TTC", "Zone stratégique portée par Tanger Med, les zones franches automobiles et le transport international.")
@@ -69,9 +69,9 @@ fun AnalyticsScreen(onSettingsClick: () -> Unit) {
     )
 
     val topCommercials = listOf(
-        LeaderItem(1, "Karim Benjelloun", "Casablanca", "148,500 DH", 0.98f),
-        LeaderItem(2, "Youssef El Amrani", "Rabat & Nord", "118,200 DH", 0.84f),
-        LeaderItem(3, "Mehdi Naciri", "Marrakech & Sud", "98,400 DH", 0.78f)
+        LeaderItem(1, "Mohammed amine", "Casablanca", "148,500 DH", 0.98f),
+        LeaderItem(2, "Bahjaji", "Rabat & Centre", "165,200 DH", 1.10f),
+        LeaderItem(3, "BELFKIH", "Tanger & Nord", "92,400 DH", 0.92f)
     )
 
     Scaffold(
@@ -243,8 +243,8 @@ fun AnalyticsScreen(onSettingsClick: () -> Unit) {
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf(
-                                Pair("Karim Benjelloun", Color(0xFFFFD000)),
-                                Pair("Youssef El Amrani", Color(0xFF2EC4B6))
+                                Pair("Mohammed amine", Color(0xFFFFD000)),
+                                Pair("Bahjaji", Color(0xFF2EC4B6))
                             ).forEach { (name, color) ->
                                 AssistChip(
                                     onClick = { selectedSegmentInfo = segmentDetailsMap[name] },

@@ -41,16 +41,20 @@ class AuthViewModel : ViewModel() {
                     _authState.value = AuthState.Success(user, null)
                 } else {
                     val matchedCommName = when {
-                        cleanEmail.contains("youssef") -> "Youssef El Amrani"
-                        cleanEmail.contains("mehdi") -> "Mehdi Tazi"
-                        cleanEmail.contains("kawtar") -> "Kawtar BAHJAJI"
-                        else -> "Karim Benjelloun"
+                        cleanEmail.contains("bahjaji") -> "Bahjaji"
+                        cleanEmail.contains("amiaach") -> "Amiaach"
+                        cleanEmail.contains("belfkih") -> "BELFKIH"
+                        cleanEmail.contains("bam") -> "Bam"
+                        cleanEmail.contains("khachi") -> "KHACHI"
+                        else -> "Mohammed amine"
                     }
                     val matchedCommId = when {
-                        cleanEmail.contains("youssef") -> "c9999999-9999-9999-9999-999999999999"
-                        cleanEmail.contains("mehdi") -> "c7777777-7777-7777-7777-777777777777"
-                        cleanEmail.contains("kawtar") -> "c6666666-6666-6666-6666-666666666666"
-                        else -> "88888888-8888-8888-8888-888888888888"
+                        cleanEmail.contains("bahjaji") -> "COM-3"
+                        cleanEmail.contains("amiaach") -> "COM-02"
+                        cleanEmail.contains("belfkih") -> "COM-5"
+                        cleanEmail.contains("bam") -> "COM-4"
+                        cleanEmail.contains("khachi") -> "COM-6"
+                        else -> "COM-1"
                     }
                     val user = User(
                         id = matchedCommId,
@@ -213,8 +217,8 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             Order(
                 id = "o1",
                 orderNumber = "BC-2026-004332",
-                commercialId = "88888888-8888-8888-8888-888888888888",
-                commercialName = "Karim Benjelloun",
+                commercialId = "COM-1",
+                commercialName = "Mohammed amine",
                 clientId = "c1",
                 clientName = "Auto Service Ain Sebaa",
                 orderDate = "2026-08-05",
@@ -226,8 +230,8 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             Order(
                 id = "o2",
                 orderNumber = "BC-2026-004333",
-                commercialId = "88888888-8888-8888-8888-888888888888",
-                commercialName = "Karim Benjelloun",
+                commercialId = "COM-1",
+                commercialName = "Mohammed amine",
                 clientId = "c2",
                 clientName = "Station Afriquia Route de Rabat",
                 orderDate = "2026-08-05",
@@ -239,8 +243,8 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             Order(
                 id = "o3",
                 orderNumber = "BC-2026-004334",
-                commercialId = "88888888-8888-8888-8888-888888888888",
-                commercialName = "Youssef El Amrani",
+                commercialId = "COM-3",
+                commercialName = "Bahjaji",
                 clientId = "c3",
                 clientName = "Transport & Logistique du Sud",
                 orderDate = "2026-08-06",

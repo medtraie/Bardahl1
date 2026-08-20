@@ -60,46 +60,67 @@ class SupabaseService(
     }
 
     suspend fun fetchClients(commercialId: String? = null): List<Client> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<Client>()
         try {
-            val endpoint = if (commercialId != null) "clients?commercial_id=eq.$commercialId" else "clients?select=*"
-            val conn = getConnection(endpoint)
-            if (conn.responseCode == 200) {
-                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonArray = JSONArray(jsonStr)
-                val list = mutableListOf<Client>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val rawType = obj.optString("client_type", "garage").lowercase()
-                    val cType = when (rawType) {
-                        "station" -> ClientType.STATION
-                        "flotte", "fleet" -> ClientType.FLOTTE
-                        "grossiste" -> ClientType.GROS
-                        "industriel" -> ClientType.INDUSTRIEL
-                        else -> ClientType.GARAGE
-                    }
-                    list.add(
-                        Client(
-                            id = obj.getString("id"),
-                            commercialId = obj.optString("commercial_id", ""),
-                            companyName = obj.optString("company_name", "Client"),
-                            ice = obj.optString("ice", "000000000000000"),
-                            rc = obj.optString("rc", ""),
-                            ifCode = obj.optString("if_code", ""),
-                            patente = obj.optString("patente", ""),
-                            address = obj.optString("address", "Casablanca"),
-                            city = obj.optString("city", "Casablanca"),
-                            phone = obj.optString("phone", "+212 5 22 00 00 00"),
-                            email = obj.optString("email", ""),
-                            clientType = cType
-                        )
-                    )
+            var offset = 0
+            val limit = 1000
+            var hasMore = true
+            while (hasMore) {
+                val endpoint = if (commercialId != null) {
+                    "clients?commercial_id=eq.$commercialId&limit=$limit&offset=$offset"
+                } else {
+                    "clients?select=*&limit=$limit&offset=$offset"
                 }
-                return@withContext list
+                val conn = getConnection(endpoint)
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val jsonArray = JSONArray(jsonStr)
+                    val count = jsonArray.length()
+                    if (count == 0) {
+                        hasMore = false
+                        break
+                    }
+                    for (i in 0 until count) {
+                        val obj = jsonArray.getJSONObject(i)
+                        val rawType = obj.optString("client_type", "garage").lowercase()
+                        val cType = when (rawType) {
+                            "station" -> ClientType.STATION
+                            "flotte", "fleet" -> ClientType.FLOTTE
+                            "grossiste" -> ClientType.GROS
+                            "industriel" -> ClientType.INDUSTRIEL
+                            else -> ClientType.GARAGE
+                        }
+                        list.add(
+                            Client(
+                                id = obj.getString("id"),
+                                commercialId = obj.optString("commercial_id", ""),
+                                companyName = obj.optString("company_name", "Client"),
+                                ice = obj.optString("ice", "000000000000000"),
+                                rc = obj.optString("rc", ""),
+                                ifCode = obj.optString("if_code", ""),
+                                patente = obj.optString("patente", ""),
+                                address = obj.optString("address", "Casablanca"),
+                                city = obj.optString("city", "Casablanca"),
+                                phone = obj.optString("phone", "+212 5 22 00 00 00"),
+                                email = obj.optString("email", ""),
+                                clientType = cType
+                            )
+                        )
+                    }
+                    if (count < limit) {
+                        hasMore = false
+                    } else {
+                        offset += limit
+                    }
+                } else {
+                    hasMore = false
+                }
             }
+            return@withContext list
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return@withContext emptyList()
+        return@withContext list
     }
 
     suspend fun fetchCommercials(): List<Commercial> = withContext(Dispatchers.IO) {
@@ -163,7 +184,7 @@ class SupabaseService(
                     val commObj = commercialsMap[commId]
 
                     val clientName = clientObj?.companyName ?: obj.optString("client_name", "Client Bardahl")
-                    val commName = commObj?.name ?: obj.optString("commercial_name", "Karim Benjelloun")
+                    val commName = commObj?.name ?: obj.optString("commercial_name", "Mohammed amine")
 
                     list.add(
                         Order(

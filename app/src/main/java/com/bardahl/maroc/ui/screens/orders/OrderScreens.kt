@@ -614,7 +614,7 @@ fun OrderCreateScreen(
                             id = java.util.UUID.randomUUID().toString(),
                             orderNumber = finalOrderNumber,
                             commercialId = "c8888888-8888-8888-8888-888888888888",
-                            commercialName = "Karim Benjelloun",
+                            commercialName = "Mohammed amine",
                             clientId = selectedClient!!.id,
                             clientName = selectedClient!!.companyName,
                             orderDate = "2026-08-09 22:00",

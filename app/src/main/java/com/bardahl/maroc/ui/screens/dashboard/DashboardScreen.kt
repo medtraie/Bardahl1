@@ -55,9 +55,12 @@ fun DashboardScreen(
 
                 (userCommId.isNotBlank() && c.commercialId == userCommId) ||
                 (commIdClean.isNotBlank() && userCommIdClean.isNotBlank() && commIdClean == userCommIdClean) ||
-                (userEmail.contains("karim") && (c.commercialId.contains("8888") || c.companyName.contains("Ain Sebaa", ignoreCase = true) || c.companyName.contains("Afriquia", ignoreCase = true) || c.commercialId.isBlank() || c.id == "c1" || c.id == "c2")) ||
-                (userEmail.contains("youssef") && (c.commercialId.contains("9999") || c.companyName.contains("Transport", ignoreCase = true) || c.companyName.contains("Sud", ignoreCase = true) || c.id == "c3")) ||
-                (userEmail.contains("mehdi") && c.commercialId.contains("7777"))
+                (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
+                userEmail.contains("amiaach") ||
+                userEmail.contains("bahjaji") ||
+                userEmail.contains("bam") ||
+                userEmail.contains("belfkih") ||
+                userEmail.contains("khachi")
             }
         }
     }
@@ -68,9 +71,12 @@ fun DashboardScreen(
         } else {
             allOrders.filter { o ->
                 o.commercialId == userCommId ||
-                (userEmail.contains("karim") && (o.commercialName.lowercase().contains("karim") || o.commercialId.contains("8888") || o.commercialId.isBlank())) ||
-                (userEmail.contains("youssef") && (o.commercialName.lowercase().contains("youssef") || o.commercialId.contains("9999"))) ||
-                (userEmail.contains("mehdi") && (o.commercialName.lowercase().contains("mehdi") || o.commercialId.contains("7777"))) ||
+                (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
+                userEmail.contains("amiaach") ||
+                userEmail.contains("bahjaji") ||
+                userEmail.contains("bam") ||
+                userEmail.contains("belfkih") ||
+                userEmail.contains("khachi") ||
                 (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
             }
         }

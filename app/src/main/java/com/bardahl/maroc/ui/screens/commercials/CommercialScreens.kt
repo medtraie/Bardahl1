@@ -55,9 +55,9 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
     var commercials by remember {
         mutableStateOf(
             listOf(
-                CommercialData("c1", "Karim", "Benjelloun", "karim@bardahl.ma", "123", "+212 6 61 22 33 44", "COMM-001", "Zone Industrielle", "Casablanca", true, "Aujourd'hui", 2, 150000.0, 148500.0),
-                CommercialData("c2", "Youssef", "El Amrani", "youssef@bardahl.ma", "123", "+212 6 62 44 55 66", "COMM-002", "Centre Ville", "Rabat", true, "Hier", 1, 120000.0, 95000.0),
-                CommercialData("c3", "Mehdi", "Naciri", "mehdi@bardahl.ma", "123", "+212 6 63 77 88 99", "COMM-003", "Guéliz", "Marrakech", true, "Il y a 2j", 0, 100000.0, 82000.0)
+                CommercialData("c1", "Mohammed", "amine", "mohammed@bardahl.ma", "123", "+212 6 61 22 33 44", "COM-1", "Zone Industrielle", "Casablanca", true, "Aujourd'hui", 2, 150000.0, 148500.0),
+                CommercialData("c2", "Amiaach", "", "amiaach@bardahl.ma", "123", "+212 6 62 44 55 66", "COM-02", "Centre Ville", "Rabat", true, "Hier", 1, 120000.0, 95000.0),
+                CommercialData("c3", "Bahjaji", "", "bahjaji@bardahl.ma", "123", "+212 6 63 77 88 99", "COM-3", "Guéliz", "Marrakech", true, "Il y a 2j", 0, 100000.0, 82000.0)
             )
         )
     }
