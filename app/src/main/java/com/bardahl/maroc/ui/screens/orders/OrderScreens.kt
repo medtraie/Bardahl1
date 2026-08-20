@@ -62,9 +62,12 @@ fun OrderListScreen(
         val userName = (currentUser?.firstName ?: "").lowercase()
         orders.filter { o ->
             o.commercialId == userCommId ||
-            (userEmail.contains("karim") && (o.commercialName.lowercase().contains("karim") || o.commercialId.contains("8888") || o.commercialId.isBlank())) ||
-            (userEmail.contains("youssef") && (o.commercialName.lowercase().contains("youssef") || o.commercialId.contains("9999"))) ||
-            (userEmail.contains("mehdi") && (o.commercialName.lowercase().contains("mehdi") || o.commercialId.contains("7777"))) ||
+            (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
+            userEmail.contains("amiaach") ||
+            userEmail.contains("bahjaji") ||
+            userEmail.contains("bam") ||
+            userEmail.contains("belfkih") ||
+            userEmail.contains("khachi") ||
             (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
         }
     }
@@ -97,23 +100,41 @@ fun OrderListScreen(
         },
         containerColor = DarkBackground
     ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item { Spacer(modifier = Modifier.height(4.dp)) }
-
-            items(visibleOrders) { order ->
-                OrderCardDetailed(
-                    order = order,
-                    onPdfClick = {
-                        PdfGenerator.generateOrderPdf(context, order)
-                        Toast.makeText(context, "Téléchargement Bon de Commande PDF en cours...", Toast.LENGTH_SHORT).show()
-                    }
+        if (visibleOrders.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Aucun bon de commande trouvé.\nUtilisez le bouton + ci-dessous pour en créer un.",
+                    color = TextSecondaryDark,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
                 )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(4.dp)) }
+
+                items(visibleOrders) { order ->
+                    OrderCardDetailed(
+                        order = order,
+                        onPdfClick = {
+                            PdfGenerator.generateOrderPdf(context, order)
+                            Toast.makeText(context, "Téléchargement Bon de Commande PDF en cours...", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
             }
         }
     }
