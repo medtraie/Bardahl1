@@ -40,52 +40,28 @@ fun DashboardScreen(
     val currentUser = (authState as? AuthState.Success)?.user
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
-    // Role-based filtering for orders and clients
+    // Role-based filtering - mirrors Web AppContext visibleClients/visibleOrders logic
     val userCommId = currentUser?.id ?: ""
-    val userEmail = currentUser?.email?.lowercase() ?: ""
-    val userName = (currentUser?.firstName ?: "").lowercase()
 
-    val visibleClients = remember(allClients, isAdmin, userCommId, userEmail) {
+    val visibleClients = remember(allClients, isAdmin, userCommId) {
         if (isAdmin) {
             allClients
         } else {
-            allClients.filter { c ->
-                val commIdClean = c.commercialId.lowercase().replace("c", "")
-                val userCommIdClean = userCommId.lowercase().replace("c", "")
-
-                (userCommId.isNotBlank() && c.commercialId == userCommId) ||
-                (commIdClean.isNotBlank() && userCommIdClean.isNotBlank() && commIdClean == userCommIdClean) ||
-                (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
-                userEmail.contains("amiaach") ||
-                userEmail.contains("bahjaji") ||
-                userEmail.contains("bam") ||
-                userEmail.contains("belfkih") ||
-                userEmail.contains("khachi")
-            }
+            allClients.filter { c -> c.commercialId == userCommId }
         }
     }
 
-    val visibleOrders = remember(allOrders, isAdmin, userCommId, userEmail, userName) {
+    val visibleOrders = remember(allOrders, isAdmin, userCommId) {
         if (isAdmin) {
             allOrders
         } else {
-            allOrders.filter { o ->
-                o.commercialId == userCommId ||
-                (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
-                userEmail.contains("amiaach") ||
-                userEmail.contains("bahjaji") ||
-                userEmail.contains("bam") ||
-                userEmail.contains("belfkih") ||
-                userEmail.contains("khachi") ||
-                (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
-            }
+            allOrders.filter { o -> o.commercialId == userCommId }
         }
     }
 
     // Dynamic KPI stats calculated per user
     val ordersThisMonthCount = visibleOrders.size
     val totalRevenueTtc = visibleOrders.sumOf { it.totalTtc }
-    val ordersTodayCount = if (visibleOrders.isNotEmpty()) 1 else 0
     val activeClientsCount = visibleClients.size
 
     Scaffold(
@@ -139,7 +115,7 @@ fun DashboardScreen(
                 ) {
                     InteractiveKpiCard(
                         title = "Commandes du Jour",
-                        value = "$ordersTodayCount",
+                        value = "${visibleOrders.count { it.orderDate.startsWith(java.time.LocalDate.now().toString()) }}",
                         subtitle = "Aujourd'hui",
                         icon = Icons.Default.Today,
                         accentColor = StatusValidated,

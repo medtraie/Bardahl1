@@ -225,11 +225,16 @@ class SupabaseService(
                 put("commercial_id", order.commercialId)
                 put("client_id", order.clientId)
                 put("status", order.status.name.lowercase())
+                put("order_date", order.orderDate)
                 put("total_ht", order.totalHt)
                 put("total_discount", order.totalDiscount)
                 put("total_tva", order.totalTva)
                 put("total_ttc", order.totalTtc)
+                put("payment_method", order.paymentMethod)
+                put("mode_expedition", order.modeExpedition)
                 put("observations", order.observations ?: "")
+                put("commercial_name", order.commercialName)
+                put("client_name", order.clientName)
             }
             conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
             return@withContext conn.responseCode in 200..299

@@ -18,69 +18,77 @@ sealed class AuthState {
 }
 
 class AuthViewModel : ViewModel() {
+    private val supabaseService = com.bardahl.maroc.data.remote.SupabaseService()
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    fun login(email: String, password: String, role: UserRole) {
+    // Cache commercials after first fetch so login can validate against real data
+    private var _commercials: List<Commercial> = emptyList()
+
+    init {
+        // Pre-load commercials list on startup so login is immediate
+        viewModelScope.launch {
+            try {
+                _commercials = supabaseService.fetchCommercials()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun login(email: String, password: String, role: com.bardahl.maroc.domain.model.UserRole) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            kotlinx.coroutines.delay(300)
 
             val cleanEmail = email.trim().lowercase()
 
-            if (cleanEmail.isNotBlank()) {
-                if (cleanEmail == "bardahl@gmail.com") {
-                    val user = User(
-                        id = "11111111-1111-1111-1111-111111111111",
-                        email = "bardahl@gmail.com",
-                        role = UserRole.ADMIN,
-                        firstName = "Direction",
-                        lastName = "Bardahl (Admin)",
-                        phone = "+212 5 22 11 22 33"
-                    )
-                    _authState.value = AuthState.Success(user, null)
-                } else {
-                    val matchedCommName = when {
-                        cleanEmail.contains("bahjaji") -> "Bahjaji"
-                        cleanEmail.contains("amiaach") -> "Amiaach"
-                        cleanEmail.contains("belfkih") -> "BELFKIH"
-                        cleanEmail.contains("bam") -> "Bam"
-                        cleanEmail.contains("khachi") -> "KHACHI"
-                        else -> "Mohammed amine"
-                    }
-                    val matchedCommId = when {
-                        cleanEmail.contains("bahjaji") -> "COM-3"
-                        cleanEmail.contains("amiaach") -> "COM-02"
-                        cleanEmail.contains("belfkih") -> "COM-5"
-                        cleanEmail.contains("bam") -> "COM-4"
-                        cleanEmail.contains("khachi") -> "COM-6"
-                        else -> "COM-1"
-                    }
-                    val user = User(
-                        id = matchedCommId,
-                        email = cleanEmail,
-                        role = UserRole.COMMERCIAL,
-                        firstName = matchedCommName,
-                        lastName = "",
-                        phone = "+212 6 61 00 11 22"
-                    )
-                    val commercial = Commercial(
-                        id = matchedCommId,
-                        userId = user.id,
-                        name = matchedCommName,
-                        email = user.email,
-                        phone = user.phone,
-                        matricule = "COMM-001",
-                        city = "Casablanca",
-                        targetMonthlySales = 150000.0,
-                        currentMonthSales = 0.0,
-                        totalOrdersCount = 0
-                    )
-                    _authState.value = AuthState.Success(user, commercial)
-                }
-            } else {
+            if (cleanEmail.isBlank()) {
                 _authState.value = AuthState.Error("Veuillez saisir une adresse email valide.")
+                return@launch
             }
+
+            // Admin login
+            if (cleanEmail == "bardahl@gmail.com") {
+                val user = User(
+                    id = "11111111-1111-1111-1111-111111111111",
+                    email = "bardahl@gmail.com",
+                    role = UserRole.ADMIN,
+                    firstName = "Direction",
+                    lastName = "Bardahl (Admin)",
+                    phone = "+212 5 22 11 22 33"
+                )
+                _authState.value = AuthState.Success(user, null)
+                return@launch
+            }
+
+            // Ensure commercials are loaded
+            if (_commercials.isEmpty()) {
+                try {
+                    _commercials = supabaseService.fetchCommercials()
+                } catch (e: Exception) {
+                    _authState.value = AuthState.Error("Impossible de vérifier les identifiants. Vérifiez votre connexion.")
+                    return@launch
+                }
+            }
+
+            // Find commercial by email
+            val comm = _commercials.find { it.email.trim().lowercase() == cleanEmail }
+            if (comm == null) {
+                _authState.value = AuthState.Error("Aucun compte trouvé pour \"$cleanEmail\".")
+                return@launch
+            }
+
+            // Accept any password (same as web: "123456" default but any passes if no strict check)
+            val user = User(
+                id = comm.id,
+                email = comm.email,
+                role = UserRole.COMMERCIAL,
+                firstName = comm.name,
+                lastName = "",
+                phone = comm.phone
+            )
+            _authState.value = AuthState.Success(user, comm)
         }
     }
 
@@ -114,19 +122,8 @@ class DashboardViewModel(
     fun loadLiveStats() {
         viewModelScope.launch {
             try {
-                val orders = orderRepository.fetchRemoteOrdersDirectly()
                 val clients = clientRepository.fetchRemoteClientsDirectly()
-                val products = productRepository.fetchRemoteProductsDirectly()
-
-                val totalRevenue = orders.sumOf { it.totalTtc }
-                _stats.value = DashboardStats(
-                    totalOrders = orders.size,
-                    ordersToday = 0,
-                    ordersThisMonth = orders.size,
-                    totalRevenueTtc = totalRevenue,
-                    activeClientsCount = clients.size,
-                    activeProductsCount = if (products.isNotEmpty()) products.size else BardahlCatalogData.allProducts.size
-                )
+                _stats.value = _stats.value.copy(activeClientsCount = clients.size)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

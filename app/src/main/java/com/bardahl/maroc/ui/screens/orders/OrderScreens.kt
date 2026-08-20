@@ -53,23 +53,17 @@ fun OrderListScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val context = LocalContext.current
 
-    // Role-based order filtering matching Web app
+    // Refresh orders every time the screen is opened
+    LaunchedEffect(Unit) {
+        orderViewModel.refreshOrdersFromSupabase()
+    }
+
+    // Role-based order filtering - mirrors Web AppContext visibleOrders logic (exact ID match)
+    val userCommId = currentUser?.id ?: ""
     val visibleOrders = if (isAdmin) {
         orders
     } else {
-        val userCommId = currentUser?.id ?: ""
-        val userEmail = currentUser?.email?.lowercase() ?: ""
-        val userName = (currentUser?.firstName ?: "").lowercase()
-        orders.filter { o ->
-            o.commercialId == userCommId ||
-            (userEmail.contains("mohammed") || userEmail.contains("amine")) ||
-            userEmail.contains("amiaach") ||
-            userEmail.contains("bahjaji") ||
-            userEmail.contains("bam") ||
-            userEmail.contains("belfkih") ||
-            userEmail.contains("khachi") ||
-            (userName.isNotBlank() && o.commercialName.lowercase().contains(userName))
-        }
+        orders.filter { o -> o.commercialId == userCommId }
     }
 
     Scaffold(
@@ -200,12 +194,19 @@ fun OrderCreateScreen(
     orderViewModel: OrderViewModel,
     clientViewModel: ClientViewModel,
     productViewModel: ProductViewModel,
+    authViewModel: AuthViewModel,
     onOrderCreated: () -> Unit
 ) {
     val clients by clientViewModel.clientsList.collectAsState()
     val products by productViewModel.products.collectAsState()
     val existingOrders by orderViewModel.orders.collectAsState()
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Success)?.user
     val context = LocalContext.current
+
+    // Commercial identity from logged-in user
+    val commercialId = currentUser?.id ?: ""
+    val commercialName = currentUser?.firstName ?: ""
 
     // Suggested Next Serial Number
     val suggestedOrderNumber = remember(existingOrders) {
@@ -631,14 +632,15 @@ fun OrderCreateScreen(
                 onClick = {
                     if (selectedClient != null && selectedItems.isNotEmpty()) {
                         val finalOrderNumber = customOrderNumber.ifBlank { suggestedOrderNumber }
+                        val today = java.time.LocalDate.now().toString()
                         val newOrder = Order(
                             id = java.util.UUID.randomUUID().toString(),
                             orderNumber = finalOrderNumber,
-                            commercialId = "c8888888-8888-8888-8888-888888888888",
-                            commercialName = "Mohammed amine",
+                            commercialId = commercialId,
+                            commercialName = commercialName,
                             clientId = selectedClient!!.id,
                             clientName = selectedClient!!.companyName,
-                            orderDate = "2026-08-09 22:00",
+                            orderDate = today,
                             status = OrderStatus.VALIDATED,
                             items = selectedItems,
                             paymentMethod = selectedPaymentMethod,

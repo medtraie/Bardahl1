@@ -234,6 +234,7 @@ fun MainAppNavHost(
                         orderViewModel = orderViewModel,
                         clientViewModel = clientViewModel,
                         productViewModel = productViewModel,
+                        authViewModel = authViewModel,
                         onOrderCreated = { navController.popBackStack() }
                     )
                 }
