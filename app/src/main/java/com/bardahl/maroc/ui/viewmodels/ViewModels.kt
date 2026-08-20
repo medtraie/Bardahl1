@@ -97,11 +97,11 @@ class DashboardViewModel(
 
     private val _stats = MutableStateFlow(
         DashboardStats(
-            totalOrders = 3,
-            ordersToday = 1,
-            ordersThisMonth = 3,
-            totalRevenueTtc = 28920.0,
-            activeClientsCount = 3,
+            totalOrders = 0,
+            ordersToday = 0,
+            ordersThisMonth = 0,
+            totalRevenueTtc = 0.0,
+            activeClientsCount = 0,
             activeProductsCount = BardahlCatalogData.allProducts.size
         )
     )
@@ -120,11 +120,11 @@ class DashboardViewModel(
 
                 val totalRevenue = orders.sumOf { it.totalTtc }
                 _stats.value = DashboardStats(
-                    totalOrders = if (orders.isNotEmpty()) orders.size else 3,
-                    ordersToday = if (orders.isNotEmpty()) 1 else 1,
-                    ordersThisMonth = if (orders.isNotEmpty()) orders.size else 3,
-                    totalRevenueTtc = if (totalRevenue > 0) totalRevenue else 28920.0,
-                    activeClientsCount = if (clients.isNotEmpty()) clients.size else 3,
+                    totalOrders = orders.size,
+                    ordersToday = 0,
+                    ordersThisMonth = orders.size,
+                    totalRevenueTtc = totalRevenue,
+                    activeClientsCount = clients.size,
                     activeProductsCount = if (products.isNotEmpty()) products.size else BardahlCatalogData.allProducts.size
                 )
             } catch (e: Exception) {
@@ -212,49 +212,7 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
 }
 
 class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel() {
-    private val _orders = MutableStateFlow<List<Order>>(
-        listOf(
-            Order(
-                id = "o1",
-                orderNumber = "BC-2026-004332",
-                commercialId = "COM-1",
-                commercialName = "Mohammed amine",
-                clientId = "c1",
-                clientName = "Auto Service Ain Sebaa",
-                orderDate = "2026-08-05",
-                status = OrderStatus.VALIDATED,
-                totalHt = 4250.0,
-                totalTva = 850.0,
-                totalTtc = 5100.0
-            ),
-            Order(
-                id = "o2",
-                orderNumber = "BC-2026-004333",
-                commercialId = "COM-1",
-                commercialName = "Mohammed amine",
-                clientId = "c2",
-                clientName = "Station Afriquia Route de Rabat",
-                orderDate = "2026-08-05",
-                status = OrderStatus.DRAFT,
-                totalHt = 7450.0,
-                totalTva = 1490.0,
-                totalTtc = 8940.0
-            ),
-            Order(
-                id = "o3",
-                orderNumber = "BC-2026-004334",
-                commercialId = "COM-3",
-                commercialName = "Bahjaji",
-                clientId = "c3",
-                clientName = "Transport & Logistique du Sud",
-                orderDate = "2026-08-06",
-                status = OrderStatus.VALIDATED,
-                totalHt = 12400.0,
-                totalTva = 2480.0,
-                totalTtc = 14880.0
-            )
-        )
-    )
+    private val _orders = MutableStateFlow<List<Order>>(emptyList())
     val orders: StateFlow<List<Order>> = _orders.asStateFlow()
 
     init {
@@ -265,9 +223,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
         viewModelScope.launch {
             try {
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
-                if (remote.isNotEmpty()) {
-                    _orders.value = remote
-                }
+                _orders.value = remote
             } catch (e: Exception) {
                 e.printStackTrace()
             }
