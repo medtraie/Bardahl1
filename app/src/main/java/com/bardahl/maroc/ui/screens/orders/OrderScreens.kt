@@ -227,6 +227,9 @@ fun OrderCreateScreen(
     var showProductBrowser by remember { mutableStateOf(false) }
     var productToQuantityPick by remember { mutableStateOf<Product?>(null) }
 
+    // Client search state (must be top-level, not inside if block)
+    var clientSearch by remember { mutableStateOf("") }
+
     // Financial Calculations
     val grossTotalTtc = selectedItems.sumOf { it.totalTtc }
     val globalRemisePercent = globalRemisePercentStr.toDoubleOrNull() ?: 0.0
@@ -293,29 +296,69 @@ fun OrderCreateScreen(
 
             // Step 1: Select Client Card
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text("1. Sélectionner le Client", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                Text("1. Sélectionner le Client *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
                 Spacer(modifier = Modifier.height(8.dp))
                 if (selectedClient == null) {
-                    Text("Choisissez un client dans votre portefeuille ci-dessous :", fontSize = 12.sp, color = TextSecondaryDark)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        clients.forEach { client ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(DarkSurface)
-                                    .clickable { selectedClient = client }
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(client.companyName, color = TextPrimaryDark, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Text("ICE: ${client.ice}", color = TextSecondaryDark, fontSize = 11.sp)
+                    // filteredClients uses top-level clientSearch state
+                    val filteredClients = if (clientSearch.isBlank()) clients.take(50)
+                    else clients.filter {
+                        it.companyName.contains(clientSearch, ignoreCase = true) ||
+                        it.ifCode.contains(clientSearch, ignoreCase = true) ||
+                        it.ice.contains(clientSearch, ignoreCase = true)
+                    }.take(50)
+
+                    OutlinedTextField(
+                        value = clientSearch,
+                        onValueChange = { clientSearch = it },
+                        placeholder = { Text("Rechercher par nom ou code client...", fontSize = 12.sp, color = TextSecondaryDark) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = BardahlYellow) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BardahlYellow,
+                            unfocusedBorderColor = BardahlCardBorder,
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (filteredClients.isEmpty()) {
+                        Text("Aucun client trouvé.", fontSize = 12.sp, color = TextSecondaryDark)
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(filteredClients) { client ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(DarkSurface)
+                                        .clickable { selectedClient = client }
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(client.companyName, color = TextPrimaryDark, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "Code: ${client.ifCode.ifBlank { "-" }} | ICE: ${client.ice}",
+                                            color = TextSecondaryDark,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                    Text(client.city, color = BardahlYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(client.city, color = BardahlYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
+                        }
+                        if (clientSearch.isBlank()) {
+                            Text(
+                                "Affichage des 50 premiers. Tapez pour rechercher parmi ${clients.size} clients.",
+                                fontSize = 10.sp,
+                                color = TextSecondaryDark
+                            )
                         }
                     }
                 } else {
@@ -328,7 +371,7 @@ fun OrderCreateScreen(
                             Text(selectedClient!!.companyName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimaryDark)
                             Text("ICE: ${selectedClient!!.ice} | ${selectedClient!!.city}", fontSize = 11.sp, color = TextSecondaryDark)
                         }
-                        IconButton(onClick = { selectedClient = null }) {
+                        IconButton(onClick = { selectedClient = null; clientSearch = "" }) {
                             Icon(Icons.Default.Edit, contentDescription = "Changer", tint = BardahlYellow)
                         }
                     }
@@ -673,9 +716,11 @@ fun OrderCreateScreen(
     if (showProductBrowser) {
         var productSearch by remember { mutableStateOf("") }
         val filteredProds = products.filter {
+            productSearch.isBlank() ||
             it.name.contains(productSearch, ignoreCase = true) ||
             it.reference.contains(productSearch, ignoreCase = true) ||
-            it.code.contains(productSearch, ignoreCase = true)
+            it.code.contains(productSearch, ignoreCase = true) ||
+            it.code.startsWith(productSearch, ignoreCase = true)
         }
 
         AlertDialog(
@@ -687,7 +732,7 @@ fun OrderCreateScreen(
                     BardahlTextField(
                         value = productSearch,
                         onValueChange = { productSearch = it },
-                        label = "Chercher nom ou référence...",
+                        label = "Chercher par nom, Réf ou Code Article...",
                         leadingIcon = Icons.Default.Search
                     )
                     Spacer(modifier = Modifier.height(10.dp))
