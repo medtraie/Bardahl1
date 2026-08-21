@@ -94,24 +94,25 @@ export function generateOrderPdf(order) {
   const rows = itemsList.map(i => {
     const ref = i.reference || i.productReference || i.code || '34131'
     const name = i.productName || i.name || i.product_name || 'Produit Bardahl'
-    const qty = parseInt(i.qty || i.quantity || 1)
+    const qty = parseInt(i.qty || i.quantity || 1, 10)
+    const qtyGratuit = parseInt(i.qtyGratuit || i.freeQty || 0, 10)
     const priceTtc = parseFloat(i.priceTtc || i.unitPriceTtc || i.unit_price || i.price || 0)
-    const remise = parseFloat(i.remise || i.discount || i.discountPercentage || 0)
-    const lineTotal = (priceTtc * qty * (1 - (remise / 100)))
+    const lineTotal = (priceTtc * qty)
+    const gratuitText = qtyGratuit > 0 ? `+${qtyGratuit} Offert` : '-'
 
     return [
       ref,
       name,
       qty.toString(),
+      gratuitText,
       priceTtc.toFixed(2) + " DH",
-      remise > 0 ? remise + "%" : "-",
       lineTotal.toFixed(2) + " DH"
     ]
   })
 
   doc.autoTable({
     startY: 92,
-    head: [['Réf.', 'Désignation de la Marchandise', 'Qté', 'Prix U. TTC', 'Remise', 'Total TTC']],
+    head: [['Réf.', 'Désignation de la Marchandise', 'Qté Fact.', 'Gratuité', 'Prix U. TTC', 'Total TTC']],
     body: rows,
     headStyles: {
       fillColor: [20, 23, 31],
@@ -132,19 +133,31 @@ export function generateOrderPdf(order) {
   // 5. Remarques, Totals & Signatures
   let finalY = doc.lastAutoTable.finalY + 8
 
-  // Optional Remarque Box if specified
-  if (order.remarque && order.remarque.trim()) {
+  // Optional Remarque / Promo Note Box if specified
+  const hasRemarque = order.remarque && order.remarque.trim()
+  const hasPromoNote = order.promoNote && order.promoNote.trim()
+
+  if (hasRemarque || hasPromoNote) {
     doc.setFillColor(248, 249, 250)
     doc.setDrawColor(255, 208, 0)
-    doc.roundedRect(14, finalY, 182, 14, 2, 2, 'FD')
+    doc.roundedRect(14, finalY, 182, (hasRemarque && hasPromoNote ? 18 : 12), 2, 2, 'FD')
     doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(13, 15, 18)
-    doc.text("REMARQUES / INSTRUCTIONS DE LIVRAISON :", 18, finalY + 5)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(74, 85, 104)
-    doc.text(order.remarque, 18, finalY + 10)
-    finalY += 18
+    
+    let noteY = finalY + 4
+    if (hasPromoNote) {
+      doc.text("OFFRE PROMOTIONNELLE : " + order.promoNote, 18, noteY)
+      noteY += 5
+    }
+    if (hasRemarque) {
+      doc.setFont('helvetica', 'bold')
+      doc.text("INSTRUCTIONS DE LIVRAISON : ", 18, noteY)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(74, 85, 104)
+      doc.text(order.remarque, 70, noteY)
+    }
+    finalY += (hasRemarque && hasPromoNote ? 22 : 16)
   }
 
   // Totals Box Right

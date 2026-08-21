@@ -14,9 +14,15 @@ import Settings from './pages/Settings'
 export default function App() {
   const { currentUser } = useApp()
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [openOrderWizardTrigger, setOpenOrderWizardTrigger] = useState(0)
 
   if (!currentUser) {
     return <Login />
+  }
+
+  const handleOpenNewOrder = () => {
+    setActiveTab('orders')
+    setOpenOrderWizardTrigger(prev => prev + 1)
   }
 
   const titles = {
@@ -33,12 +39,12 @@ export default function App() {
     <div className="app-container">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="main-content">
-        <Header title={titles[activeTab] || "Bardahl Maroc"} onNewOrderClick={() => setActiveTab('orders')} />
+        <Header title={titles[activeTab] || "Bardahl Maroc"} onNewOrderClick={handleOpenNewOrder} />
         
-        {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={() => setActiveTab('orders')} />}
+        {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
         {activeTab === 'clients' && <Clients />}
         {activeTab === 'products' && <Products />}
-        {activeTab === 'orders' && <Orders onNewOrderClick={() => setActiveTab('orders')} />}
+        {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
         {activeTab === 'commercials' && <Commercials />}
         {activeTab === 'analytics' && <Analytics />}
         {activeTab === 'settings' && <Settings />}

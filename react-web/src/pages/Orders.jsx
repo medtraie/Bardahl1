@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
-import { Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2, CreditCard, Hash, Percent, Filter, Truck, MessageSquare, User } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2, CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag, Sparkles } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf } from '../utils/pdfGenerator'
 import { exportOrdersToExcel } from '../utils/excelExporter'
 
-export default function Orders({ onNewOrderClick }) {
+export default function Orders({ openWizardTrigger }) {
   const { orders, clients, products, commercials, addOrder, updateOrder, deleteOrder, currentUser } = useApp()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -19,6 +19,8 @@ export default function Orders({ onNewOrderClick }) {
   const [modeExpedition, setModeExpedition] = useState('Transport Bardahl')
   const [remarque, setRemarque] = useState('')
   const [remisePercent, setRemisePercent] = useState(0)
+  const [remiseMontant, setRemiseMontant] = useState(0)
+  const [promoNote, setPromoNote] = useState('')
   const [selectedProducts, setSelectedProducts] = useState([])
 
   // Searchable Select States
@@ -30,13 +32,35 @@ export default function Orders({ onNewOrderClick }) {
   const suggestedOrderNumber = `BC-2026-00${4332 + orders.length + 1}`
   const activeOrderNumber = customOrderNumber.trim() || suggestedOrderNumber
 
+  // Trigger modal open from header / dashboard buttons
+  useEffect(() => {
+    if (openWizardTrigger && openWizardTrigger > 0) {
+      handleOpenAddWizard()
+    }
+  }, [openWizardTrigger])
+
   const filteredOrders = orders.filter(o => {
-    const matchesSearch = o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-                          o.clientName.toLowerCase().includes(search.toLowerCase())
+    const matchesSearch = (o.orderNumber || '').toLowerCase().includes(search.toLowerCase()) ||
+                          (o.clientName || '').toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'ALL' || o.status === statusFilter
     const matchesCommercial = commercialFilter === 'ALL' ||
       (o.commercialName && o.commercialName.trim().toLowerCase() === commercialFilter.trim().toLowerCase())
     return matchesSearch && matchesStatus && matchesCommercial
+  })
+
+  const filteredClientOptions = clients.filter(c => {
+    const q = clientSearchQuery.toLowerCase()
+    return (c.companyName || '').toLowerCase().includes(q) ||
+           (c.codeClient || '').toLowerCase().includes(q) ||
+           (c.ice || '').toLowerCase().includes(q) ||
+           (c.city || '').toLowerCase().includes(q)
+  })
+
+  const filteredProductOptions = products.filter(p => {
+    const q = productSearchQuery.toLowerCase()
+    return (p.name || '').toLowerCase().includes(q) ||
+           (p.reference || '').toLowerCase().includes(q) ||
+           (p.code || '').toLowerCase().includes(q)
   })
 
   const handleOpenAddWizard = () => {
@@ -48,6 +72,8 @@ export default function Orders({ onNewOrderClick }) {
     setModeExpedition('Transport Bardahl')
     setRemarque('')
     setRemisePercent(0)
+    setRemiseMontant(0)
+    setPromoNote('')
     setSelectedProducts([])
     setShowOrderWizard(true)
   }
@@ -66,17 +92,19 @@ export default function Orders({ onNewOrderClick }) {
     setModeExpedition(order.modeExpedition || 'Transport Bardahl')
     setRemarque(order.remarque || '')
     setRemisePercent(order.remisePercent || 0)
+    setRemiseMontant(order.remiseMontant || 0)
+    setPromoNote(order.promoNote || '')
     setSelectedProducts(order.items ? order.items.map(i => ({
       productId: i.productId || i.reference,
-      productName: i.productName,
-      reference: i.reference,
-      priceTtc: i.priceTtc,
-      qty: i.qty,
-      remise: i.remise || 0
+      productName: i.productName || i.name,
+      reference: i.reference || i.code,
+      priceTtc: parseFloat(i.priceTtc || i.unitPriceTtc || 0),
+      qty: parseInt(i.qty || i.quantity || 1, 10),
+      qtyGratuit: parseInt(i.qtyGratuit || i.freeQty || 0, 10),
+      promoTag: i.promoTag || ''
     })) : [])
     setShowOrderWizard(true)
   }
-
 
   const handleDeleteOrder = (order) => {
     if (window.confirm(`Voulez-vous vraiment supprimer le bon de commande ${order.orderNumber} ?`)) {
@@ -96,20 +124,40 @@ export default function Orders({ onNewOrderClick }) {
           productId: prod.id,
           productName: prod.name,
           reference: prod.reference,
-          priceTtc: prod.priceTtc,
+          priceTtc: parseFloat(prod.priceTtc) || 0,
           qty: 1,
-          remise: 0
+          qtyGratuit: 0,
+          promoTag: ''
         }])
       }
     }
   }
 
   const handleQtyChange = (index, newQty) => {
-    if (newQty <= 0) {
+    const val = parseInt(newQty, 10)
+    if (isNaN(val) || val <= 0) {
       setSelectedProducts(prev => prev.filter((_, i) => i !== index))
     } else {
-      setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: parseInt(newQty) } : p))
+      setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: val } : p))
     }
+  }
+
+  const handleQtyGratuitChange = (index, newGratuit) => {
+    const val = Math.max(0, parseInt(newGratuit, 10) || 0)
+    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: val } : p))
+  }
+
+  const handleTogglePromoLine = (index, promoType) => {
+    setSelectedProducts(prev => prev.map((p, i) => {
+      if (i !== index) return p
+      if (promoType === '10+1') {
+        return { ...p, qtyGratuit: Math.max(1, Math.floor(p.qty / 10)), promoTag: 'Promo 10+1 Offert' }
+      } else if (promoType === '100%') {
+        return { ...p, qtyGratuit: p.qty, qty: 0, promoTag: 'Gratuité 100% (Échantillon)' }
+      } else {
+        return { ...p, qtyGratuit: p.qtyGratuit > 0 ? 0 : 1, promoTag: p.qtyGratuit > 0 ? '' : 'Article Offert' }
+      }
+    }))
   }
 
   React.useEffect(() => {
@@ -126,9 +174,11 @@ export default function Orders({ onNewOrderClick }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showOrderWizard])
 
-  // Financial Calculations
+  // Global Financial Calculations (Global Discount & Free Promo items)
   const grossTotalTtc = selectedProducts.reduce((sum, item) => sum + (item.priceTtc * item.qty), 0)
-  const totalDiscountAmount = grossTotalTtc * (remisePercent / 100)
+  const totalFreeItemsCount = selectedProducts.reduce((sum, item) => sum + (item.qtyGratuit || 0), 0)
+  const discountFromPercent = grossTotalTtc * (remisePercent / 100)
+  const totalDiscountAmount = discountFromPercent + (parseFloat(remiseMontant) || 0)
   const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount)
   const totalHt = netTotalTtc / 1.20
   const totalTva = netTotalTtc - totalHt
@@ -154,10 +204,13 @@ export default function Orders({ onNewOrderClick }) {
         modeExpedition: modeExpedition,
         remarque: remarque,
         remisePercent: remisePercent,
+        remiseMontant: parseFloat(remiseMontant) || 0,
+        promoNote: promoNote,
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
         totalTva: totalTva,
         totalTtc: netTotalTtc,
+        totalFreeItems: totalFreeItemsCount,
         items: selectedProducts
       }
       updateOrder(updatedOrder)
@@ -177,11 +230,14 @@ export default function Orders({ onNewOrderClick }) {
         modeExpedition: modeExpedition,
         remarque: remarque,
         remisePercent: remisePercent,
+        remiseMontant: parseFloat(remiseMontant) || 0,
+        promoNote: promoNote,
         status: "VALIDATED",
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
         totalTva: totalTva,
         totalTtc: netTotalTtc,
+        totalFreeItems: totalFreeItemsCount,
         items: selectedProducts
       }
       addOrder(newOrder)
@@ -196,119 +252,87 @@ export default function Orders({ onNewOrderClick }) {
     setModeExpedition('Transport Bardahl')
     setRemarque('')
     setRemisePercent(0)
+    setRemiseMontant(0)
+    setPromoNote('')
     setSelectedProducts([])
   }
-
-  const filteredClientOptions = clients.filter(c => {
-    const query = clientSearchQuery.toLowerCase()
-    const nameMatches = (c.companyName || '').toLowerCase().includes(query)
-    const codeMatches = (c.codeClient || '').toLowerCase().includes(query)
-    const cityMatches = (c.city || '').toLowerCase().includes(query)
-    return nameMatches || codeMatches || cityMatches
-  })
-
-  const filteredProductOptions = products.filter(p => {
-    const query = productSearchQuery.toLowerCase()
-    const nameMatches = (p.name || '').toLowerCase().includes(query)
-    const codeMatches = (p.code || '').toLowerCase().includes(query)
-    const refMatches = (p.reference || '').toLowerCase().includes(query)
-    return nameMatches || codeMatches || refMatches
-  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      {/* Header & Actions */}
+      {/* Header Controls & Actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF' }}>Gestion des Bons de Commande</h1>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Historique (Filtre Commercial, Ajouter, Modifier, Supprimer, Export Excel & PDF)
+            {filteredOrders.length} bons enregistrés au total
           </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={() => exportOrdersToExcel(orders)} className="btn-secondary" style={{ padding: '10px 18px', fontSize: '13px' }}>
-            <FileSpreadsheet style={{ width: '16px', height: '16px' }} /> Export Excel
+          <button
+            onClick={() => exportOrdersToExcel(orders)}
+            className="btn-secondary"
+            style={{ padding: '10px 16px', fontSize: '13px', color: '#34C759', borderColor: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <FileSpreadsheet style={{ width: '16px', height: '16px' }} /> Exporter Excel
           </button>
+
           <button onClick={handleOpenAddWizard} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
-            <Plus style={{ width: '16px', height: '16px' }} /> Nouveau Bon de Commande
+            <Plus style={{ width: '16px', height: '16px' }} /> Nouveau Bon
           </button>
         </div>
       </div>
 
-      {/* Filter Tabs, Search & Commercial Filter Row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        
-        {/* Search Bar */}
-        <div style={{ position: 'relative', width: '280px' }}>
-          <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Rechercher N° Bon, Client..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-field"
-            style={{ paddingLeft: '40px' }}
-          />
-        </div>
-
-        {/* Commercial Filter & Status Filter Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+      {/* Filter & Search Bar */}
+      <div className="glass-card" style={{ padding: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'center' }}>
           
-          {/* Commercial Dropdown Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <User style={{ width: '15px', height: '15px', color: 'var(--bardahl-yellow)' }} />
+          <div style={{ position: 'relative' }}>
+            <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder="Rechercher par N° Bon ou Client..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="input-field"
+              style={{ paddingLeft: '40px' }}
+            />
+          </div>
+
+          <div>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="input-field"
+              style={{ padding: '10px' }}
+            >
+              <option value="ALL">Tous les Statuts</option>
+              <option value="VALIDATED">Validés</option>
+              <option value="DRAFT">Brouillons</option>
+              <option value="DELIVERED">Livrés</option>
+              <option value="CANCELLED">Annulés</option>
+            </select>
+          </div>
+
+          <div>
             <select
               value={commercialFilter}
-              onChange={(e) => setCommercialFilter(e.target.value)}
+              onChange={e => setCommercialFilter(e.target.value)}
               className="input-field"
-              style={{ width: 'auto', minWidth: '180px', fontSize: '12px', padding: '8px 12px', fontWeight: '700' }}
+              style={{ padding: '10px' }}
             >
-              <option value="ALL">Tous les Commercials ({commercials.length})</option>
+              <option value="ALL">Tous les Représentants</option>
               {commercials.map(c => (
                 <option key={c.id} value={c.name}>{c.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Status Filter Tabs */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto' }}>
-            <Filter style={{ width: '15px', height: '15px', color: 'var(--bardahl-yellow)', flexShrink: 0 }} />
-            {[
-              { id: 'ALL', label: 'Tous les Bons' },
-              { id: 'VALIDATED', label: 'Validés' },
-              { id: 'DRAFT', label: 'Brouillons' },
-              { id: 'DELIVERED', label: 'Livrés' }
-            ].map(tab => {
-              const isSelected = statusFilter === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.2s ease',
-                    background: isSelected ? 'var(--bardahl-yellow)' : 'var(--bg-surface)',
-                    color: isSelected ? '#0D0F12' : 'var(--text-secondary)',
-                    border: isSelected ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
-                  }}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-
         </div>
-
       </div>
 
-      {/* Structured Orders Table Card */}
+      {/* Orders Table */}
       <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table className="custom-table">
@@ -316,10 +340,9 @@ export default function Orders({ onNewOrderClick }) {
               <tr>
                 <th>N° Bon</th>
                 <th>Date</th>
-                <th>Commercial</th>
                 <th>Client</th>
-                <th>Mode Paiement</th>
-                <th>Expédition</th>
+                <th>Commercial</th>
+                <th>Paiement</th>
                 <th>Total TTC</th>
                 <th>Statut</th>
                 <th>Actions</th>
@@ -328,20 +351,30 @@ export default function Orders({ onNewOrderClick }) {
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
-                    Aucun bon de commande ne correspond à vos critères de recherche.
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                    Aucun bon de commande trouvé pour ces critères.
                   </td>
                 </tr>
               ) : (
                 filteredOrders.map(o => (
                   <tr key={o.id}>
-                    <td><strong style={{ color: '#FFFFFF', fontSize: '14px' }}>{o.orderNumber}</strong></td>
-                    <td>{o.date}</td>
-                    <td><span style={{ fontWeight: '700', color: '#FFFFFF' }}>{o.commercialName}</span></td>
-                    <td><strong style={{ color: '#FFFFFF' }}>{o.clientName}</strong></td>
-                    <td><span style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px' }}>{o.paymentMethod || 'Chèque'}</span></td>
-                    <td><span style={{ color: '#007AFF', fontWeight: '600', fontSize: '11px' }}>{o.modeExpedition || 'Transport Bardahl'}</span></td>
-                    <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '15px' }}>{(o.totalTtc || 0).toFixed(2)} DH</td>
+                    <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
+                    <td style={{ fontSize: '12px' }}>{o.date}</td>
+                    <td>
+                      <div>
+                        <strong style={{ color: '#FFFFFF' }}>{o.clientName}</strong>
+                        {o.totalFreeItems > 0 && (
+                          <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
+                            +{o.totalFreeItems} Offert(s)
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{o.commercialName}</td>
+                    <td><span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: '#FFFFFF' }}>{o.paymentMethod || 'Chèque'}</span></td>
+                    <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '14px' }}>
+                      {(parseFloat(o.totalTtc) || 0).toFixed(2)} DH
+                    </td>
                     <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -349,7 +382,7 @@ export default function Orders({ onNewOrderClick }) {
                           onClick={() => generateOrderPdf(o)}
                           className="btn-secondary"
                           style={{ padding: '6px 10px', fontSize: '11px' }}
-                          title="PDF"
+                          title="Télécharger PDF"
                         >
                           <FileText style={{ width: '14px', height: '14px' }} /> PDF
                         </button>
@@ -381,33 +414,25 @@ export default function Orders({ onNewOrderClick }) {
       {/* Order Creation / Edit Wizard Dialog */}
       {showOrderWizard && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '780px', maxHeight: '90vh', overflowY: 'auto', borderColor: 'rgba(255, 208, 0, 0.4)' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '840px', maxHeight: '90vh', overflowY: 'auto', borderColor: 'rgba(255, 208, 0, 0.4)' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid var(--border-card)' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <FileText style={{ width: '22px', height: '22px', color: 'var(--bardahl-yellow)' }} />
                 {editingOrder ? `Modifier Bon de Commande ${editingOrder.orderNumber}` : 'Création Bon de Commande Bardahl'}
               </h3>
-              <button onClick={() => { setShowOrderWizard(false); setEditingOrder(null); setClientSearchQuery(''); setProductSearchQuery(''); }} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer' }}>
+              <button onClick={() => { setShowOrderWizard(false); setEditingOrder(null); setClientSearchQuery(''); setProductSearchQuery(''); }} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer', background: 'none', border: 'none' }}>
                 &times;
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               
-              {/* Step 0: Numéro de Série Modifiable */}
               <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                 <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Hash style={{ width: '16px', height: '16px' }} /> Numéro de Série du Bon (Modifiable)
+                  <Hash style={{ width: '16px', height: '16px' }} /> N° de Bon
                 </label>
-                <input
-                  type="text"
-                  value={customOrderNumber}
-                  onChange={e => setCustomOrderNumber(e.target.value)}
-                  placeholder={suggestedOrderNumber}
-                  className="input-field"
-                  style={{ fontWeight: '800', color: '#FFFFFF' }}
-                />
+                <input type="text" value={customOrderNumber} onChange={e => setCustomOrderNumber(e.target.value)} placeholder={suggestedOrderNumber} className="input-field" />
               </div>
 
               {/* Step 1: Select Client */}
@@ -419,82 +444,44 @@ export default function Orders({ onNewOrderClick }) {
                   <input
                     type="text"
                     className="input-field"
-                    placeholder="🔎 Rechercher par code client (ex: CL00477) ou par nom..."
+                    placeholder="🔎 Rechercher par code client (ex: CL00477), nom ou ville..."
                     value={clientSearchQuery}
                     onChange={e => {
                       setClientSearchQuery(e.target.value)
                       setShowClientDropdown(true)
-                      if (!e.target.value) {
-                        setSelectedClient('')
-                      }
+                      if (!e.target.value) setSelectedClient('')
                     }}
                     onFocus={() => setShowClientDropdown(true)}
                   />
                   {showClientDropdown && (
                     <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border-card)',
-                      borderRadius: '12px',
-                      maxHeight: '250px',
-                      overflowY: 'auto',
-                      zIndex: 1010,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                      position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-card)',
+                      borderRadius: '12px', maxHeight: '200px', overflowY: 'auto', zIndex: 1010, boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
                     }}>
-                      {filteredClientOptions.length === 0 ? (
-                        <div style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '13px' }}>Aucun client trouvé</div>
-                      ) : (
-                        filteredClientOptions.slice(0, 100).map(c => (
-                          <div
-                            key={c.id}
-                            onClick={() => {
-                              setSelectedClient(c.id)
-                              setClientSearchQuery(`${c.codeClient ? '[' + c.codeClient + '] ' : ''}${c.companyName} (${c.city})`)
-                              setShowClientDropdown(false)
-                            }}
-                            style={{
-                              padding: '10px 14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid rgba(255,255,255,0.05)',
-                              fontSize: '13px',
-                              background: selectedClient === c.id ? 'rgba(255,208,0,0.15)' : 'transparent',
-                              color: selectedClient === c.id ? 'var(--bardahl-yellow)' : 'var(--text-primary)',
-                              transition: 'background 0.2s'
-                            }}
-                            onMouseEnter={e => e.target.style.background = 'rgba(255,208,0,0.08)'}
-                            onMouseLeave={e => e.target.style.background = selectedClient === c.id ? 'rgba(255,208,0,0.15)' : 'transparent'}
-                          >
-                            <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.codeClient ? `[${c.codeClient}] ` : ''}</strong>
-                            {c.companyName} ({c.city}) - ICE: {c.ice}
-                          </div>
-                        ))
-                      )}
+                      {filteredClientOptions.map(c => (
+                        <div key={c.id} onClick={() => { setSelectedClient(c.id); setClientSearchQuery(`${c.companyName} (${c.city})`); setShowClientDropdown(false); }} style={{ padding: '10px', cursor: 'pointer', borderBottom: '1px solid #222' }}>
+                          <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.codeClient}</strong> - {c.companyName} ({c.city})
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Step 2: Mode de Paiement & Mode d'Expédition (Dual Column) */}
+              {/* Step 2: Mode de Paiement & Expédition */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <CreditCard style={{ width: '16px', height: '16px' }} /> 2. Mode de Paiement
                   </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {['Chèque', 'Virement', 'Espèces', 'Traite'].map(method => (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '6px' }}>
+                    {['Chèque', 'Virement', 'Carte Bancaire', 'Espèces', 'Traite'].map(method => (
                       <button
                         key={method}
                         type="button"
                         onClick={() => setPaymentMethod(method)}
                         style={{
-                          padding: '8px',
-                          borderRadius: '8px',
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          transition: 'all 0.2s ease',
+                          padding: '8px 6px', borderRadius: '8px', fontSize: '11px', fontWeight: '800', cursor: 'pointer',
                           background: paymentMethod === method ? 'var(--bardahl-yellow)' : '#14171F',
                           color: paymentMethod === method ? '#0D0F12' : 'var(--text-secondary)',
                           border: paymentMethod === method ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
@@ -510,16 +497,11 @@ export default function Orders({ onNewOrderClick }) {
                   <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Truck style={{ width: '16px', height: '16px' }} /> 3. Mode d'Expédition
                   </label>
-                  <select
-                    value={modeExpedition}
-                    onChange={e => setModeExpedition(e.target.value)}
-                    className="input-field"
-                    style={{ fontSize: '12px', padding: '10px' }}
-                  >
-                    <option value="Transport Bardahl">Transport Bardahl (Livraison Usine)</option>
-                    <option value="Livraison Client">Livraison Sur Site Client</option>
-                    <option value="Enlèvement Magasin">Enlèvement Sur Place (Magasin)</option>
-                    <option value="Transporteur Externe">Transporteur Externe / Messagerie</option>
+                  <select value={modeExpedition} onChange={e => setModeExpedition(e.target.value)} className="input-field">
+                    <option value="Transport Bardahl">Transport Bardahl</option>
+                    <option value="Livraison Client">Livraison Client</option>
+                    <option value="Enlèvement Magasin">Enlèvement Magasin</option>
+                    <option value="Transporteur Externe">Transporteur Externe</option>
                   </select>
                 </div>
               </div>
@@ -527,69 +509,23 @@ export default function Orders({ onNewOrderClick }) {
               {/* Step 3: Add Products */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase' }}>
-                    4. Articles de la Commande *
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Gift style={{ width: '16px', height: '16px' }} /> 4. Articles & Gratuités *
                   </label>
-                  <div className="product-search-container" style={{ position: 'relative', width: '320px' }}>
+                  <div className="product-search-container" style={{ position: 'relative', width: '340px' }}>
                     <input
-                      type="text"
-                      className="input-field"
-                      style={{ fontSize: '12px', padding: '6px 12px' }}
-                      placeholder="🔎 Réf, Code Article ou Désignation..."
+                      type="text" className="input-field" placeholder="🔎 Rechercher article..."
                       value={productSearchQuery}
-                      onChange={e => {
-                        setProductSearchQuery(e.target.value)
-                        setShowProductDropdown(true)
-                      }}
+                      onChange={e => { setProductSearchQuery(e.target.value); setShowProductDropdown(true); }}
                       onFocus={() => setShowProductDropdown(true)}
                     />
                     {showProductDropdown && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border-card)',
-                        borderRadius: '12px',
-                        maxHeight: '250px',
-                        overflowY: 'auto',
-                        zIndex: 1010,
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                      }}>
-                        {filteredProductOptions.length === 0 ? (
-                          <div style={{ padding: '10px', color: 'var(--text-secondary)', fontSize: '12px' }}>Aucun produit trouvé</div>
-                        ) : (
-                          filteredProductOptions.slice(0, 100).map(p => (
-                            <div
-                              key={p.id}
-                              onClick={() => {
-                                handleAddProduct(p.id)
-                                setProductSearchQuery('')
-                                setShowProductDropdown(false)
-                              }}
-                              style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                fontSize: '12px',
-                                color: 'var(--text-primary)',
-                                transition: 'background 0.2s'
-                              }}
-                              onMouseEnter={e => e.target.style.background = 'rgba(255,208,0,0.08)'}
-                              onMouseLeave={e => e.target.style.background = 'transparent'}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700' }}>
-                                <span style={{ color: 'var(--bardahl-yellow)' }}>Ref: {p.reference}</span>
-                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{p.code}</span>
-                              </div>
-                              <div style={{ marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
-                                <span>{p.name}</span>
-                                <strong style={{ color: 'var(--text-primary)' }}>{p.priceTtc} DH</strong>
-                              </div>
-                            </div>
-                          ))
-                        )}
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#14171F', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', zIndex: 1010 }}>
+                        {filteredProductOptions.map(p => (
+                          <div key={p.id} onClick={() => { handleAddProduct(p.id); setProductSearchQuery(''); setShowProductDropdown(false); }} style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #222' }}>
+                            {p.reference} - {p.name}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -600,112 +536,144 @@ export default function Orders({ onNewOrderClick }) {
                     <thead>
                       <tr>
                         <th>Réf.</th>
-                        <th>Désignation Produit</th>
+                        <th>Produit</th>
                         <th>Qté</th>
-                        <th>Prix U. TTC</th>
-                        <th>Total TTC</th>
-                        <th>Action</th>
+                        <th>Gratuit</th>
+                        <th>Prix U.</th>
+                        <th>Total</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProducts.length === 0 ? (
-                        <tr>
-                          <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
-                            Aucun produit ajouté. Utilisez le menu ci-dessus pour ajouter des articles.
+                      {selectedProducts.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>{item.reference}</td>
+                          <td><strong>{item.productName}</strong>{item.promoTag && <div style={{ fontSize: '10px', color: '#34C759' }}>{item.promoTag}</div>}</td>
+                          <td><input type="number" value={item.qty} onChange={e => handleQtyChange(idx, e.target.value)} className="input-field" style={{ width: '50px' }} /></td>
+                          <td><input type="number" value={item.qtyGratuit} onChange={e => handleQtyGratuitChange(idx, e.target.value)} className="input-field" style={{ width: '50px' }} /></td>
+                          <td>{item.priceTtc.toFixed(2)}</td>
+                          <td style={{ color: 'var(--bardahl-yellow)' }}>{(item.priceTtc * item.qty).toFixed(2)}</td>
+                          <td>
+                             <button type="button" onClick={() => handleTogglePromoLine(idx, '10+1')} style={{ fontSize: '10px', marginRight: '4px' }}>10+1</button>
+                             <button type="button" onClick={() => handleQtyChange(idx, 0)} style={{ color: '#FF453A' }}><Trash2 size={14} /></button>
                           </td>
                         </tr>
-                      ) : (
-                        selectedProducts.map((item, idx) => (
-                          <tr key={idx}>
-                            <td>{item.reference}</td>
-                            <td><strong style={{ color: '#FFFFFF' }}>{item.productName}</strong></td>
-                            <td>
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.qty}
-                                onChange={e => handleQtyChange(idx, e.target.value)}
-                                className="input-field"
-                                style={{ width: '60px', textAlign: 'center', padding: '4px', fontSize: '12px', fontWeight: '800' }}
-                              />
-                            </td>
-                            <td>{item.priceTtc.toFixed(2)} DH</td>
-                            <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900' }}>{(item.priceTtc * item.qty).toFixed(2)} DH</td>
-                            <td>
-                              <button onClick={() => handleQtyChange(idx, 0)} style={{ color: '#FF453A', padding: '4px' }}>
-                                <Trash2 style={{ width: '16px', height: '16px' }} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                      ))}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Step 4: Remise Commerciale (%) */}
-              <div>
+              {/* Step 4: Remise Commerciale GLOBALE sur le Total (Non linéaire) */}
+              <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                 <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Percent style={{ width: '16px', height: '16px' }} /> 5. Remise Commerciale (%)
+                  <Percent style={{ width: '16px', height: '16px' }} /> 5. Remise Commerciale Globale (Non linéaire)
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {[0, 5, 10, 15, 20].map(pct => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => setRemisePercent(pct)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: '800',
-                        transition: 'all 0.2s ease',
-                        background: remisePercent === pct ? 'var(--bardahl-yellow)' : '#14171F',
-                        color: remisePercent === pct ? '#0D0F12' : 'var(--text-secondary)',
-                        border: remisePercent === pct ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
-                      }}
-                    >
-                      {pct}%
-                    </button>
-                  ))}
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {[0, 5, 10, 15, 20].map(pct => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => { setRemisePercent(pct); setRemiseMontant(0); }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '800',
+                          background: (remisePercent === pct && !remiseMontant) ? 'var(--bardahl-yellow)' : '#0D0F12',
+                          color: (remisePercent === pct && !remiseMontant) ? '#0D0F12' : 'var(--text-secondary)',
+                          border: (remisePercent === pct && !remiseMontant) ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>% Personnalisé :</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={remisePercent}
+                      onChange={e => { setRemisePercent(parseFloat(e.target.value) || 0); setRemiseMontant(0); }}
+                      placeholder="%"
+                      className="input-field"
+                      style={{ width: '70px', fontSize: '12px', padding: '6px 8px' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ou Montant Fixe (DH) :</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={remiseMontant}
+                      onChange={e => { setRemiseMontant(parseFloat(e.target.value) || 0); setRemisePercent(0); }}
+                      placeholder="Montant DH"
+                      className="input-field"
+                      style={{ width: '100px', fontSize: '12px', padding: '6px 8px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 5: Remarks */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles style={{ width: '15px', height: '15px' }} /> Note Promotionnelle
+                  </label>
                   <input
-                    type="number"
-                    value={remisePercent}
-                    onChange={e => setRemisePercent(parseFloat(e.target.value) || 0)}
-                    placeholder="Remise %"
+                    type="text"
+                    value={promoNote}
+                    onChange={e => setPromoNote(e.target.value)}
+                    placeholder="Ex: Offre 10+1 Offert / Campagne Vidange"
                     className="input-field"
-                    style={{ width: '90px', fontSize: '12px', padding: '6px 10px', marginLeft: '8px' }}
+                    style={{ fontSize: '12px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <MessageSquare style={{ width: '15px', height: '15px' }} /> Instructions de Livraison
+                  </label>
+                  <input
+                    type="text"
+                    value={remarque}
+                    onChange={e => setRemarque(e.target.value)}
+                    placeholder="Ex: Livrer avant 12h."
+                    className="input-field"
+                    style={{ fontSize: '12px' }}
                   />
                 </div>
               </div>
 
-              {/* Step 5: Remarques / Instructions d'expedition */}
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MessageSquare style={{ width: '16px', height: '16px' }} /> 6. Remarques / Instructions de Livraison
-                </label>
-                <textarea
-                  value={remarque}
-                  onChange={e => setRemarque(e.target.value)}
-                  placeholder="Ex: Livrer le matin avant 12h. Attention aux horaires d'accès camion."
-                  className="input-field"
-                  style={{ minHeight: '60px', resize: 'vertical' }}
-                />
-              </div>
-
-              {/* Financial Calculation Summary Card */}
+              {/* Summary Card */}
               <div style={{ background: '#14171F', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255, 208, 0, 0.4)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                   <span>Montant Brut TTC :</span>
-                  <span>{grossTotalTtc.toFixed(2)} DH</span>
+                  <span style={{ fontWeight: '700', color: '#FFFFFF' }}>{grossTotalTtc.toFixed(2)} DH</span>
                 </div>
-                {remisePercent > 0 && (
+
+                {totalFreeItemsCount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#34C759', fontWeight: '800' }}>
+                    <span>🎁 Articles Gratuits (Offerts) :</span>
+                    <span>+{totalFreeItemsCount} Unité(s) (0.00 DH)</span>
+                  </div>
+                )}
+
+                {totalDiscountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#FF453A', fontWeight: '800' }}>
-                    <span>Remise Commerciale ({remisePercent}%) :</span>
+                    <span>Remise Commerciale Globale {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
                     <span>-{totalDiscountAmount.toFixed(2)} DH</span>
                   </div>
                 )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                   <span>Total HT Net :</span>
                   <span>{totalHt.toFixed(2)} DH</span>
@@ -714,15 +682,14 @@ export default function Orders({ onNewOrderClick }) {
                   <span>TVA (20%) :</span>
                   <span>{totalTva.toFixed(2)} DH</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: '900', color: 'var(--bardahl-yellow)', paddingTop: '8px', borderTop: '1px solid var(--border-card)' }}>
-                  <span>TOTAL NET TTC :</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '900', color: 'var(--bardahl-yellow)', paddingTop: '8px', borderTop: '1px solid var(--border-card)' }}>
+                  <span>TOTAL NET TTC À PAYER :</span>
                   <span>{netTotalTtc.toFixed(2)} DH</span>
                 </div>
               </div>
 
-              {/* Submit Buttons */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-card)' }}>
-                <button type="button" onClick={() => { setShowOrderWizard(false); setEditingOrder(null); }} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>
+                <button type="button" onClick={() => setShowOrderWizard(false)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>
                   Annuler
                 </button>
                 <button type="button" onClick={handleSaveOrderSubmit} className="btn-bardahl" style={{ padding: '8px 16px', fontSize: '12px' }}>

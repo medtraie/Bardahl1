@@ -14,19 +14,43 @@ export default function Products() {
   })
 
   const categories = [
-    { id: 'ALL', label: 'Tous' },
-    { id: 'Additifs', label: 'Additifs' },
-    { id: 'Fluides', label: 'Fluides & LR' },
-    { id: 'Lubrifiants', label: 'Lubrifiants Auto' },
-    { id: 'Industrie', label: 'Industrie & Specs' },
+    { id: 'ALL', label: 'Tous les Produits' },
+    { id: 'ADDITIFS', label: 'Additifs & Traitements' },
+    { id: 'FLUIDES', label: 'Fluides & LR' },
+    { id: 'LUBRIFIANTS', label: 'Lubrifiants Auto' },
+    { id: 'AEROSOLS', label: 'Aérosols & Nettoyants' },
+    { id: 'INDUSTRIE', label: 'Industrie & Graisses' },
   ]
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-                          p.code.toLowerCase().includes(search.toLowerCase()) ||
-                          p.reference.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = selectedCategory === 'ALL' || (p.category && p.category.includes(selectedCategory))
-    return matchesSearch && matchesCategory
+    const q = search.trim().toLowerCase()
+    const matchesSearch = !q ||
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.code || '').toLowerCase().includes(q) ||
+      (p.reference || '').toLowerCase().includes(q)
+
+    if (!matchesSearch) return false
+    if (selectedCategory === 'ALL') return true
+
+    const pCat = (p.category || '').toUpperCase()
+    const pName = (p.name || '').toUpperCase()
+
+    if (selectedCategory === 'ADDITIFS') {
+      return pCat.includes('ADDITIF') || pName.includes('ADDITIF') || pName.includes('TRAITEMENT') || pName.includes('CLEANER') || pName.includes('STOP FUITE') || pName.includes('INJECTEUR')
+    }
+    if (selectedCategory === 'FLUIDES') {
+      return pCat.includes('FLUIDE') || pCat.includes('LR') || pName.includes('XCL') || pName.includes('REFROIDISSEMENT') || pName.includes('DOT') || pName.includes('RAD')
+    }
+    if (selectedCategory === 'LUBRIFIANTS') {
+      return pCat.includes('LUBRIFIANT') || pCat.includes('HUILE') || pName.includes('10W') || pName.includes('5W') || pName.includes('XTRA') || pName.includes('PLASMA') || pName.includes('HUILE')
+    }
+    if (selectedCategory === 'AEROSOLS') {
+      return pCat.includes('AEROSOL') || pName.includes('SPRAY') || pName.includes('AEROSOL') || pName.includes('BRAKE') || pName.includes('DEGRIPPANT') || pName.includes('NETTOYANT')
+    }
+    if (selectedCategory === 'INDUSTRIE') {
+      return pCat.includes('INDUSTRIE') || pCat.includes('GRAISSE') || pName.includes('GRAISSE') || pName.includes('LITHIUM') || pName.includes('HYDRAULIQUE') || pName.includes('PONT')
+    }
+    return pCat.includes(selectedCategory)
   })
 
   const handleOpenAddModal = () => {
