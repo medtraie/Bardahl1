@@ -243,7 +243,12 @@ fun MainAppNavHost(
                     CommercialManagementScreen(onSettingsClick = navigateToSettings)
                 }
                 composable(Screen.Analytics.route) {
-                    AnalyticsScreen(onSettingsClick = navigateToSettings)
+                    AnalyticsScreen(
+                        orderViewModel = orderViewModel,
+                        clientViewModel = clientViewModel,
+                        authViewModel = authViewModel,
+                        onSettingsClick = navigateToSettings
+                    )
                 }
                 composable(Screen.Settings.route) {
                     SettingsScreen(

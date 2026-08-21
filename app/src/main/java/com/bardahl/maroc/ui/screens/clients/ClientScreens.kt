@@ -385,56 +385,68 @@ fun ClientCardItem(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Details Button
-                    Button(
-                        onClick = onDetailsClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BardahlYellow,
-                            contentColor = BardahlBlack
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(30.dp)
+                    Row(
+                        modifier = Modifier
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BardahlYellow)
+                            .clickable(onClick = onDetailsClick)
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = BardahlBlack,
+                            modifier = Modifier.size(14.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Détails", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Détails",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BardahlBlack
+                        )
                     }
 
                     // Edit Button
-                    IconButton(
-                        onClick = onEditClick,
+                    Box(
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(DarkBackground)
-                            .border(1.dp, BardahlYellow.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .border(1.dp, BardahlYellow.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onEditClick),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.Edit,
                             contentDescription = "Modifier",
                             tint = BardahlYellow,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
 
                     // Delete Button
-                    IconButton(
-                        onClick = onDeleteClick,
+                    Box(
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(32.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(StatusCancelled.copy(alpha = 0.15f))
-                            .border(1.dp, StatusCancelled.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                            .border(1.dp, StatusCancelled.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onDeleteClick),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Supprimer",
                             tint = StatusCancelled,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }

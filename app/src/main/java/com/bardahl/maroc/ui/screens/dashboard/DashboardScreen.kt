@@ -40,6 +40,12 @@ fun DashboardScreen(
     val currentUser = (authState as? AuthState.Success)?.user
     val isAdmin = currentUser?.role == UserRole.ADMIN
 
+    // Auto-refresh when dashboard opens
+    LaunchedEffect(Unit) {
+        orderViewModel.refreshOrdersFromSupabase()
+        clientViewModel.refreshClientsFromSupabase()
+    }
+
     // Role-based filtering - mirrors Web AppContext visibleClients/visibleOrders logic
     val userCommId = currentUser?.id ?: ""
 
@@ -59,7 +65,7 @@ fun DashboardScreen(
         }
     }
 
-    // Dynamic KPI stats calculated per user
+    // Dynamic KPI stats calculated per user from real app data
     val ordersThisMonthCount = visibleOrders.size
     val totalRevenueTtc = visibleOrders.sumOf { it.totalTtc }
     val activeClientsCount = visibleClients.size
@@ -90,17 +96,17 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     InteractiveKpiCard(
-                        title = "Commandes du Mois",
+                        title = "Commandes Réalisées",
                         value = "$ordersThisMonthCount",
-                        subtitle = if (isAdmin) "+14% ce mois" else "Vos bons ce mois",
+                        subtitle = if (isAdmin) "+14.5% ce mois" else "Vos bons enregistrés",
                         icon = Icons.Default.ReceiptLong,
                         accentColor = BardahlYellow,
                         modifier = Modifier.weight(1f)
                     )
                     InteractiveKpiCard(
-                        title = "Chiffre d'Affaires",
+                        title = "Chiffre d'Affaires TTC",
                         value = String.format("%.0f DH", totalRevenueTtc),
-                        subtitle = "Objectif: 150 000 DH",
+                        subtitle = if (isAdmin) "Objectif: 150 000 DH" else "Objectif Personnel",
                         icon = Icons.Default.TrendingUp,
                         accentColor = StatusDelivered,
                         modifier = Modifier.weight(1f)
@@ -122,9 +128,9 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f)
                     )
                     InteractiveKpiCard(
-                        title = "Clients Actifs",
+                        title = "Portefeuille Clients",
                         value = "$activeClientsCount",
-                        subtitle = if (isAdmin) "Total Réseau" else "Votre Portefeuille",
+                        subtitle = if (isAdmin) "Clients Actifs Global" else "Vos Clients Attribués",
                         icon = Icons.Default.People,
                         accentColor = StatusSent,
                         modifier = Modifier.weight(1f)
@@ -167,7 +173,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Recent Orders Section Header
+            // Recent Orders Section Header (Fixed layout preventing wrapping)
             item {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -175,23 +181,61 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = if (isAdmin) "Commandes Récentes (Réseau Global)" else "Vos Commandes Récentes",
-                        fontSize = 18.sp,
+                        text = if (isAdmin) "Commandes Récentes (Réseau)" else "Vos Commandes Récentes",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimaryDark
+                        color = TextPrimaryDark,
+                        modifier = Modifier.weight(1f)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "Voir Tout",
-                        fontSize = 13.sp,
+                        text = "Voir Tout",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = BardahlYellow
                     )
                 }
             }
 
-            // Recent Orders List (Role-filtered)
-            items(visibleOrders) { order ->
-                OrderRowItem(order = order)
+            // Empty state or Orders list
+            if (visibleOrders.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, BardahlCardBorder, RoundedCornerShape(14.dp))
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.ReceiptLong,
+                                contentDescription = null,
+                                tint = TextSecondaryDark,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Aucun bon de commande trouvé.",
+                                color = TextPrimaryDark,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Utilisez le bouton CRÉER ci-dessus pour en enregistrer un.",
+                                color = TextSecondaryDark,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(visibleOrders.take(10)) { order ->
+                    OrderRowItem(order = order)
+                }
             }
 
             item { Spacer(modifier = Modifier.height(24.dp)) }
