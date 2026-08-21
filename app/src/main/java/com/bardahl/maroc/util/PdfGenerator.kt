@@ -16,6 +16,7 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.bardahl.maroc.R
+import com.bardahl.maroc.domain.model.Client
 import com.bardahl.maroc.domain.model.Order
 import java.io.File
 import java.io.FileOutputStream
@@ -288,6 +289,111 @@ object PdfGenerator {
         // Export directly to Downloads & Open File Chooser Intent
         downloadAndOpenPdf(context, outputFile, pdfFileName)
 
+        return outputFile
+    }
+
+    fun generateClientPdf(context: Context, client: Client, clientOrders: List<Order>): File {
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas: Canvas = page.canvas
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val rightAlignPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.RIGHT }
+
+        // Top Logo
+        val logoBitmap = getBitmapFromVectorDrawable(context, R.drawable.ic_bardahl_official_logo, 145, 95)
+            ?: getBitmapFromVectorDrawable(context, R.drawable.ic_bardahl_logo, 145, 95)
+        if (logoBitmap != null) {
+            canvas.drawBitmap(logoBitmap, 30f, 20f, paint)
+        }
+
+        // Header info
+        rightAlignPaint.color = Color.parseColor("#0D0F12")
+        rightAlignPaint.textSize = 18f
+        rightAlignPaint.isFakeBoldText = true
+        canvas.drawText("BARDAHL - MAGHREB", 565f, 32f, rightAlignPaint)
+
+        rightAlignPaint.textSize = 8.2f
+        rightAlignPaint.isFakeBoldText = false
+        rightAlignPaint.color = Color.parseColor("#222222")
+        canvas.drawText("FICHE CLIENT & HISTORIQUE COMMANDES", 565f, 45f, rightAlignPaint)
+        canvas.drawText("107, Rue Amir Abdelkader - CASABLANCA", 565f, 56f, rightAlignPaint)
+
+        // Banner Title
+        paint.color = Color.parseColor("#FFD000")
+        canvas.drawRoundRect(RectF(30f, 120f, 565f, 155f), 6f, 6f, paint)
+        textPaint.color = Color.parseColor("#0D0F12")
+        textPaint.textSize = 14f
+        textPaint.isFakeBoldText = true
+        canvas.drawText("PORTFOLIO : ${client.companyName.uppercase()}", 45f, 142f, textPaint)
+
+        // Client Info Box
+        paint.color = Color.parseColor("#F8F9FA")
+        canvas.drawRoundRect(RectF(30f, 165f, 565f, 245f), 6f, 6f, paint)
+        textPaint.color = Color.parseColor("#2D3748")
+        textPaint.textSize = 9.5f
+        textPaint.isFakeBoldText = false
+        canvas.drawText("Code Client : ${client.ifCode.ifBlank { "-" }}   |   ICE : ${client.ice}   |   RC : ${client.rc}", 45f, 185f, textPaint)
+        canvas.drawText("Adresse : ${client.address}, ${client.city} (${client.patente})", 45f, 205f, textPaint)
+        canvas.drawText("Téléphone : ${client.phone}   |   Type : ${client.clientType.name}", 45f, 225f, textPaint)
+
+        // Total CA
+        val totalCa = clientOrders.sumOf { it.totalTtc }
+        paint.color = Color.parseColor("#0D0F12")
+        canvas.drawRoundRect(RectF(30f, 255f, 565f, 290f), 6f, 6f, paint)
+        textPaint.color = Color.parseColor("#FFD000")
+        textPaint.textSize = 11f
+        textPaint.isFakeBoldText = true
+        canvas.drawText("TOTAL CHIFFRE D'AFFAIRES RÉALISÉ : ${String.format("%.2f DH", totalCa)} (${clientOrders.size} Commandes)", 45f, 277f, textPaint)
+
+        // Orders Table
+        var curY = 320f
+        paint.color = Color.parseColor("#0D0F12")
+        canvas.drawRect(30f, curY, 565f, curY + 22f, paint)
+        textPaint.color = Color.parseColor("#FFFFFF")
+        textPaint.textSize = 9f
+        textPaint.isFakeBoldText = true
+        canvas.drawText("N° BON", 40f, curY + 15f, textPaint)
+        canvas.drawText("DATE", 160f, curY + 15f, textPaint)
+        canvas.drawText("PAIEMENT", 270f, curY + 15f, textPaint)
+        canvas.drawText("STATUT", 390f, curY + 15f, textPaint)
+        canvas.drawText("TOTAL TTC", 480f, curY + 15f, textPaint)
+        curY += 22f
+
+        textPaint.isFakeBoldText = false
+        textPaint.color = Color.parseColor("#2D3748")
+        if (clientOrders.isEmpty()) {
+            canvas.drawText("Aucun bon de commande enregistré pour ce client.", 45f, curY + 20f, textPaint)
+        } else {
+            for (ord in clientOrders.take(15)) {
+                curY += 20f
+                canvas.drawText(ord.orderNumber, 40f, curY, textPaint)
+                canvas.drawText(ord.orderDate, 160f, curY, textPaint)
+                canvas.drawText(ord.paymentMethod, 270f, curY, textPaint)
+                canvas.drawText(ord.status.name, 390f, curY, textPaint)
+                canvas.drawText(String.format("%.2f DH", ord.totalTtc), 480f, curY, textPaint)
+                paint.color = Color.parseColor("#E2E8F0")
+                canvas.drawLine(30f, curY + 5f, 565f, curY + 5f, paint)
+            }
+        }
+
+        // Footer
+        paint.color = Color.parseColor("#FFD000")
+        canvas.drawRect(30f, 810f, 565f, 812f, paint)
+        textPaint.textSize = 7.5f
+        textPaint.color = Color.parseColor("#718096")
+        canvas.drawText("BARDAHL MAGHREB S.A - Document officiel généré", 70f, 824f, textPaint)
+
+        pdfDocument.finishPage(page)
+
+        val pdfFileName = "Fiche_Client_${client.companyName.replace(" ", "_")}.pdf"
+        val outputFile = File(context.cacheDir, pdfFileName)
+        FileOutputStream(outputFile).use { pdfDocument.writeTo(it) }
+        pdfDocument.close()
+
+        downloadAndOpenPdf(context, outputFile, pdfFileName)
         return outputFile
     }
 

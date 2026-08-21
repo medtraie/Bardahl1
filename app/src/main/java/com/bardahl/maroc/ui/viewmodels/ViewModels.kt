@@ -171,8 +171,22 @@ class ClientViewModel(private val clientRepository: ClientRepository) : ViewMode
 
     fun addClient(client: Client) {
         viewModelScope.launch {
-            _clientsList.value = _clientsList.value + client
+            _clientsList.value = listOf(client) + _clientsList.value
             clientRepository.saveClient(client)
+        }
+    }
+
+    fun updateClient(client: Client) {
+        viewModelScope.launch {
+            _clientsList.value = _clientsList.value.map { if (it.id == client.id) client else it }
+            clientRepository.updateClient(client)
+        }
+    }
+
+    fun deleteClient(id: String) {
+        viewModelScope.launch {
+            _clientsList.value = _clientsList.value.filter { it.id != id }
+            clientRepository.deleteClient(id)
         }
     }
 }

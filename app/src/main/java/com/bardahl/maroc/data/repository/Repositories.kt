@@ -53,6 +53,32 @@ class ClientRepository(
             isSynced = false
         )
         clientDao.insertClient(entity)
+        supabaseService.postClient(client)
+    }
+
+    suspend fun updateClient(client: Client) {
+        val entity = ClientEntity(
+            id = client.id,
+            commercialId = client.commercialId,
+            companyName = client.companyName,
+            ice = client.ice,
+            rc = client.rc,
+            ifCode = client.ifCode,
+            patente = client.patente,
+            address = client.address,
+            city = client.city,
+            phone = client.phone,
+            email = client.email,
+            clientType = client.clientType.name,
+            isSynced = false
+        )
+        clientDao.insertClient(entity)
+        supabaseService.updateClient(client)
+    }
+
+    suspend fun deleteClient(id: String) {
+        clientDao.deleteClient(id)
+        supabaseService.deleteClient(id)
     }
 
     suspend fun fetchRemoteClientsDirectly(commercialId: String? = null): List<Client> {

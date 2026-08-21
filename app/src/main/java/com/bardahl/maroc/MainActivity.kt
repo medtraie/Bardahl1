@@ -211,6 +211,7 @@ fun MainAppNavHost(
                 composable(Screen.Clients.route) {
                     ClientListScreen(
                         clientViewModel = clientViewModel,
+                        orderViewModel = orderViewModel,
                         authViewModel = authViewModel,
                         onSettingsClick = navigateToSettings
                     )

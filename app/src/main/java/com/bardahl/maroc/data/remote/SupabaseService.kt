@@ -123,6 +123,66 @@ class SupabaseService(
         return@withContext list
     }
 
+    suspend fun postClient(client: Client): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("clients", "POST")
+            conn.doOutput = true
+            val json = JSONObject().apply {
+                put("id", client.id)
+                put("commercial_id", client.commercialId.ifBlank { "c8888888-8888-8888-8888-888888888888" })
+                put("company_name", client.companyName)
+                put("ice", client.ice)
+                put("rc", client.rc)
+                put("if_code", client.ifCode)
+                put("patente", client.patente)
+                put("address", client.address)
+                put("city", client.city)
+                put("phone", client.phone)
+                put("email", client.email)
+                put("client_type", client.clientType.name.lowercase())
+            }
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun updateClient(client: Client): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("clients?id=eq.${client.id}", "PATCH")
+            conn.doOutput = true
+            val json = JSONObject().apply {
+                put("company_name", client.companyName)
+                put("ice", client.ice)
+                put("rc", client.rc)
+                put("if_code", client.ifCode)
+                put("patente", client.patente)
+                put("address", client.address)
+                put("city", client.city)
+                put("phone", client.phone)
+                put("email", client.email)
+                put("client_type", client.clientType.name.lowercase())
+            }
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun deleteClient(id: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("clients?id=eq.$id", "DELETE")
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
     suspend fun fetchCommercials(): List<Commercial> = withContext(Dispatchers.IO) {
         try {
             val conn = getConnection("commercials?select=*")
