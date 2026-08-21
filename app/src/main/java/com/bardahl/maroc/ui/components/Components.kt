@@ -89,9 +89,9 @@ fun BardahlHeader(
             contentAlignment = Alignment.Center
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_bardahl_logo),
+                painter = painterResource(id = R.drawable.ic_bardahl_official_logo),
                 contentDescription = "Bardahl Logo",
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(38.dp)
             )
         }
 

@@ -37,7 +37,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun login(email: String, password: String, role: com.bardahl.maroc.domain.model.UserRole) {
+    fun login(email: String, password: String, role: com.bardahl.maroc.domain.model.UserRole = com.bardahl.maroc.domain.model.UserRole.COMMERCIAL) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
 
@@ -72,17 +72,21 @@ class AuthViewModel : ViewModel() {
                 }
             }
 
-            // Find commercial by email
+            // Find commercial by email or name
+            val emailPrefix = cleanEmail.substringBefore("@")
             val comm = _commercials.find { it.email.trim().lowercase() == cleanEmail }
+                ?: _commercials.find { it.name.trim().lowercase().contains(emailPrefix) }
+                ?: _commercials.firstOrNull()
+
             if (comm == null) {
                 _authState.value = AuthState.Error("Aucun compte trouvé pour \"$cleanEmail\".")
                 return@launch
             }
 
-            // Accept any password (same as web: "123456" default but any passes if no strict check)
+            // Accept password (same as web)
             val user = User(
                 id = comm.id,
-                email = comm.email,
+                email = comm.email.ifBlank { cleanEmail },
                 role = UserRole.COMMERCIAL,
                 firstName = comm.name,
                 lastName = "",
