@@ -21,21 +21,34 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
 
   // Calculate dynamic metrics based on visible orders (filtered by commercial role)
   const totalOrdersCount = orders.length
-  const totalCaTtc = orders.reduce((sum, o) => sum + (o.totalTtc || 0), 0)
+  const totalCaTtc = orders.reduce((sum, o) => sum + (parseFloat(o.totalTtc) || 0), 0)
   const todayStr = new Date().toISOString().substring(0, 10)
   const todayOrdersCount = orders.filter(o => o.date && o.date.startsWith(todayStr)).length
 
-  // Monthly Sales Chart Data dynamically computed from orders
+  // Monthly Sales Chart Data dynamically computed from real orders
   const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août']
-  const monthlyData = isAdmin
-    ? [85000, 92000, 110000, 105000, 128000, 140000, 135000, totalCaTtc > 0 ? totalCaTtc : 148500]
-    : [15000, 18000, 22000, 25000, 28000, 31000, 29000, totalCaTtc > 0 ? totalCaTtc : 34000]
+  const monthlyData = [0, 0, 0, 0, 0, 0, 0, 0]
+
+  orders.forEach(o => {
+    if (o.date) {
+      const monthNum = parseInt(o.date.split('-')[1], 10) // 1-indexed
+      if (monthNum >= 1 && monthNum <= 8) {
+        monthlyData[monthNum - 1] += (parseFloat(o.totalTtc) || 0)
+      }
+    }
+  })
+
+  // If this month (Août) has current orders but no specific date, assign totalCaTtc
+  const currentMonthIdx = Math.min(new Date().getMonth(), 7)
+  if (monthlyData.reduce((a, b) => a + b, 0) === 0 && totalCaTtc > 0) {
+    monthlyData[currentMonthIdx] = totalCaTtc
+  }
 
   const chartData = {
     labels: monthLabels,
     datasets: [
       {
-        label: 'Chiffre d\'Affaires (DH)',
+        label: 'Chiffre d\'Affaires Réalisé (DH)',
         data: monthlyData,
         backgroundColor: '#FFD000',
         borderRadius: 8,
@@ -94,20 +107,20 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
         </div>
       </div>
 
-      {/* 4 Interactive Responsive KPI Cards */}
+      {/* 4 Interactive Responsive KPI Cards (Live Real Data) */}
       <div className="kpi-grid">
         
-        {/* Card 1: Commandes du Mois */}
+        {/* Card 1: Commandes Réalisées */}
         <div className="glass-card" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Commandes Realisées
+              Commandes Réalisées
             </span>
             <div style={{ fontSize: '28px', fontWeight: '900', color: '#FFFFFF', margin: '8px 0 4px 0' }}>
               {totalOrdersCount}
             </div>
             <div style={{ fontSize: '12px', color: '#34C759', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <ArrowUpRight style={{ width: '14px', height: '14px' }} /> {isAdmin ? '+14.5% ce mois' : 'Vos bons enregistrés'}
+              <ArrowUpRight style={{ width: '14px', height: '14px' }} /> {isAdmin ? `${totalOrdersCount} bons au total` : 'Vos bons enregistrés'}
             </div>
           </div>
           <div style={{
@@ -136,10 +149,10 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
             
             {/* Progress Bar */}
             <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px', overflow: 'hidden', marginBottom: '4px' }}>
-              <div style={{ width: isAdmin ? '99%' : '85%', height: '100%', background: 'linear-gradient(90deg, #FFD000, #34C759)', borderRadius: '10px' }}></div>
+              <div style={{ width: `${Math.min(100, Math.round((totalCaTtc / 150000) * 100))}%`, height: '100%', background: 'linear-gradient(90deg, #FFD000, #34C759)', borderRadius: '10px' }}></div>
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-              {isAdmin ? 'Objectif Global 150,000 DH (99%)' : 'Objectif Mensuel (85%)'}
+              {isAdmin ? `Objectif Global 150 000 DH (${Math.min(100, Math.round((totalCaTtc / 150000) * 100))}%)` : 'Objectif Personnel'}
             </span>
           </div>
 
@@ -165,7 +178,7 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
               Commandes du Jour
             </span>
             <div style={{ fontSize: '28px', fontWeight: '900', color: '#FFFFFF', margin: '8px 0 4px 0' }}>
-              {todayOrdersCount > 0 ? todayOrdersCount : (isAdmin ? 3 : 1)}
+              {todayOrdersCount}
             </div>
             <span style={{ fontSize: '12px', color: '#007AFF', fontWeight: '700' }}>
               ● Aujourd'hui
@@ -243,33 +256,41 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
             </h3>
             <button
               onClick={() => setActiveTab('orders')}
-              style={{ fontSize: '12px', color: 'var(--bardahl-yellow)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px' }}
+              style={{ fontSize: '12px', color: 'var(--bardahl-yellow)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px', background: 'none', border: 'none', cursor: 'pointer' }}
             >
               Voir tout <ChevronRight style={{ width: '14px', height: '14px' }} />
             </button>
           </div>
 
           <div style={{ overflowX: 'auto', flex: 1 }}>
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>N° Bon</th>
-                  <th>Client</th>
-                  <th>Total TTC</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.slice(0, 5).map(o => (
-                  <tr key={o.id}>
-                    <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
-                    <td style={{ fontSize: '12px' }}>{o.clientName}</td>
-                    <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900' }}>{o.totalTtc.toFixed(2)} DH</td>
-                    <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
+            {orders.length === 0 ? (
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <Receipt style={{ width: '32px', height: '32px', color: 'var(--text-secondary)', margin: '0 auto 8px auto', opacity: 0.5 }} />
+                <p style={{ fontSize: '14px', fontWeight: '700', color: '#FFFFFF' }}>Aucun bon de commande trouvé</p>
+                <p style={{ fontSize: '12px', marginTop: '4px' }}>Utilisez le bouton "Nouveau Bon" pour en créer un.</p>
+              </div>
+            ) : (
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <th>N° Bon</th>
+                    <th>Client</th>
+                    <th>Total TTC</th>
+                    <th>Statut</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {orders.slice(0, 5).map(o => (
+                    <tr key={o.id}>
+                      <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
+                      <td style={{ fontSize: '12px' }}>{o.clientName}</td>
+                      <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900' }}>{(parseFloat(o.totalTtc) || 0).toFixed(2)} DH</td>
+                      <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

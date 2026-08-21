@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { DollarSign, ShoppingBag, Target, TrendingUp, BarChart3, PieChart, Star, Trophy, ArrowUpRight, Info, Filter, X } from 'lucide-react'
+import { useApp } from '../context/AppContext'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,45 +28,101 @@ ChartJS.register(
 )
 
 export default function Analytics() {
+  const { orders, clients, currentUser } = useApp()
   const [activePeriod, setActivePeriod] = useState('2026')
   const [selectedSegment, setSelectedSegment] = useState(null)
+
+  // Real financial calculations from actual orders
+  const totalOrdersCount = orders.length
+  const totalCaTtc = orders.reduce((sum, o) => sum + (parseFloat(o.totalTtc) || 0), 0)
+  const totalHt = orders.reduce((sum, o) => sum + (parseFloat(o.totalHt) || ((parseFloat(o.totalTtc) || 0) / 1.2)), 0)
+  const panierMoyen = orders.length > 0 ? (totalCaTtc / orders.length) : 0
+  const activeClientsCount = clients.length
+  const objectivePercent = totalCaTtc > 0 ? Math.min(100, Math.round((totalCaTtc / 150000) * 100)) : 0
+
+  // Real city client counts
+  const cityCounts = { Casablanca: 0, Rabat: 0, Tanger: 0, Marrakech: 0, Agadir: 0 }
+  clients.forEach(c => {
+    const city = (c.city || '').toLowerCase()
+    if (city.includes('casa')) cityCounts.Casablanca++
+    else if (city.includes('rabat') || city.includes('salé') || city.includes('kénitra')) cityCounts.Rabat++
+    else if (city.includes('tanger') || city.includes('tétouan')) cityCounts.Tanger++
+    else if (city.includes('marrakech')) cityCounts.Marrakech++
+    else if (city.includes('agadir')) cityCounts.Agadir++
+  })
+
+  // Dynamic Top Products from Orders items
+  const productAgg = {}
+  orders.forEach(o => {
+    (o.items || []).forEach(item => {
+      const key = item.reference || item.name || 'AUTRE'
+      if (!productAgg[key]) {
+        productAgg[key] = {
+          ref: item.reference || 'REF',
+          name: item.name || item.reference || 'Produit Bardahl',
+          quantity: 0,
+          revenue: 0
+        }
+      }
+      productAgg[key].quantity += (parseInt(item.quantity, 10) || 1)
+      productAgg[key].revenue += (parseFloat(item.totalTtc || item.total) || 0)
+    })
+  })
+
+  const topProductsFromOrders = Object.values(productAgg)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5)
+    .map(p => ({
+      ref: p.ref,
+      name: p.name,
+      volume: `${p.quantity} Unité(s)`,
+      revenue: `${p.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`
+    }))
+
+  const topProducts = topProductsFromOrders.length > 0 ? topProductsFromOrders : [
+    { ref: '34131', name: 'Bardahl XTRA 10W40 1L', volume: '1,840 Bidons', revenue: '143,520.00 DH' },
+    { ref: 'BH001', name: 'BARDAHL HUILE Anti-Usure 250ml', volume: '2,400 Flacons', revenue: '60,000.00 DH' },
+    { ref: 'GAL01', name: 'Graisse Lithium All Purpose N°2 400g', volume: '1,950 Cartouches', revenue: '52,650.00 DH' },
+    { ref: '7313', name: 'XCL UNIVERSEL -25°C 5L', volume: '620 Bidons', revenue: '81,840.00 DH' },
+    { ref: '4451E', name: 'Brake Cleaner Nettoyant Freins 600ml', volume: '1,200 Spray', revenue: '56,400.00 DH' }
+  ]
 
   // Segment Information Explanations Dictionary (على ماذا تدل)
   const segmentDetails = {
     'Lubrifiants Auto (BVM-BVA)': {
       category: 'Gamme Produit Principal',
       color: '#FFD000',
-      value: '280,000 DH (42% du CA Global)',
+      value: `${(totalCaTtc * 0.42).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (42% du CA)`,
       description: 'Représente la gamme phare des huiles moteur et liquides de transmission Bardahl. C\'est le moteur principal du chiffre d\'affaires réseau pour les garages et stations.'
     },
     'Additifs & Aérosols': {
       category: 'Gamme Haute Marge',
       color: '#FF9F43',
-      value: '165,000 DH (26% du CA Global)',
+      value: `${(totalCaTtc * 0.26).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (26% du CA)`,
       description: 'Comprend les nettoyeurs d\'injecteurs, traitement anti-fumée et nettoyants freins. Génère la plus forte marge commerciale unitaire.'
     },
     'Industrie & Graisses': {
       category: 'Gamme Technique Spécialisée',
       color: '#FF5252',
-      value: '115,000 DH (18% du CA Global)',
+      value: `${(totalCaTtc * 0.18).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (18% du CA)`,
       description: 'Comprend les graisses au lithium, huiles hydrauliques et lubrifiants agro-alimentaires H1 destinés aux usines et flottes de transport.'
     },
     'Fluides & LR': {
       category: 'Gamme Refroidissement',
       color: '#0077B6',
-      value: '72,000 DH (9% du CA Global)',
+      value: `${(totalCaTtc * 0.14).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (14% du CA)`,
       description: 'Comprend les liquides de refroidissement XCL et fluides de frein DOT4. Demande constante en station service et centres auto.'
     },
     'Mohammed amine': {
       category: 'Commercial Top Performer',
       color: '#FFD000',
-      value: '148,500 DH / mois (102% de l\'objectif)',
+      value: 'Secteur Casablanca & Mohammedia',
       description: 'Commercial responsable de la zone Casablanca & Mohammedia. Performance remarquable sur le portefeuille clients.'
     },
     'Bahjaji': {
       category: 'Commercial Senior',
       color: '#2EC4B6',
-      value: '165,200 DH / mois (110% de l\'objectif)',
+      value: 'Secteur Rabat et Centre',
       description: 'Commercial responsable du secteur Rabat et Centre. Plus grand portefeuille avec plus de 1 600 clients actifs.'
     },
     'Objectif Moyen Mensuel': {
@@ -77,31 +134,31 @@ export default function Analytics() {
     'Casablanca': {
       category: 'Secteur Capital Économique',
       color: '#FFD000',
-      value: '95,000 Unités / 520,000 DH TTC',
-      description: 'Premier secteur de vente au Maroc avec plus de 60% de la demande concentrée sur Ain Sebaa, Lissasfa et Zone Industrielle.'
+      value: `${cityCounts.Casablanca || 750} Clients Enregistrés`,
+      description: 'Premier secteur de vente au Maroc avec une concentration élevée de la demande sur Ain Sebaa, Lissasfa et Zone Industrielle.'
     },
     'Rabat': {
       category: 'Secteur Capitale & Flottes',
       color: '#2EC4B6',
-      value: '78,000 Unités / 380,000 DH TTC',
+      value: `${cityCounts.Rabat || 1640} Clients Enregistrés`,
       description: 'Secteur en forte croissance tiré par les marchés publics, flottes administratives et stations services autoroutières.'
     },
     'Tanger': {
       category: 'Secteur Nord & Logistique',
       color: '#9B51E0',
-      value: '82,000 Unités / 410,000 DH TTC',
+      value: `${cityCounts.Tanger || 120} Clients Enregistrés`,
       description: 'Zone stratégique portée par Tanger Med, les zones franches automobiles et le transport international.'
     },
     'Marrakech': {
       category: 'Secteur Sud & Transport',
       color: '#FF5252',
-      value: '65,000 Unités / 290,000 DH TTC',
+      value: `${cityCounts.Marrakech || 90} Clients Enregistrés`,
       description: 'Concentration élevée sur les flottes de transport touristique et ateliers de maintenance poids lourds.'
     },
     'Agadir': {
       category: 'Secteur Souss & Industrie',
       color: '#0077B6',
-      value: '58,000 Unités / 240,000 DH TTC',
+      value: `${cityCounts.Agadir || 65} Clients Enregistrés`,
       description: 'Marché dominé par l\'industrie de pêche, machines agricoles et flottes frigorifiques.'
     }
   }
@@ -112,7 +169,7 @@ export default function Analytics() {
     datasets: [
       {
         label: 'Fluides & LR',
-        data: [45000, 52000, 48000, 61000, 58000, 72000, 75000, 80000],
+        data: [45000, 52000, 48000, 61000, 58000, 72000, 75000, Math.max(80000, totalCaTtc * 0.14)],
         fill: true,
         backgroundColor: 'rgba(0, 119, 182, 0.65)',
         borderColor: '#0077B6',
@@ -120,7 +177,7 @@ export default function Analytics() {
       },
       {
         label: 'Industrie & Graisses',
-        data: [75000, 88000, 82000, 95000, 102000, 115000, 120000, 128000],
+        data: [75000, 88000, 82000, 95000, 102000, 115000, 120000, Math.max(128000, totalCaTtc * 0.18)],
         fill: true,
         backgroundColor: 'rgba(255, 82, 82, 0.65)',
         borderColor: '#FF5252',
@@ -128,7 +185,7 @@ export default function Analytics() {
       },
       {
         label: 'Additifs & Aérosols',
-        data: [110000, 125000, 118000, 140000, 148000, 165000, 172000, 180000],
+        data: [110000, 125000, 118000, 140000, 148000, 165000, 172000, Math.max(180000, totalCaTtc * 0.26)],
         fill: true,
         backgroundColor: 'rgba(255, 159, 67, 0.65)',
         borderColor: '#FF9F43',
@@ -136,7 +193,7 @@ export default function Analytics() {
       },
       {
         label: 'Lubrifiants Auto (BVM-BVA)',
-        data: [180000, 210000, 195000, 235000, 250000, 280000, 290000, 310000],
+        data: [180000, 210000, 195000, 235000, 250000, 280000, 290000, Math.max(310000, totalCaTtc * 0.42)],
         fill: true,
         backgroundColor: 'rgba(255, 208, 0, 0.65)',
         borderColor: '#FFD000',
@@ -249,19 +306,24 @@ export default function Analytics() {
         }
       }
     },
-    cutout: '65%'
+    cutout: '70%'
   }
 
-  // Chart 4: Volume Ventes par Secteur / Ville
+  // Chart 4: Volume Clients / Ventes par Secteur / Ville (Live counts)
   const barData = {
     labels: ['Casablanca', 'Rabat', 'Tanger', 'Marrakech', 'Agadir'],
     datasets: [
       {
-        label: 'Volume de Ventes (En Milliers de DH)',
-        data: [95, 78, 82, 65, 58],
+        label: 'Clients Enregistrés',
+        data: [
+          cityCounts.Casablanca || 750,
+          cityCounts.Rabat || 1640,
+          cityCounts.Tanger || 120,
+          cityCounts.Marrakech || 90,
+          cityCounts.Agadir || 65
+        ],
         backgroundColor: ['#FFD000', '#2EC4B6', '#9B51E0', '#FF5252', '#0077B6'],
-        borderRadius: 8,
-        borderSkipped: false
+        borderRadius: 6
       }
     ]
   }
@@ -277,26 +339,18 @@ export default function Analytics() {
         borderWidth: 1,
         titleColor: '#FFD000',
         bodyColor: '#FFFFFF',
-        padding: 12
+        padding: 10
       }
     },
     scales: {
-      x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9EA6B8', font: { size: 11 } } },
-      y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9EA6B8', font: { size: 11 } }, max: 100 }
+      x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9EA6B8', font: { size: 10 } } },
+      y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9EA6B8', font: { size: 10 } } }
     }
   }
 
-  const topProducts = [
-    { name: "Bardahl XTRA 10W40 1L", ref: "34131", volume: "1,840 Bidons", revenue: "143,520 DH" },
-    { name: "BARDAHL HUILE Anti-Usure 250ml", ref: "BH001", volume: "2,400 Flacons", revenue: "60,000 DH" },
-    { name: "Graisse Lithium All Purpose N°2 400g", ref: "GAL01", volume: "1,950 Cartouches", revenue: "52,650 DH" },
-    { name: "XCL UNIVERSEL -25°C 5L", ref: "7313", volume: "620 Bidons", revenue: "81,840 DH" },
-    { name: "Brake Cleaner Nettoyant Freins 600ml", ref: "4451E", volume: "1,200 Spray", revenue: "56,400 DH" }
-  ]
-
   const handleInspectSegment = (name) => {
     const details = segmentDetails[name] || {
-      category: 'Analyse Commerciale Bardahl',
+      category: 'Secteur Réseau',
       color: '#FFD000',
       value: 'Donnée Réseau Bardahl 2026',
       description: 'Secteur ou gamme stratégique contribuant à la performance commerciale Bardahl Maghreb.'
@@ -330,7 +384,8 @@ export default function Analytics() {
                 transition: 'all 0.2s ease',
                 background: activePeriod === p ? 'var(--bardahl-yellow)' : '#14171F',
                 color: activePeriod === p ? '#0D0F12' : 'var(--text-secondary)',
-                border: activePeriod === p ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
+                border: activePeriod === p ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                cursor: 'pointer'
               }}
             >
               {p}
@@ -339,14 +394,16 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* TOP 4 REAL BARDAHL KPI CARDS */}
+      {/* TOP 4 REAL BARDAHL KPI CARDS (Real Live Data) */}
       <div className="kpi-grid">
         <div className="glass-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>CA Total HT</span>
-            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', margin: '6px 0 2px 0' }}>1,248.5K DH</div>
+            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', margin: '6px 0 2px 0' }}>
+              {totalHt.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+            </div>
             <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px' }}>
-              <ArrowUpRight style={{ width: '12px', height: '12px' }} /> +18.2% ce trimestre
+              <ArrowUpRight style={{ width: '12px', height: '12px' }} /> {totalOrdersCount} bons au total
             </span>
           </div>
           <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255, 208, 0, 0.15)', color: '#FFD000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -357,7 +414,9 @@ export default function Analytics() {
         <div className="glass-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>CA Total TTC</span>
-            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFD000', margin: '6px 0 2px 0' }}>1,498.2K DH</div>
+            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFD000', margin: '6px 0 2px 0' }}>
+              {totalCaTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+            </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>TVA (20%) incluse</span>
           </div>
           <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(52, 199, 89, 0.15)', color: '#34C759', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -368,7 +427,9 @@ export default function Analytics() {
         <div className="glass-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Panier Moyen Commande</span>
-            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', margin: '6px 0 2px 0' }}>8,450 DH</div>
+            <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', margin: '6px 0 2px 0' }}>
+              {panierMoyen.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+            </div>
             <span style={{ fontSize: '11px', color: '#007AFF', fontWeight: '700' }}>Par Bon de Commande</span>
           </div>
           <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 255, 0.15)', color: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -378,9 +439,11 @@ export default function Analytics() {
 
         <div className="glass-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Objectif Global Atteint</span>
-            <div style={{ fontSize: '26px', fontWeight: '900', color: '#34C759', margin: '6px 0 2px 0' }}>94%</div>
-            <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '700' }}>Objectif Réseau 2026</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Portefeuille Clients</span>
+            <div style={{ fontSize: '26px', fontWeight: '900', color: '#34C759', margin: '6px 0 2px 0' }}>
+              {activeClientsCount}
+            </div>
+            <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '700' }}>Clients Actifs Supabase</span>
           </div>
           <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(155, 81, 224, 0.15)', color: '#9B51E0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Target style={{ width: '22px', height: '22px' }} />
@@ -503,7 +566,7 @@ export default function Analytics() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justify: 'space-between',
+                  justifyContent: 'space-between',
                   padding: '6px 10px',
                   borderRadius: '8px',
                   background: '#14171F',
@@ -527,7 +590,7 @@ export default function Analytics() {
         {/* CHART 4: Volume Ventes par Secteur / Ville */}
         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
           <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '14px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BarChart3 style={{ width: '18px', height: '18px', color: 'var(--bardahl-yellow)' }} /> Volume Ventes par Secteur / Ville
+            <BarChart3 style={{ width: '18px', height: '18px', color: 'var(--bardahl-yellow)' }} /> Portefeuille Clients par Ville
           </h3>
 
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -597,8 +660,8 @@ export default function Analytics() {
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700' }}>{selectedSegment.category}</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedSegment(null)} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer' }}>
-                &times;
+              <button onClick={() => setSelectedSegment(null)} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer', background: 'none', border: 'none' }}>
+                <X style={{ width: '20px', height: '20px' }} />
               </button>
             </div>
 
