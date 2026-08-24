@@ -149,19 +149,19 @@ object PdfGenerator {
 
         canvas.drawText("RÉF.", 35f, tableTop + 15f, textPaint)
         canvas.drawText("DÉSIGNATION DE LA MARCHANDISE", 95f, tableTop + 15f, textPaint)
-        canvas.drawText("QTÉ", 315f, tableTop + 15f, textPaint)
-        canvas.drawText("PRIX U. TTC", 365f, tableTop + 15f, textPaint)
-        canvas.drawText("REMISE", 440f, tableTop + 15f, textPaint)
-        canvas.drawText("TOTAL TTC", 495f, tableTop + 15f, textPaint)
+        canvas.drawText("QTÉ", 295f, tableTop + 15f, textPaint)
+        canvas.drawText("GRATUIT", 335f, tableTop + 15f, textPaint)
+        canvas.drawText("PRIX U. TTC", 395f, tableTop + 15f, textPaint)
+        canvas.drawText("TOTAL TTC", 485f, tableTop + 15f, textPaint)
 
         // Table Data Rows
         var currentY = tableTop + headerHeight + 16f
         textPaint.color = Color.parseColor("#1A202C")
         textPaint.isFakeBoldText = false
-        textPaint.textSize = 9f
+        textPaint.textSize = 8.8f
 
         order.items.forEachIndexed { index, item ->
-            val isMultiLine = item.productName.length > 32
+            val isMultiLine = item.productName.length > 28
             val rowHeight = if (isMultiLine) 30f else 22f
 
             // Alternate Row Background
@@ -175,26 +175,32 @@ object PdfGenerator {
 
             // Product Name (Clean 2-line Wrapping if needed)
             if (isMultiLine) {
-                val line1 = item.productName.substring(0, 30)
-                val line2 = item.productName.substring(30)
+                val line1 = item.productName.substring(0, 26)
+                val line2 = item.productName.substring(26)
                 canvas.drawText(line1, 95f, currentY, textPaint)
-                canvas.drawText(line2, 95f, currentY + 12f, textPaint)
+                canvas.drawText(line2, 95f, currentY + 11f, textPaint)
             } else {
                 canvas.drawText(item.productName, 95f, currentY, textPaint)
             }
 
-            // Quantity
-            canvas.drawText("${item.quantity}", 315f, currentY, textPaint)
+            // Quantity Facturée
+            canvas.drawText("${item.quantity}", 300f, currentY, textPaint)
+
+            // Gratuité (Offert)
+            val freeStr = if (item.freeQuantity > 0) "+${item.freeQuantity} Offert" else "-"
+            if (item.freeQuantity > 0) {
+                textPaint.color = Color.parseColor("#388E3C")
+                textPaint.isFakeBoldText = true
+            }
+            canvas.drawText(freeStr, 335f, currentY, textPaint)
+            textPaint.color = Color.parseColor("#1A202C")
+            textPaint.isFakeBoldText = false
 
             // Unit Price TTC
-            canvas.drawText(String.format("%.2f DH", item.unitPriceTtc), 365f, currentY, textPaint)
-
-            // Remise %
-            val remiseStr = if (item.discountPercentage > 0) "${item.discountPercentage}%" else "-"
-            canvas.drawText(remiseStr, 440f, currentY, textPaint)
+            canvas.drawText(String.format("%.2f DH", item.unitPriceTtc), 395f, currentY, textPaint)
 
             // Total Line TTC
-            canvas.drawText(String.format("%.2f DH", item.totalTtc), 495f, currentY, textPaint)
+            canvas.drawText(String.format("%.2f DH", item.totalTtc), 485f, currentY, textPaint)
 
             // Row Separator Line
             paint.color = Color.parseColor("#EDF2F7")
@@ -226,30 +232,39 @@ object PdfGenerator {
         textPaint.textSize = 9.5f
         textPaint.isFakeBoldText = false
 
-        canvas.drawText("Montant HT :", 350f, totalsY + 22f, textPaint)
-        canvas.drawText(String.format("%.2f DH", order.totalHt), 470f, totalsY + 22f, textPaint)
+        canvas.drawText("Montant HT :", 350f, totalsY + 20f, textPaint)
+        canvas.drawText(String.format("%.2f DH", order.totalHt), 470f, totalsY + 20f, textPaint)
 
-        if (order.totalDiscount > 0) {
-            textPaint.color = Color.parseColor("#E53935")
+        if (order.totalFreeItems > 0) {
+            textPaint.color = Color.parseColor("#388E3C")
             textPaint.isFakeBoldText = true
-            canvas.drawText("Remise Commerciale :", 350f, totalsY + 42f, textPaint)
-            canvas.drawText(String.format("-%.2f DH", order.totalDiscount), 470f, totalsY + 42f, textPaint)
+            canvas.drawText("Articles Offerts :", 350f, totalsY + 36f, textPaint)
+            canvas.drawText("+${order.totalFreeItems} U (0.00 DH)", 470f, totalsY + 36f, textPaint)
             textPaint.color = Color.parseColor("#2D3748")
             textPaint.isFakeBoldText = false
         }
 
-        canvas.drawText("TVA (20%) :", 350f, totalsY + 62f, textPaint)
-        canvas.drawText(String.format("%.2f DH", order.totalTva), 470f, totalsY + 62f, textPaint)
+        if (order.totalDiscount > 0) {
+            textPaint.color = Color.parseColor("#E53935")
+            textPaint.isFakeBoldText = true
+            canvas.drawText("Remise Globale :", 350f, totalsY + 52f, textPaint)
+            canvas.drawText(String.format("-%.2f DH", order.totalDiscount), 470f, totalsY + 52f, textPaint)
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+        }
+
+        canvas.drawText("TVA (20%) :", 350f, totalsY + 68f, textPaint)
+        canvas.drawText(String.format("%.2f DH", order.totalTva), 470f, totalsY + 68f, textPaint)
 
         // Total Net TTC Banner (Bardahl Yellow #FFD000)
         paint.color = Color.parseColor("#FFD000")
-        canvas.drawRoundRect(RectF(345f, totalsY + 76f, 555f, totalsY + 112f), 6f, 6f, paint)
+        canvas.drawRoundRect(RectF(345f, totalsY + 78f, 555f, totalsY + 114f), 6f, 6f, paint)
 
         textPaint.isFakeBoldText = true
         textPaint.textSize = 11.5f
         textPaint.color = Color.parseColor("#0D0F12")
-        canvas.drawText("TOTAL NET TTC :", 355f, totalsY + 98f, textPaint)
-        canvas.drawText(String.format("%.2f DH", order.totalTtc), 460f, totalsY + 98f, textPaint)
+        canvas.drawText("TOTAL NET TTC :", 355f, totalsY + 100f, textPaint)
+        canvas.drawText(String.format("%.2f DH", order.totalTtc), 460f, totalsY + 100f, textPaint)
 
         // Dual Signature Boxes (Client & Commercial)
         textPaint.color = Color.parseColor("#1A202C")

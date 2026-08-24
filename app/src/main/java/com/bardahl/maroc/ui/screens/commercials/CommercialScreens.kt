@@ -5,9 +5,11 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,6 +29,12 @@ import com.bardahl.maroc.domain.model.Commercial
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
 import kotlinx.coroutines.launch
+
+val AVAILABLE_MOROCCO_SECTORS = listOf(
+    "Casablanca", "Mohammedia", "Rabat", "Salé", "Kénitra",
+    "Tanger", "Tétouan", "Marrakech", "Agadir", "Fès",
+    "Meknès", "Oujda", "El Jadida", "Safi", "Béni Mellal", "Nador"
+)
 
 data class CommercialData(
     val id: String,
@@ -37,6 +46,7 @@ data class CommercialData(
     val matricule: String,
     val address: String,
     val city: String,
+    val sectors: List<String> = listOf("Casablanca"),
     val isActive: Boolean = true,
     val lastLogin: String = "Aujourd'hui",
     val totalOrders: Int = 0,
@@ -55,9 +65,9 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
     var commercials by remember {
         mutableStateOf(
             listOf(
-                CommercialData("c1", "Mohammed", "amine", "mohammed@bardahl.ma", "123", "+212 6 61 22 33 44", "COM-1", "Zone Industrielle", "Casablanca", true, "Aujourd'hui", 2, 150000.0, 148500.0),
-                CommercialData("c2", "Amiaach", "", "amiaach@bardahl.ma", "123", "+212 6 62 44 55 66", "COM-02", "Centre Ville", "Rabat", true, "Hier", 1, 120000.0, 95000.0),
-                CommercialData("c3", "Bahjaji", "", "bahjaji@bardahl.ma", "123", "+212 6 63 77 88 99", "COM-3", "Guéliz", "Marrakech", true, "Il y a 2j", 0, 100000.0, 82000.0)
+                CommercialData("c1", "Mohammed", "amine", "mohammed@bardahl.ma", "123", "+212 6 61 22 33 44", "COM-1", "Zone Industrielle", "Casablanca, Mohammedia", listOf("Casablanca", "Mohammedia"), true, "Aujourd'hui", 2, 150000.0, 148500.0),
+                CommercialData("c2", "Amiaach", "", "amiaach@bardahl.ma", "123", "+212 6 62 44 55 66", "COM-02", "Centre Ville", "Rabat, Salé, Kénitra", listOf("Rabat", "Salé", "Kénitra"), true, "Hier", 1, 120000.0, 95000.0),
+                CommercialData("c3", "Bahjaji", "", "bahjaji@bardahl.ma", "123", "+212 6 63 77 88 99", "COM-3", "Guéliz", "Marrakech, Agadir", listOf("Marrakech", "Agadir"), true, "Il y a 2j", 0, 100000.0, 82000.0)
             )
         )
     }
@@ -75,6 +85,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                         val nameParts = c.name.split(" ")
                         val first = nameParts.firstOrNull() ?: c.name
                         val last = if (nameParts.size > 1) nameParts.subList(1, nameParts.size).joinToString(" ") else ""
+                        val sectorList = c.city.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
                         CommercialData(
                             id = c.id,
@@ -86,6 +97,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             matricule = c.matricule,
                             city = c.city,
                             address = c.city,
+                            sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
                             isActive = true,
                             totalOrders = orderCount,
                             targetSales = c.targetMonthlySales,
@@ -104,19 +116,21 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editingCommercial by remember { mutableStateOf<CommercialData?>(null) }
     var resettingPassCommercial by remember { mutableStateOf<CommercialData?>(null) }
+    var commercialToSafeDelete by remember { mutableStateOf<CommercialData?>(null) }
 
     val filteredCommercials = commercials.filter {
         it.fullName.contains(searchQuery, ignoreCase = true) ||
         it.matricule.contains(searchQuery, ignoreCase = true) ||
         it.city.contains(searchQuery, ignoreCase = true) ||
-        it.email.contains(searchQuery, ignoreCase = true)
+        it.email.contains(searchQuery, ignoreCase = true) ||
+        it.sectors.any { s -> s.contains(searchQuery, ignoreCase = true) }
     }
 
     Scaffold(
         topBar = {
             BardahlHeader(
                 title = "Équipe Commerciale",
-                subtitle = "Gestion du Portefeuille Commercial Bardahl",
+                subtitle = "Gestion du Portefeuille Multi-Secteurs Bardahl",
                 onSettingsClick = onSettingsClick
             )
         },
@@ -143,7 +157,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
             BardahlTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = "Rechercher Commercial, Email, Matricule...",
+                label = "Rechercher Commercial, Secteur, Matricule...",
                 leadingIcon = Icons.Default.Search
             )
 
@@ -157,17 +171,22 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                     CommercialCardFull(
                         commercial = comm,
                         onEdit = { editingCommercial = comm },
-                        onToggleBlock = {
+                        onToggleActive = {
+                            val newStatus = !comm.isActive
                             commercials = commercials.map {
-                                if (it.id == comm.id) it.copy(isActive = !it.isActive) else it
+                                if (it.id == comm.id) it.copy(isActive = newStatus) else it
                             }
-                            val statusStr = if (!comm.isActive) "Débloqué" else "Bloqué"
-                            Toast.makeText(context, "Commercial ${comm.fullName} $statusStr", Toast.LENGTH_SHORT).show()
+                            val statusStr = if (newStatus) "Activé" else "Désactivé"
+                            Toast.makeText(context, "Compte de ${comm.fullName} $statusStr.", Toast.LENGTH_SHORT).show()
                         },
                         onResetPassword = { resettingPassCommercial = comm },
-                        onDelete = {
-                            commercials = commercials.filter { it.id != comm.id }
-                            Toast.makeText(context, "Commercial ${comm.fullName} supprimé.", Toast.LENGTH_SHORT).show()
+                        onDeleteClick = {
+                            if (comm.totalOrders > 0) {
+                                commercialToSafeDelete = comm
+                            } else {
+                                commercials = commercials.filter { it.id != comm.id }
+                                Toast.makeText(context, "Commercial ${comm.fullName} supprimé.", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     )
                 }
@@ -215,15 +234,63 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
             }
         )
     }
+
+    // Safety Prompt: Deactivate instead of delete if commercial has orders
+    if (commercialToSafeDelete != null) {
+        val comm = commercialToSafeDelete!!
+        AlertDialog(
+            onDismissRequest = { commercialToSafeDelete = null },
+            containerColor = DarkSurface,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = BardahlYellow)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Historique des Ventes Détecté", color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    text = "Le commercial ${comm.fullName} a ${comm.totalOrders} bon(s) de commande enregistrés.\n\nPour préserver l'intégrité des rapports et des chiffres d'affaires, il est fortement conseillé de DÉSACTIVER son compte au lieu de le supprimer.",
+                    color = TextSecondaryDark,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        commercials = commercials.map { if (it.id == comm.id) it.copy(isActive = false) else it }
+                        commercialToSafeDelete = null
+                        Toast.makeText(context, "Compte de ${comm.fullName} désactivé avec succès.", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("DÉSACTIVER LE COMPTE", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        commercials = commercials.filter { it.id != comm.id }
+                        commercialToSafeDelete = null
+                        Toast.makeText(context, "Commercial ${comm.fullName} supprimé définitivement.", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Forcer Suppression", color = StatusCancelled)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun CommercialCardFull(
     commercial: CommercialData,
     onEdit: () -> Unit,
-    onToggleBlock: () -> Unit,
+    onToggleActive: () -> Unit,
     onResetPassword: () -> Unit,
-    onDelete: () -> Unit
+    onDeleteClick: () -> Unit
 ) {
     val progress = (commercial.currentSales / commercial.targetSales).coerceIn(0.0, 1.0).toFloat()
 
@@ -247,14 +314,14 @@ fun CommercialCardFull(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(if (commercial.isActive) BardahlYellow else StatusCancelled.copy(alpha = 0.2f)),
+                            .background(if (commercial.isActive) BardahlYellow else DarkBackground),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${commercial.firstName.take(1)}${commercial.lastName.take(1)}".uppercase(),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (commercial.isActive) BardahlBlack else StatusCancelled
+                            color = if (commercial.isActive) BardahlBlack else TextSecondaryDark
                         )
                     }
 
@@ -268,7 +335,7 @@ fun CommercialCardFull(
                             color = TextPrimaryDark
                         )
                         Text(
-                            text = "${commercial.matricule} • ${commercial.city}",
+                            text = "Matricule: ${commercial.matricule}",
                             fontSize = 11.sp,
                             color = TextSecondaryDark
                         )
@@ -277,7 +344,7 @@ fun CommercialCardFull(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // Badge: User Commercial (Single Line, Clean)
+                // Active / Inactive Status Badge
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -285,11 +352,35 @@ fun CommercialCardFull(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = if (commercial.isActive) "Commercial" else "Bloqué",
+                        text = if (commercial.isActive) "✓ Actif" else "⏸ Désactivé",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (commercial.isActive) StatusDelivered else StatusCancelled
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Assigned Multi-Sectors Tags
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(14.dp))
+                commercial.sectors.forEach { sec ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(BardahlYellow.copy(alpha = 0.12f))
+                            .border(1.dp, BardahlYellow.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(sec, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                    }
                 }
             }
 
@@ -337,27 +428,35 @@ fun CommercialCardFull(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Action Buttons Row (Edit, Reset Password, Block, Delete)
+            // Action Buttons Row (Edit, Reset Password, Activate/Deactivate Toggle, Delete)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Activate / Deactivate button
+                Button(
+                    onClick = onToggleActive,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (commercial.isActive) StatusCancelled.copy(alpha = 0.15f) else StatusDelivered.copy(alpha = 0.15f),
+                        contentColor = if (commercial.isActive) StatusCancelled else StatusDelivered
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text(if (commercial.isActive) "Désactiver" else "Activer", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
                 IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = BardahlYellow, modifier = Modifier.size(16.dp))
                 }
                 IconButton(onClick = onResetPassword, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.VpnKey, contentDescription = "Réinitialiser Mot de passe", tint = StatusValidated, modifier = Modifier.size(16.dp))
                 }
-                IconButton(onClick = onToggleBlock, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        if (commercial.isActive) Icons.Default.Block else Icons.Default.CheckCircle,
-                        contentDescription = "Bloquer",
-                        tint = if (commercial.isActive) StatusSent else StatusDelivered,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = StatusCancelled, modifier = Modifier.size(16.dp))
                 }
             }
@@ -377,23 +476,57 @@ fun AddEditCommercialDialog(
     var email by remember { mutableStateOf(initialData?.email ?: "") }
     var password by remember { mutableStateOf(initialData?.password ?: "123") }
     var phone by remember { mutableStateOf(initialData?.phone ?: "") }
-    var matricule by remember { mutableStateOf(initialData?.matricule ?: "COMM-00${(4..99).random()}") }
-    var city by remember { mutableStateOf(initialData?.city ?: "") }
+    var matricule by remember { mutableStateOf(initialData?.matricule ?: "COM-00${(4..99).random()}") }
+    var selectedSectors by remember { mutableStateOf(initialData?.sectors ?: listOf("Casablanca")) }
     var targetSalesStr by remember { mutableStateOf(initialData?.targetSales?.toString() ?: "150000") }
+    var isAccountActive by remember { mutableStateOf(initialData?.isActive ?: true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DarkSurface,
         title = { Text(title, color = TextPrimaryDark, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BardahlTextField(firstName, { firstName = it }, "Prénom")
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BardahlTextField(firstName, { firstName = it }, "Prénom *")
                 BardahlTextField(lastName, { lastName = it }, "Nom")
                 BardahlTextField(email, { email = it }, "Adresse Email Identifiant *")
                 BardahlTextField(password, { password = it }, "Mot de Passe *")
                 BardahlTextField(phone, { phone = it }, "Téléphone")
                 BardahlTextField(matricule, { matricule = it }, "Matricule")
-                BardahlTextField(city, { city = it }, "Secteur / Ville")
+
+                // Multi-Sector Selector
+                Text("Secteurs & Villes Assignés (Sélection Multiple) :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    AVAILABLE_MOROCCO_SECTORS.forEach { sec ->
+                        val isSelected = selectedSectors.contains(sec)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                selectedSectors = if (isSelected) {
+                                    if (selectedSectors.size > 1) selectedSectors - sec else selectedSectors
+                                } else {
+                                    selectedSectors + sec
+                                }
+                            },
+                            label = { Text(sec, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = BardahlYellow,
+                                selectedLabelColor = BardahlBlack,
+                                containerColor = DarkBackground,
+                                labelColor = TextPrimaryDark
+                            )
+                        )
+                    }
+                }
+
                 BardahlTextField(targetSalesStr, { targetSalesStr = it }, "Objectif Ventes Mensuel (DH)")
             }
         },
@@ -412,11 +545,12 @@ fun AddEditCommercialDialog(
                                 password = password,
                                 phone = phone,
                                 matricule = matricule,
-                                city = city,
-                                address = city,
+                                city = selectedSectors.joinToString(", "),
+                                address = selectedSectors.joinToString(", "),
+                                sectors = selectedSectors,
                                 targetSales = target,
                                 currentSales = initialData?.currentSales ?: 0.0,
-                                isActive = initialData?.isActive ?: true
+                                isActive = isAccountActive
                             )
                         )
                     }

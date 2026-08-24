@@ -42,7 +42,9 @@ data class Commercial(
     val city: String,
     val targetMonthlySales: Double = 0.0,
     val currentMonthSales: Double = 0.0,
-    val totalOrdersCount: Int = 0
+    val totalOrdersCount: Int = 0,
+    val isActive: Boolean = true,
+    val sectors: List<String> = emptyList()
 )
 
 data class Client(
@@ -95,14 +97,16 @@ data class OrderItem(
     val productName: String,
     val productReference: String,
     val quantity: Int,
+    val freeQuantity: Int = 0,
     val unitPriceTtc: Double,
     val discountPercentage: Double = 0.0,
+    val promoTag: String = "",
     val tvaRate: Double = 20.0
 ) {
     val totalHt: Double
-        get() = (unitPriceTtc / (1 + (tvaRate / 100))) * quantity * (1 - (discountPercentage / 100))
+        get() = (unitPriceTtc / (1 + (tvaRate / 100))) * quantity
     val totalTtc: Double
-        get() = unitPriceTtc * quantity * (1 - (discountPercentage / 100))
+        get() = unitPriceTtc * quantity
 }
 
 data class Order(
@@ -118,6 +122,10 @@ data class Order(
     val paymentMethod: String = "Chèque",
     val modeExpedition: String = "Transport Bardahl",
     val remarque: String = "",
+    val promoNote: String = "",
+    val remisePercent: Double = 0.0,
+    val remiseMontant: Double = 0.0,
+    val totalFreeItems: Int = 0,
     val totalHt: Double = 0.0,
     val totalDiscount: Double = 0.0,
     val totalTva: Double = 0.0,

@@ -48,26 +48,37 @@ fun ProductCatalogScreen(
     var deletingProduct by remember { mutableStateOf<Product?>(null) }
 
     val categories = listOf(
-        CategoryFilterItem("ALL", "Tous"),
-        CategoryFilterItem("Additifs", "Additifs"),
-        CategoryFilterItem("Fluides", "Fluides & LR"),
-        CategoryFilterItem("Lubrifiants", "Lubrifiants Auto"),
-        CategoryFilterItem("Industrie", "Industrie & Specs")
+        CategoryFilterItem("ALL", "Tous les Produits"),
+        CategoryFilterItem("ADDITIFS", "Additifs & Traitements"),
+        CategoryFilterItem("FLUIDES", "Fluides & LR"),
+        CategoryFilterItem("LUBRIFIANTS", "Lubrifiants Auto"),
+        CategoryFilterItem("AEROSOLS", "Aérosols & Nettoyants"),
+        CategoryFilterItem("INDUSTRIE", "Industrie & Graisses")
     )
 
     // Filter Logic
     val filteredProducts = productsList.filter { product ->
-        val matchesSearch = product.name.contains(searchQuery, ignoreCase = true) ||
-                            product.code.contains(searchQuery, ignoreCase = true) ||
-                            product.reference.contains(searchQuery, ignoreCase = true) ||
-                            (product.viscosity != null && product.viscosity.contains(searchQuery, ignoreCase = true))
-        val cat = product.categoryId ?: ""
-        val matchesCategory = selectedCategoryCode == "ALL" ||
-            (selectedCategoryCode == "Additifs" && (cat == "ADDITIFS" || cat == "Additifs")) ||
-            (selectedCategoryCode == "Fluides" && (cat == "FLUIDES_LR" || cat == "Fluides")) ||
-            (selectedCategoryCode == "Lubrifiants" && (cat == "LUB_AUTO" || cat == "Lubrifiants")) ||
-            (selectedCategoryCode == "Industrie" && (cat == "IND_GRAISSES" || cat == "IND_AEROSOLS" || cat == "IND_ALIM" || cat == "Industrie"))
-        matchesSearch && matchesCategory
+        val q = searchQuery.trim()
+        val matchesSearch = q.isBlank() ||
+                product.name.contains(q, ignoreCase = true) ||
+                product.code.contains(q, ignoreCase = true) ||
+                product.reference.contains(q, ignoreCase = true) ||
+                (product.viscosity != null && product.viscosity.contains(q, ignoreCase = true))
+
+        if (!matchesSearch) return@filter false
+        if (selectedCategoryCode == "ALL") return@filter true
+
+        val cat = (product.categoryId ?: "").uppercase()
+        val name = product.name.uppercase()
+
+        when (selectedCategoryCode) {
+            "ADDITIFS" -> cat.contains("ADDITIF") || name.contains("ADDITIF") || name.contains("TRAITEMENT") || name.contains("CLEANER") || name.contains("STOP FUITE") || name.contains("INJECTEUR")
+            "FLUIDES" -> cat.contains("FLUIDE") || cat.contains("LR") || name.contains("XCL") || name.contains("REFROIDISSEMENT") || name.contains("DOT") || name.contains("RAD")
+            "LUBRIFIANTS" -> cat.contains("LUB") || cat.contains("HUILE") || name.contains("10W") || name.contains("5W") || name.contains("XTRA") || name.contains("PLASMA") || name.contains("HUILE")
+            "AEROSOLS" -> cat.contains("AEROSOL") || name.contains("SPRAY") || name.contains("AEROSOL") || name.contains("BRAKE") || name.contains("DEGRIPPANT") || name.contains("NETTOYANT")
+            "INDUSTRIE" -> cat.contains("IND") || cat.contains("GRAISSE") || name.contains("GRAISSE") || name.contains("LITHIUM") || name.contains("HYDRAULIQUE") || name.contains("PONT")
+            else -> cat.contains(selectedCategoryCode)
+        }
     }
 
     Scaffold(
