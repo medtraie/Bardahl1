@@ -338,6 +338,22 @@ fun OrderCreateScreen(
     // Commercial identity from logged-in user
     val commercialId = currentUser?.id ?: ""
     val commercialName = currentUser?.firstName ?: ""
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+
+    // Role-based client filtering - only show clients assigned to this commercial (or all for admin)
+    val visibleClients = remember(clients, isAdmin, commercialId) {
+        if (isAdmin) {
+            clients
+        } else {
+            clients.filter { it.commercialId == commercialId }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        clientViewModel.refreshClientsFromSupabase()
+        orderViewModel.refreshOrdersFromSupabase()
+        productViewModel.refreshProductsFromSupabase()
+    }
 
     // Suggested Next Serial Number
     val suggestedOrderNumber = remember(existingOrders) {
@@ -431,11 +447,25 @@ fun OrderCreateScreen(
 
             // Step 1: Select Client Card
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text("1. Sélectionner le Client *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("1. Sélectionner le Client *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                    if (!isAdmin) {
+                        Text(
+                            text = "${visibleClients.size} client(s) assigné(s)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondaryDark
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 if (selectedClient == null) {
-                    val filteredClients = if (clientSearch.isBlank()) clients.take(50)
-                    else clients.filter {
+                    val filteredClients = if (clientSearch.isBlank()) visibleClients.take(50)
+                    else visibleClients.filter {
                         it.companyName.contains(clientSearch, ignoreCase = true) ||
                         it.ifCode.contains(clientSearch, ignoreCase = true) ||
                         it.ice.contains(clientSearch, ignoreCase = true) ||
