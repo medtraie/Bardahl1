@@ -93,13 +93,13 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             firstName = first,
                             lastName = last,
                             email = if (c.email.isNotBlank()) c.email else "commercial@bardahl.ma",
-                            password = "123",
+                            password = c.password.ifBlank { "123456" },
                             phone = if (c.phone.isNotBlank()) c.phone else "+212 6 61 22 33 44",
                             matricule = c.matricule,
                             city = c.city,
                             address = c.city,
                             sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
-                            isActive = true,
+                            isActive = c.isActive,
                             totalOrders = orderCount,
                             targetSales = c.targetMonthlySales,
                             currentSales = c.currentMonthSales
@@ -177,6 +177,25 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             commercials = commercials.map {
                                 if (it.id == comm.id) it.copy(isActive = newStatus) else it
                             }
+                            coroutineScope.launch {
+                                supabaseService.updateCommercial(
+                                    Commercial(
+                                        id = comm.id,
+                                        userId = "00000000-0000-0000-0000-000000000000",
+                                        name = comm.fullName,
+                                        email = comm.email,
+                                        password = comm.password,
+                                        phone = comm.phone,
+                                        matricule = comm.matricule,
+                                        city = comm.city,
+                                        isActive = newStatus,
+                                        targetMonthlySales = comm.targetSales,
+                                        currentMonthSales = comm.currentSales,
+                                        totalOrdersCount = comm.totalOrders,
+                                        sectors = comm.sectors
+                                    )
+                                )
+                            }
                             val statusStr = if (newStatus) "Activé" else "Désactivé"
                             Toast.makeText(context, "Compte de ${comm.fullName} $statusStr.", Toast.LENGTH_SHORT).show()
                         },
@@ -186,6 +205,9 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                                 commercialToSafeDelete = comm
                             } else {
                                 commercials = commercials.filter { it.id != comm.id }
+                                coroutineScope.launch {
+                                    supabaseService.deleteCommercial(comm.id)
+                                }
                                 Toast.makeText(context, "Commercial ${comm.fullName} supprimé.", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -204,6 +226,25 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
             onSave = { newComm ->
                 commercials = listOf(newComm) + commercials
                 showAddDialog = false
+                coroutineScope.launch {
+                    supabaseService.postCommercial(
+                        Commercial(
+                            id = newComm.id,
+                            userId = "00000000-0000-0000-0000-000000000000",
+                            name = newComm.fullName,
+                            email = newComm.email,
+                            password = newComm.password,
+                            phone = newComm.phone,
+                            matricule = newComm.matricule,
+                            city = newComm.sectors.joinToString(", "),
+                            targetMonthlySales = newComm.targetSales,
+                            currentMonthSales = newComm.currentSales,
+                            totalOrdersCount = newComm.totalOrders,
+                            isActive = newComm.isActive,
+                            sectors = newComm.sectors
+                        )
+                    )
+                }
                 Toast.makeText(context, "Compte Commercial (${newComm.email}) créé avec succès !", Toast.LENGTH_SHORT).show()
             }
         )
@@ -217,6 +258,25 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
             onSave = { updatedComm ->
                 commercials = commercials.map { if (it.id == updatedComm.id) updatedComm else it }
                 editingCommercial = null
+                coroutineScope.launch {
+                    supabaseService.updateCommercial(
+                        Commercial(
+                            id = updatedComm.id,
+                            userId = "00000000-0000-0000-0000-000000000000",
+                            name = updatedComm.fullName,
+                            email = updatedComm.email,
+                            password = updatedComm.password,
+                            phone = updatedComm.phone,
+                            matricule = updatedComm.matricule,
+                            city = updatedComm.sectors.joinToString(", "),
+                            targetMonthlySales = updatedComm.targetSales,
+                            currentMonthSales = updatedComm.currentSales,
+                            totalOrdersCount = updatedComm.totalOrders,
+                            isActive = updatedComm.isActive,
+                            sectors = updatedComm.sectors
+                        )
+                    )
+                }
                 Toast.makeText(context, "Commercial ${updatedComm.fullName} mis à jour !", Toast.LENGTH_SHORT).show()
             }
         )
@@ -227,10 +287,30 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
             commercial = resettingPassCommercial!!,
             onDismiss = { resettingPassCommercial = null },
             onConfirm = { newPass ->
+                val targetComm = resettingPassCommercial!!
                 commercials = commercials.map {
-                    if (it.id == resettingPassCommercial!!.id) it.copy(password = newPass) else it
+                    if (it.id == targetComm.id) it.copy(password = newPass) else it
                 }
                 resettingPassCommercial = null
+                coroutineScope.launch {
+                    supabaseService.updateCommercial(
+                        Commercial(
+                            id = targetComm.id,
+                            userId = "00000000-0000-0000-0000-000000000000",
+                            name = targetComm.fullName,
+                            email = targetComm.email,
+                            password = newPass,
+                            phone = targetComm.phone,
+                            matricule = targetComm.matricule,
+                            city = targetComm.city,
+                            targetMonthlySales = targetComm.targetSales,
+                            currentMonthSales = targetComm.currentSales,
+                            totalOrdersCount = targetComm.totalOrders,
+                            isActive = targetComm.isActive,
+                            sectors = targetComm.sectors
+                        )
+                    )
+                }
                 Toast.makeText(context, "Mot de passe réinitialisé avec succès !", Toast.LENGTH_SHORT).show()
             }
         )

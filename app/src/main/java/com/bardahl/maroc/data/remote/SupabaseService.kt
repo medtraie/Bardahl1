@@ -192,18 +192,23 @@ class SupabaseService(
                 val list = mutableListOf<Commercial>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
+                    val sectorStr = obj.optString("city", "Casablanca")
+                    val sectorList = sectorStr.split(",").map { it.trim() }.filter { it.isNotBlank() }
                     list.add(
                         Commercial(
                             id = obj.getString("id"),
                             userId = obj.optString("user_id", "00000000-0000-0000-0000-000000000000"),
                             name = obj.optString("name", "Commercial ${obj.optString("matricule", "COM")}"),
                             email = obj.optString("email", ""),
+                            password = obj.optString("password", "123456").ifBlank { "123456" },
                             phone = obj.optString("phone", "+212 6 00 00 00 00"),
                             matricule = obj.optString("matricule", "COMM-001"),
-                            city = obj.optString("city", "Casablanca"),
+                            city = sectorStr,
                             targetMonthlySales = obj.optDouble("target_monthly_sales", 150000.0),
                             currentMonthSales = obj.optDouble("current_month_sales", 0.0),
-                            totalOrdersCount = obj.optInt("total_orders_count", 0)
+                            totalOrdersCount = obj.optInt("total_orders_count", 0),
+                            isActive = obj.optBoolean("is_active", true),
+                            sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca")
                         )
                     )
                 }
@@ -213,6 +218,61 @@ class SupabaseService(
             e.printStackTrace()
         }
         return@withContext emptyList()
+    }
+
+    suspend fun postCommercial(commercial: Commercial): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("commercials", "POST")
+            conn.doOutput = true
+            val json = JSONObject().apply {
+                put("id", commercial.id)
+                put("name", commercial.name)
+                put("email", commercial.email)
+                put("password", commercial.password)
+                put("phone", commercial.phone)
+                put("matricule", commercial.matricule)
+                put("city", commercial.city)
+                put("target_monthly_sales", commercial.targetMonthlySales)
+                put("current_month_sales", commercial.currentMonthSales)
+                put("total_orders_count", commercial.totalOrdersCount)
+            }
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun updateCommercial(commercial: Commercial): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("commercials?id=eq.${commercial.id}", "PATCH")
+            conn.doOutput = true
+            val json = JSONObject().apply {
+                put("name", commercial.name)
+                put("email", commercial.email)
+                put("password", commercial.password)
+                put("phone", commercial.phone)
+                put("matricule", commercial.matricule)
+                put("city", commercial.city)
+                put("target_monthly_sales", commercial.targetMonthlySales)
+            }
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun deleteCommercial(id: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("commercials?id=eq.$id", "DELETE")
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
     }
 
     suspend fun fetchOrders(): List<Order> = withContext(Dispatchers.IO) {

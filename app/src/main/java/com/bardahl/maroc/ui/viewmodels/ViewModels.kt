@@ -37,19 +37,29 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun login(email: String, password: String, role: com.bardahl.maroc.domain.model.UserRole = com.bardahl.maroc.domain.model.UserRole.COMMERCIAL) {
+    fun login(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
 
             val cleanEmail = email.trim().lowercase()
+            val cleanPassword = password.trim()
 
             if (cleanEmail.isBlank()) {
                 _authState.value = AuthState.Error("Veuillez saisir une adresse email valide.")
                 return@launch
             }
 
+            if (cleanPassword.isBlank()) {
+                _authState.value = AuthState.Error("Veuillez saisir votre mot de passe.")
+                return@launch
+            }
+
             // Admin login
             if (cleanEmail == "bardahl@gmail.com") {
+                if (cleanPassword != "123456" && cleanPassword != "123") {
+                    _authState.value = AuthState.Error("Mot de passe incorrect.")
+                    return@launch
+                }
                 val user = User(
                     id = "11111111-1111-1111-1111-111111111111",
                     email = "bardahl@gmail.com",
@@ -62,28 +72,38 @@ class AuthViewModel : ViewModel() {
                 return@launch
             }
 
-            // Ensure commercials are loaded
-            if (_commercials.isEmpty()) {
-                try {
-                    _commercials = supabaseService.fetchCommercials()
-                } catch (e: Exception) {
-                    _authState.value = AuthState.Error("Impossible de vérifier les identifiants. Vérifiez votre connexion.")
+            // Always fetch the freshest commercials to ensure any recently changed password in Équipe Commerciale is applied!
+            try {
+                _commercials = supabaseService.fetchCommercials()
+            } catch (e: Exception) {
+                if (_commercials.isEmpty()) {
+                    _authState.value = AuthState.Error("Impossible de vérifier les identifiants. Vérifiez votre connexion Internet.")
                     return@launch
                 }
             }
 
-            // Find commercial by email or name
+            // Find commercial by email or name/prefix
             val emailPrefix = cleanEmail.substringBefore("@")
             val comm = _commercials.find { it.email.trim().lowercase() == cleanEmail }
-                ?: _commercials.find { it.name.trim().lowercase().contains(emailPrefix) }
-                ?: _commercials.firstOrNull()
+                ?: _commercials.find { it.name.trim().lowercase() == emailPrefix || it.name.trim().lowercase().contains(emailPrefix) }
 
             if (comm == null) {
                 _authState.value = AuthState.Error("Aucun compte trouvé pour \"$cleanEmail\".")
                 return@launch
             }
 
-            // Accept password (same as web)
+            if (!comm.isActive) {
+                _authState.value = AuthState.Error("Ce compte commercial est actuellement désactivé. Veuillez contacter la direction.")
+                return@launch
+            }
+
+            // Strict password check against the commercial's account password!
+            val expectedPassword = comm.password.trim().ifBlank { "123456" }
+            if (cleanPassword != expectedPassword) {
+                _authState.value = AuthState.Error("Mot de passe incorrect.")
+                return@launch
+            }
+
             val user = User(
                 id = comm.id,
                 email = comm.email.ifBlank { cleanEmail },

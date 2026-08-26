@@ -37,6 +37,7 @@ data class Commercial(
     val userId: String,
     val name: String,
     val email: String,
+    val password: String = "123456",
     val phone: String,
     val matricule: String,
     val city: String,
