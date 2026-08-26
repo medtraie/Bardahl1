@@ -75,6 +75,34 @@ fun OrderListScreen(
         }
     }
 
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedStatusFilter by remember { mutableStateOf("TOUS") }
+    val statusFilters = listOf("TOUS", "VALIDÉ", "BROUILLON", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
+
+    val filteredOrders = visibleOrders.filter { o ->
+        val q = searchQuery.trim().lowercase()
+        val matchesSearch = q.isBlank() ||
+            o.orderNumber.lowercase().contains(q) ||
+            o.clientName.lowercase().contains(q) ||
+            o.commercialName.lowercase().contains(q) ||
+            o.orderDate.lowercase().contains(q) ||
+            o.paymentMethod.lowercase().contains(q) ||
+            o.modeExpedition.lowercase().contains(q) ||
+            String.format("%.2f", o.totalTtc).contains(q)
+
+        val matchesStatus = when (selectedStatusFilter) {
+            "TOUS" -> true
+            "VALIDÉ" -> o.status == OrderStatus.VALIDATED
+            "BROUILLON" -> o.status == OrderStatus.DRAFT
+            "ENVOYÉ" -> o.status == OrderStatus.SENT
+            "LIVRÉ" -> o.status == OrderStatus.DELIVERED
+            "ANNULÉ" -> o.status == OrderStatus.CANCELLED
+            else -> true
+        }
+
+        matchesSearch && matchesStatus
+    }
+
     Scaffold(
         topBar = {
             BardahlHeader(
@@ -103,40 +131,116 @@ fun OrderListScreen(
         },
         containerColor = DarkBackground
     ) { paddingValues ->
-        if (visibleOrders.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Aucun bon de commande trouvé.\nUtilisez le bouton + ci-dessous pour en créer un.",
-                    color = TextSecondaryDark,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item { Spacer(modifier = Modifier.height(4.dp)) }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-                items(visibleOrders) { order ->
-                    OrderCardDetailed(
-                        order = order,
-                        onPdfClick = {
-                            PdfGenerator.generateOrderPdf(context, order)
-                            Toast.makeText(context, "Téléchargement Bon de Commande PDF en cours...", Toast.LENGTH_SHORT).show()
+            // Search Bar
+            BardahlTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = "Rechercher par N° Bon, Client, Commercial...",
+                leadingIcon = Icons.Default.Search
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Status Filter Chips Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                statusFilters.forEach { status ->
+                    val isSelected = selectedStatusFilter == status
+                    val count = when (status) {
+                        "TOUS" -> visibleOrders.size
+                        "VALIDÉ" -> visibleOrders.count { it.status == OrderStatus.VALIDATED }
+                        "BROUILLON" -> visibleOrders.count { it.status == OrderStatus.DRAFT }
+                        "ENVOYÉ" -> visibleOrders.count { it.status == OrderStatus.SENT }
+                        "LIVRÉ" -> visibleOrders.count { it.status == OrderStatus.DELIVERED }
+                        "ANNULÉ" -> visibleOrders.count { it.status == OrderStatus.CANCELLED }
+                        else -> 0
+                    }
+
+                    val chipBg = if (isSelected) BardahlYellow else DarkSurface
+                    val chipTextColor = if (isSelected) BardahlBlack else TextSecondaryDark
+                    val chipBorder = if (isSelected) BardahlYellow else BardahlCardBorder
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(chipBg)
+                            .border(1.dp, chipBorder, RoundedCornerShape(20.dp))
+                            .clickable { selectedStatusFilter = status }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = status,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                            color = chipTextColor
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) BardahlBlack.copy(alpha = 0.15f) else DarkBackground)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$count",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) BardahlBlack else BardahlYellow
+                            )
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (filteredOrders.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (searchQuery.isNotBlank() || selectedStatusFilter != "TOUS")
+                            "Aucun bon de commande ne correspond aux filtres de recherche."
+                        else
+                            "Aucun bon de commande trouvé.\nUtilisez le bouton + ci-dessous pour en créer un.",
+                        color = TextSecondaryDark,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
                     )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredOrders) { order ->
+                        OrderCardDetailed(
+                            order = order,
+                            onPdfClick = {
+                                PdfGenerator.generateOrderPdf(context, order)
+                                Toast.makeText(context, "Téléchargement Bon de Commande PDF en cours...", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                    item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
             }
         }
@@ -786,9 +890,7 @@ fun OrderCreateScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             // Submit Button
-            BardahlButton(
-                text = "VALIDER ET GÉNÉRER LE BON DE COMMANDE",
-                icon = Icons.Default.Check,
+            Button(
                 onClick = {
                     if (selectedClient != null && selectedItems.isNotEmpty()) {
                         val finalOrderNumber = customOrderNumber.ifBlank { suggestedOrderNumber }
@@ -829,8 +931,38 @@ fun OrderCreateScreen(
                         Toast.makeText(context, "Veuillez sélectionner un client et au moins un produit avec sa quantité.", Toast.LENGTH_SHORT).show()
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 54.dp)
+                    .shadow(16.dp, RoundedCornerShape(16.dp), spotColor = BardahlYellow),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BardahlYellow,
+                    contentColor = BardahlBlack
+                ),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = BardahlBlack,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "VALIDER ET GÉNÉRER LE BON DE COMMANDE",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.5.sp,
+                        color = BardahlBlack,
+                        textAlign = TextAlign.Center,
+                        letterSpacing = 0.3.sp
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
