@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,7 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -885,7 +888,7 @@ fun OrderCreateScreen(
     // Product Quantity & Free Units Pick Dialog
     if (productToQuantityPick != null) {
         val prod = productToQuantityPick!!
-        var quantityInput by remember { mutableStateOf("12") }
+        var quantityInput by remember { mutableStateOf("0") }
         var freeQuantityInput by remember { mutableStateOf("0") }
         var promoTagInput by remember { mutableStateOf("") }
 
@@ -917,50 +920,55 @@ fun OrderCreateScreen(
                     ) {
                         IconButton(
                             onClick = {
-                                val current = quantityInput.toIntOrNull() ?: 1
+                                val current = quantityInput.toIntOrNull() ?: 0
                                 if (current > 0) quantityInput = (current - 1).toString()
                             },
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(42.dp)
                                 .clip(CircleShape)
                                 .background(BardahlYellow)
                         ) {
                             Icon(Icons.Default.Remove, contentDescription = "Moins", tint = BardahlBlack)
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
 
                         Box(
                             modifier = Modifier
-                                .width(80.dp)
-                                .height(44.dp)
+                                .width(95.dp)
+                                .height(48.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(DarkBackground)
-                                .border(1.dp, BardahlYellow, RoundedCornerShape(10.dp)),
+                                .border(1.5.dp, BardahlYellow, RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            OutlinedTextField(
+                            BasicTextField(
                                 value = quantityInput,
                                 onValueChange = { quantityInput = it.filter { char -> char.isDigit() } },
-                                textStyle = LocalTextStyle.current.copy(
+                                textStyle = TextStyle(
                                     color = TextPrimaryDark,
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
                                     textAlign = TextAlign.Center
                                 ),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
-                                modifier = Modifier.fillMaxSize(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent
-                                )
+                                cursorBrush = SolidColor(BardahlYellow),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (quantityInput.isEmpty()) {
+                                            Text("0", color = TextSecondaryDark, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        innerTextField()
+                                    }
+                                }
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
 
                         IconButton(
                             onClick = {
@@ -968,7 +976,7 @@ fun OrderCreateScreen(
                                 quantityInput = (current + 1).toString()
                             },
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(42.dp)
                                 .clip(CircleShape)
                                 .background(BardahlYellow)
                         ) {
@@ -990,46 +998,51 @@ fun OrderCreateScreen(
                                 if (current > 0) freeQuantityInput = (current - 1).toString()
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
-                                .background(StatusDelivered.copy(alpha = 0.2f))
+                                .background(StatusDelivered.copy(alpha = 0.25f))
                         ) {
                             Icon(Icons.Default.Remove, contentDescription = "Moins", tint = StatusDelivered)
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
 
                         Box(
                             modifier = Modifier
-                                .width(80.dp)
-                                .height(40.dp)
+                                .width(95.dp)
+                                .height(48.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(DarkBackground)
-                                .border(1.dp, StatusDelivered, RoundedCornerShape(10.dp)),
+                                .border(1.5.dp, StatusDelivered, RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            OutlinedTextField(
+                            BasicTextField(
                                 value = freeQuantityInput,
                                 onValueChange = { freeQuantityInput = it.filter { char -> char.isDigit() } },
-                                textStyle = LocalTextStyle.current.copy(
+                                textStyle = TextStyle(
                                     color = StatusDelivered,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
                                     textAlign = TextAlign.Center
                                 ),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
-                                modifier = Modifier.fillMaxSize(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent
-                                )
+                                cursorBrush = SolidColor(StatusDelivered),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (freeQuantityInput.isEmpty()) {
+                                            Text("0", color = TextSecondaryDark, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        innerTextField()
+                                    }
+                                }
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
 
                         IconButton(
                             onClick = {
@@ -1037,9 +1050,9 @@ fun OrderCreateScreen(
                                 freeQuantityInput = (current + 1).toString()
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
-                                .background(StatusDelivered.copy(alpha = 0.2f))
+                                .background(StatusDelivered.copy(alpha = 0.25f))
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Plus", tint = StatusDelivered)
                         }
@@ -1052,8 +1065,13 @@ fun OrderCreateScreen(
                     ) {
                         Button(
                             onClick = {
-                                val q = quantityInput.toIntOrNull() ?: 10
-                                freeQuantityInput = maxOf(1, q / 10).toString()
+                                val q = quantityInput.toIntOrNull() ?: 0
+                                if (q == 0) {
+                                    quantityInput = "10"
+                                    freeQuantityInput = "1"
+                                } else {
+                                    freeQuantityInput = maxOf(1, q / 10).toString()
+                                }
                                 promoTagInput = "Promo 10+1"
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow.copy(alpha = 0.2f), contentColor = BardahlYellow),
@@ -1066,7 +1084,8 @@ fun OrderCreateScreen(
 
                         Button(
                             onClick = {
-                                freeQuantityInput = quantityInput.ifBlank { "1" }
+                                val currentQ = quantityInput.toIntOrNull() ?: 0
+                                freeQuantityInput = if (currentQ > 0) currentQ.toString() else "1"
                                 quantityInput = "0"
                                 promoTagInput = "Gratuité 100%"
                             },
