@@ -61,8 +61,35 @@ function rowToOrder(row, extras = {}) {
   const statusMap = { validated: 'VALIDATED', draft: 'DRAFT', sent: 'SENT' }
   const totalTtc = row.total_ttc || 0
 
-  // Ensure items list is never empty
-  let items = extras.items && extras.items.length > 0 ? extras.items : []
+  let parsedObs = {}
+  if (row.observations) {
+    try {
+      const trimmed = row.observations.trim()
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        parsedObs = JSON.parse(trimmed)
+      }
+    } catch (e) {
+      // not json
+    }
+  }
+
+  const obsRaw = row.observations || ''
+  const paymentMethod = extras.paymentMethod || parsedObs.paymentMethod ||
+    (obsRaw.includes('Carte Bancaire') ? 'Carte Bancaire' :
+     obsRaw.includes('Espèces') ? 'Espèces' :
+     obsRaw.includes('Virement') ? 'Virement' : 'Chèque')
+
+  const modeExpedition = extras.modeExpedition || parsedObs.modeExpedition ||
+    (obsRaw.includes('Client Récupère') ? 'Client Récupère' :
+     obsRaw.includes('Transporteur Privé') ? 'Transporteur Privé' : 'Transport Bardahl')
+
+  const promoNote = extras.promoNote || parsedObs.promoNote || ''
+  const remarque = extras.remarque || parsedObs.remarque ||
+    (parsedObs.items ? '' : obsRaw.replace(/Paiement:[^|]+/g, '').replace(/Expédition:[^|]+/g, '').replace(/Promo:[^|]+/g, '').replace(/Remarque:[^|]+/g, '').trim())
+
+  let items = (extras.items && extras.items.length > 0) ? extras.items :
+              (parsedObs.items && parsedObs.items.length > 0) ? parsedObs.items : []
+
   if (items.length === 0 && totalTtc > 0) {
     items = [
       {
@@ -70,11 +97,14 @@ function rowToOrder(row, extras = {}) {
         reference: '34131',
         productName: 'Bardahl XTRA 10W40 1L',
         qty: 1,
+        qtyGratuit: 0,
         priceTtc: totalTtc,
         remise: 0
       }
     ]
   }
+
+  const totalFreeItems = items.reduce((sum, it) => sum + (parseInt(it.qtyGratuit || it.freeQuantity || 0, 10)), 0)
 
   return {
     id: row.id,
@@ -86,17 +116,24 @@ function rowToOrder(row, extras = {}) {
     totalDiscount: row.total_discount || 0,
     totalTva: row.total_tva || (totalTtc - (totalTtc / 1.20)),
     totalTtc: totalTtc,
-    observations: row.observations || '',
-    remarque: extras.remarque || row.observations || '',
+    totalFreeItems: totalFreeItems,
+    observations: obsRaw,
+    remarque: remarque,
+    promoNote: promoNote,
     isSynced: row.is_synced !== false,
     commercialDbId: row.commercial_id,
     clientDbId: row.client_id,
-    // Enriched from extras or joined data
-    commercialName: extras.commercialName || '',
-    commercialEmail: extras.commercialEmail || '',
-    clientName: extras.clientName || '',
-    paymentMethod: extras.paymentMethod || 'Chèque',
-    modeExpedition: extras.modeExpedition || 'Transport Bardahl',
+    // Enriched from extras, parsedObs, or joined data
+    commercialName: extras.commercialName || parsedObs.commercialName || '',
+    commercialEmail: extras.commercialEmail || parsedObs.commercialEmail || '',
+    clientName: extras.clientName || parsedObs.clientName || '',
+    clientIce: extras.clientIce || parsedObs.clientIce || '',
+    clientCity: extras.clientCity || parsedObs.clientCity || '',
+    clientPhone: extras.clientPhone || parsedObs.clientPhone || '',
+    paymentMethod: paymentMethod,
+    modeExpedition: modeExpedition,
+    remisePercent: extras.remisePercent || parsedObs.remisePercent || 0,
+    remiseMontant: extras.remiseMontant || parsedObs.remiseMontant || 0,
     items: items,
   }
 }
@@ -318,36 +355,59 @@ export function AppProvider({ children }) {
 
   // ── ORDERS CRUD ──────────────────────────────────────────────────────────────
   const addOrder = useCallback(async (o) => {
-    const commDbId = currentUser?.commercialDbId ||
-      commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())?.dbId
+    let commDbId = o.commercialDbId || currentUser?.commercialDbId
+    if (!commDbId) {
+      const matchedComm = commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())
+        || (o.commercialName ? commercials.find(cm => cm.name.toLowerCase().includes(o.commercialName.toLowerCase())) : null)
+        || commercials[0]
+      commDbId = matchedComm?.dbId || matchedComm?.id
+    }
 
     const clientRecord = clients.find(c =>
-      c.companyName === o.clientName || c.id === o.clientDbId
-    )
-    const clientDbId = clientRecord?.dbId || o.clientDbId
+      c.companyName === o.clientName || c.id === o.clientDbId || c.dbId === o.clientDbId
+    ) || clients[0]
+    const clientDbId = clientRecord?.dbId || clientRecord?.id || o.clientDbId
 
     if (!commDbId || !clientDbId) {
       console.error('addOrder: missing IDs', { commDbId, clientDbId })
       return null
     }
 
-    const row = await dbAddOrder({ ...o, commercialDbId: commDbId, clientDbId })
+    const orderPayload = {
+      ...o,
+      commercialDbId: commDbId,
+      clientDbId: clientDbId,
+      clientName: clientRecord?.companyName || o.clientName,
+      clientIce: clientRecord?.ice || o.clientIce || '',
+      clientCity: clientRecord?.city || o.clientCity || '',
+      clientPhone: clientRecord?.phone || o.clientPhone || '',
+      commercialName: o.commercialName || currentUser?.name || 'Direction Bardahl',
+      commercialEmail: o.commercialEmail || currentUser?.email || 'bardahl@gmail.com'
+    }
+
+    const row = await dbAddOrder(orderPayload)
     if (!row) return null
 
-    // Save extras locally (items, paymentMethod, modeExpedition not in DB)
+    // Save extras locally (items, paymentMethod, modeExpedition)
     const extras = {
       items: o.items || [],
-      paymentMethod: o.paymentMethod || '',
-      modeExpedition: o.modeExpedition || '',
+      paymentMethod: o.paymentMethod || 'Chèque',
+      modeExpedition: o.modeExpedition || 'Transport Bardahl',
       remarque: o.remarque || '',
-      commercialName: currentUser?.name || '',
-      commercialEmail: currentUser?.email || '',
-      clientName: clientRecord?.companyName || o.clientName || '',
+      promoNote: o.promoNote || '',
+      remisePercent: o.remisePercent || 0,
+      remiseMontant: o.remiseMontant || 0,
+      commercialName: orderPayload.commercialName,
+      commercialEmail: orderPayload.commercialEmail,
+      clientName: orderPayload.clientName,
+      clientIce: orderPayload.clientIce,
+      clientCity: orderPayload.clientCity,
+      clientPhone: orderPayload.clientPhone,
     }
     setOrderExtras(prev => ({ ...prev, [row.id]: extras }))
 
     const appOrder = { ...rowToOrder(row, extras) }
-    setOrders(prev => [appOrder, ...prev])
+    setOrders(prev => [appOrder, ...prev.filter(x => x.id !== row.id && x.orderNumber !== appOrder.orderNumber)])
     return appOrder
   }, [currentUser, commercials, clients])
 
@@ -357,17 +417,23 @@ export function AppProvider({ children }) {
 
     const extras = {
       items: o.items || [],
-      paymentMethod: o.paymentMethod || '',
-      modeExpedition: o.modeExpedition || '',
+      paymentMethod: o.paymentMethod || 'Chèque',
+      modeExpedition: o.modeExpedition || 'Transport Bardahl',
       remarque: o.remarque || '',
+      promoNote: o.promoNote || '',
+      remisePercent: o.remisePercent || 0,
+      remiseMontant: o.remiseMontant || 0,
       commercialName: o.commercialName || '',
       commercialEmail: o.commercialEmail || '',
       clientName: o.clientName || '',
+      clientIce: o.clientIce || '',
+      clientCity: o.clientCity || '',
+      clientPhone: o.clientPhone || '',
     }
     setOrderExtras(prev => ({ ...prev, [row.id]: extras }))
 
     const appOrder = { ...rowToOrder(row, extras) }
-    setOrders(prev => prev.map(x => x.id === row.id ? appOrder : x))
+    setOrders(prev => prev.map(x => (x.id === row.id || x.dbId === row.id) ? appOrder : x))
     return appOrder
   }, [])
 

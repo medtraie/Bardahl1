@@ -250,6 +250,23 @@ export async function dbAddOrder(o) {
   const statusMap = { VALIDATED: 'validated', DRAFT: 'draft', SENT: 'sent' }
   const dbStatus = statusMap[(o.status || 'DRAFT').toUpperCase()] || 'draft'
 
+  // Pack items and full order metadata into observations JSON
+  const observationsPayload = JSON.stringify({
+    items: o.items || [],
+    paymentMethod: o.paymentMethod || 'Chèque',
+    modeExpedition: o.modeExpedition || 'Transport Bardahl',
+    remarque: o.remarque || '',
+    promoNote: o.promoNote || '',
+    remisePercent: o.remisePercent || 0,
+    remiseMontant: o.remiseMontant || 0,
+    commercialName: o.commercialName || '',
+    commercialEmail: o.commercialEmail || '',
+    clientName: o.clientName || '',
+    clientIce: o.clientIce || '',
+    clientCity: o.clientCity || '',
+    clientPhone: o.clientPhone || '',
+  })
+
   const { data, error } = await supabase.from('orders').insert([{
     commercial_id: o.commercialDbId,
     client_id: o.clientDbId,
@@ -260,7 +277,7 @@ export async function dbAddOrder(o) {
     total_discount: parseFloat(o.totalDiscount) || 0,
     total_tva: parseFloat(o.totalTva) || 0,
     total_ttc: parseFloat(o.totalTtc) || 0,
-    observations: o.observations || o.remarque || '',
+    observations: observationsPayload,
     is_synced: true,
   }]).select().single()
   if (error) { console.error('dbAddOrder:', error.message); return null }
@@ -271,6 +288,23 @@ export async function dbUpdateOrder(o) {
   const statusMap = { VALIDATED: 'validated', DRAFT: 'draft', SENT: 'sent' }
   const dbStatus = statusMap[(o.status || 'DRAFT').toUpperCase()] || 'draft'
 
+  const observationsPayload = JSON.stringify({
+    items: o.items || [],
+    paymentMethod: o.paymentMethod || 'Chèque',
+    modeExpedition: o.modeExpedition || 'Transport Bardahl',
+    remarque: o.remarque || '',
+    promoNote: o.promoNote || '',
+    remisePercent: o.remisePercent || 0,
+    remiseMontant: o.remiseMontant || 0,
+    commercialName: o.commercialName || '',
+    commercialEmail: o.commercialEmail || '',
+    clientName: o.clientName || '',
+    clientIce: o.clientIce || '',
+    clientCity: o.clientCity || '',
+    clientPhone: o.clientPhone || '',
+  })
+
+  const targetId = o.id || o.dbId
   const { data, error } = await supabase.from('orders').update({
     order_number: o.orderNumber,
     order_date: o.date || new Date().toISOString(),
@@ -279,8 +313,8 @@ export async function dbUpdateOrder(o) {
     total_discount: parseFloat(o.totalDiscount) || 0,
     total_tva: parseFloat(o.totalTva) || 0,
     total_ttc: parseFloat(o.totalTtc) || 0,
-    observations: o.observations || o.remarque || '',
-  }).eq('id', o.id).select().single()
+    observations: observationsPayload,
+  }).eq('id', targetId).select().single()
   if (error) { console.error('dbUpdateOrder:', error.message); return null }
   return data
 }

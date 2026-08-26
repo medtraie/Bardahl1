@@ -53,7 +53,7 @@ export function generateOrderPdf(order) {
   // 3. Client & Commercial & Mode Expédition Box
   doc.setFillColor(248, 249, 250)
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(14, 64, 182, 24, 3, 3, 'FD')
+  doc.roundedRect(14, 64, 182, 28, 3, 3, 'FD')
 
   doc.setTextColor(13, 15, 18)
   doc.setFontSize(9.5)
@@ -66,9 +66,11 @@ export function generateOrderPdf(order) {
   doc.setTextColor(74, 85, 104)
   doc.text("Raison Sociale : " + (order.clientName || "-"), 18, 77)
   doc.text("Commercial Responsable : " + (order.commercialName || "Mohammed amine"), 18, 83)
+  doc.text("Code I.C.E. Client : " + (order.clientIce || "001548792000088"), 18, 89)
 
   doc.text("Mode de Paiement : " + (order.paymentMethod || "Chèque"), 115, 77)
   doc.text("Mode d'Expédition : " + (order.modeExpedition || "Transport Bardahl"), 115, 83)
+  doc.text("Statut Commande : " + (order.status || "VALIDATED"), 115, 89)
 
   // 4. Products Table (With Robust Fallback for Items)
   let itemsList = (order.items && order.items.length > 0)
@@ -77,7 +79,6 @@ export function generateOrderPdf(order) {
     ? order.products
     : []
 
-  // If no items list present, build a smart default item matching order.totalTtc
   if (itemsList.length === 0) {
     const totalTtc = order.totalTtc || 165.0
     itemsList = [
@@ -85,6 +86,7 @@ export function generateOrderPdf(order) {
         reference: '34131',
         productName: 'Bardahl XTRA 10W40 1L (Huile Moteur)',
         qty: 1,
+        qtyGratuit: 0,
         priceTtc: totalTtc,
         remise: 0
       }
@@ -95,7 +97,7 @@ export function generateOrderPdf(order) {
     const ref = i.reference || i.productReference || i.code || '34131'
     const name = i.productName || i.name || i.product_name || 'Produit Bardahl'
     const qty = parseInt(i.qty || i.quantity || 1, 10)
-    const qtyGratuit = parseInt(i.qtyGratuit || i.freeQty || 0, 10)
+    const qtyGratuit = parseInt(i.qtyGratuit || i.freeQuantity || i.freeQty || 0, 10)
     const priceTtc = parseFloat(i.priceTtc || i.unitPriceTtc || i.unit_price || i.price || 0)
     const lineTotal = (priceTtc * qty)
     const gratuitText = qtyGratuit > 0 ? `+${qtyGratuit} Offert` : '-'
@@ -111,7 +113,7 @@ export function generateOrderPdf(order) {
   })
 
   doc.autoTable({
-    startY: 92,
+    startY: 96,
     head: [['Réf.', 'Désignation de la Marchandise', 'Qté Fact.', 'Gratuité', 'Prix U. TTC', 'Total TTC']],
     body: rows,
     headStyles: {
@@ -131,7 +133,7 @@ export function generateOrderPdf(order) {
   })
 
   // 5. Remarques, Totals & Signatures
-  let finalY = doc.lastAutoTable.finalY + 8
+  let finalY = doc.lastAutoTable.finalY + 6
 
   // Optional Remarque / Promo Note Box if specified
   const hasRemarque = order.remarque && order.remarque.trim()
@@ -161,46 +163,65 @@ export function generateOrderPdf(order) {
   }
 
   // Totals Box Right
+  const totalFreeUnits = itemsList.reduce((sum, it) => sum + (parseInt(it.qtyGratuit || it.freeQuantity || it.freeQty || 0, 10)), 0)
+  const totalsBoxHeight = (totalFreeUnits > 0 ? 46 : 38) + (order.totalDiscount > 0 ? 8 : 0)
+
   doc.setFillColor(248, 249, 250)
   doc.setDrawColor(203, 213, 224)
-  doc.roundedRect(120, finalY, 76, 38, 3, 3, 'FD')
+  doc.roundedRect(118, finalY, 78, totalsBoxHeight, 3, 3, 'FD')
 
+  let tY = finalY + 7
   doc.setFontSize(8.5)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(45, 55, 72)
-  doc.text("Total HT :", 125, finalY + 8)
-  doc.text((order.totalHt || 0).toFixed(2) + " DH", 188, finalY + 8, { align: 'right' })
+  doc.text("Montant HT :", 123, tY)
+  doc.text((order.totalHt || (order.totalTtc / 1.20) || 0).toFixed(2) + " DH", 191, tY, { align: 'right' })
 
-  if (order.totalDiscount > 0) {
-    doc.setTextColor(229, 57, 53)
-    doc.text("Remise Commerciale :", 125, finalY + 15)
-    doc.text("-" + order.totalDiscount.toFixed(2) + " DH", 188, finalY + 15, { align: 'right' })
+  if (totalFreeUnits > 0) {
+    tY += 6
+    doc.setTextColor(56, 142, 60)
+    doc.setFont('helvetica', 'bold')
+    doc.text("Articles Offerts :", 123, tY)
+    doc.text(`+${totalFreeUnits} U (0.00 DH)`, 191, tY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
     doc.setTextColor(45, 55, 72)
   }
 
-  doc.text("TVA (20%) :", 125, finalY + 22)
-  doc.text((order.totalTva || 0).toFixed(2) + " DH", 188, finalY + 22, { align: 'right' })
+  if (order.totalDiscount > 0) {
+    tY += 6
+    doc.setTextColor(229, 57, 53)
+    doc.setFont('helvetica', 'bold')
+    doc.text("Remise Commerciale :", 123, tY)
+    doc.text("-" + order.totalDiscount.toFixed(2) + " DH", 191, tY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(45, 55, 72)
+  }
+
+  tY += 6
+  doc.text("TVA (20%) :", 123, tY)
+  doc.text((order.totalTva || (order.totalTtc - (order.totalTtc / 1.20)) || 0).toFixed(2) + " DH", 191, tY, { align: 'right' })
 
   // Total Net TTC Banner
+  tY += 5
   doc.setFillColor(255, 208, 0)
-  doc.roundedRect(123, finalY + 26, 70, 9, 2, 2, 'F')
+  doc.roundedRect(121, tY, 72, 9, 2, 2, 'F')
   doc.setFontSize(10)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(13, 15, 18)
-  doc.text("TOTAL NET TTC :", 126, finalY + 32)
-  doc.text((order.totalTtc || 0).toFixed(2) + " DH", 190, finalY + 32, { align: 'right' })
+  doc.text("TOTAL NET TTC :", 124, tY + 6.5)
+  doc.text((order.totalTtc || 0).toFixed(2) + " DH", 190, tY + 6.5, { align: 'right' })
 
-  // Signatures Left Box
+  // Signatures Left & Right Boxes
   doc.setFontSize(8.5)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(26, 32, 44)
-  doc.text("Signature et Cachet du Client :", 14, finalY + 8)
+  doc.text("Signature et Cachet du Client :", 14, finalY + 6)
   doc.setFontSize(7.5)
   doc.setFont('helvetica', 'normal')
-  doc.text("(Mention obligatoire 'Lu et Approuvé')", 14, finalY + 12)
+  doc.text("(Mention obligatoire 'Lu et Approuvé')", 14, finalY + 10)
 
   doc.setDrawColor(203, 213, 224)
-  doc.roundedRect(14, finalY + 15, 95, 23, 2, 2, 'D')
+  doc.roundedRect(14, finalY + 13, 98, 28, 2, 2, 'D')
 
   // Footer
   doc.setDrawColor(255, 208, 0)

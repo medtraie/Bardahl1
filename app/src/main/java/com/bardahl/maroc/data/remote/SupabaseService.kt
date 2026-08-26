@@ -303,22 +303,68 @@ class SupabaseService(
                     val clientObj = clientsMap[cId]
                     val commObj = commercialsMap[commId]
 
-                    val clientName = clientObj?.companyName ?: "Client Bardahl"
-                    val commName = commObj?.name ?: "Commercial Bardahl"
                     val obs = obj.optString("observations", "")
+                    var parsedItems = mutableListOf<OrderItem>()
+                    var parsedPayment = "Chèque"
+                    var parsedExpedition = "Transport Bardahl"
+                    var parsedRemarque = ""
+                    var parsedPromoNote = ""
+                    var parsedRemisePercent = 0.0
+                    var parsedRemiseMontant = 0.0
+                    var customClientName = ""
+                    var customCommName = ""
 
-                    val extractedPayment = when {
-                        obs.contains("Carte Bancaire", ignoreCase = true) -> "Carte Bancaire"
-                        obs.contains("Espèces", ignoreCase = true) -> "Espèces"
-                        obs.contains("Virement", ignoreCase = true) -> "Virement"
-                        else -> "Chèque"
+                    if (obs.trim().startsWith("{") && obs.trim().endsWith("}")) {
+                        try {
+                            val obsJson = JSONObject(obs.trim())
+                            parsedPayment = obsJson.optString("paymentMethod", "Chèque")
+                            parsedExpedition = obsJson.optString("modeExpedition", "Transport Bardahl")
+                            parsedRemarque = obsJson.optString("remarque", "")
+                            parsedPromoNote = obsJson.optString("promoNote", "")
+                            parsedRemisePercent = obsJson.optDouble("remisePercent", 0.0)
+                            parsedRemiseMontant = obsJson.optDouble("remiseMontant", 0.0)
+                            customClientName = obsJson.optString("clientName", "")
+                            customCommName = obsJson.optString("commercialName", "")
+
+                            val itemsArr = obsJson.optJSONArray("items")
+                            if (itemsArr != null) {
+                                for (j in 0 until itemsArr.length()) {
+                                    val itemObj = itemsArr.getJSONObject(j)
+                                    parsedItems.add(
+                                        OrderItem(
+                                            productId = itemObj.optString("productId", "la1"),
+                                            productName = itemObj.optString("productName", "Produit Bardahl"),
+                                            productReference = itemObj.optString("reference", itemObj.optString("productReference", "34131")),
+                                            quantity = itemObj.optInt("qty", itemObj.optInt("quantity", 1)),
+                                            freeQuantity = itemObj.optInt("qtyGratuit", itemObj.optInt("freeQuantity", 0)),
+                                            unitPriceTtc = itemObj.optDouble("priceTtc", itemObj.optDouble("unitPriceTtc", 0.0)),
+                                            promoTag = itemObj.optString("promoTag", "")
+                                        )
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    } else {
+                        parsedPayment = when {
+                            obs.contains("Carte Bancaire", ignoreCase = true) -> "Carte Bancaire"
+                            obs.contains("Espèces", ignoreCase = true) -> "Espèces"
+                            obs.contains("Virement", ignoreCase = true) -> "Virement"
+                            else -> "Chèque"
+                        }
+                        parsedExpedition = when {
+                            obs.contains("Client Récupère", ignoreCase = true) -> "Client Récupère"
+                            obs.contains("Transporteur Privé", ignoreCase = true) -> "Transporteur Privé"
+                            else -> "Transport Bardahl"
+                        }
+                        parsedRemarque = obs
                     }
 
-                    val extractedExpedition = when {
-                        obs.contains("Client Récupère", ignoreCase = true) -> "Client Récupère"
-                        obs.contains("Transporteur Privé", ignoreCase = true) -> "Transporteur Privé"
-                        else -> "Transport Bardahl"
-                    }
+                    val clientName = if (customClientName.isNotBlank()) customClientName else clientObj?.companyName ?: "Client Bardahl"
+                    val commName = if (customCommName.isNotBlank()) customCommName else commObj?.name ?: "Commercial Bardahl"
+
+                    val totalFreeUnits = parsedItems.sumOf { it.freeQuantity }
 
                     list.add(
                         Order(
@@ -330,13 +376,19 @@ class SupabaseService(
                             clientName = clientName,
                             orderDate = obj.optString("order_date", "2026-08-10").take(10),
                             status = st,
+                            items = parsedItems,
+                            paymentMethod = parsedPayment,
+                            modeExpedition = parsedExpedition,
+                            remarque = parsedRemarque,
+                            promoNote = parsedPromoNote,
+                            remisePercent = parsedRemisePercent,
+                            remiseMontant = parsedRemiseMontant,
+                            totalFreeItems = totalFreeUnits,
                             totalHt = obj.optDouble("total_ht", 0.0),
                             totalDiscount = obj.optDouble("total_discount", 0.0),
                             totalTva = obj.optDouble("total_tva", 0.0),
                             totalTtc = obj.optDouble("total_ttc", 0.0),
                             observations = obs,
-                            paymentMethod = extractedPayment,
-                            modeExpedition = extractedExpedition,
                             isSynced = true
                         )
                     )
@@ -371,13 +423,32 @@ class SupabaseService(
             val conn = getConnection("orders", "POST")
             conn.doOutput = true
 
-            val obsList = mutableListOf<String>()
-            if (order.observations?.isNotBlank() == true) obsList.add(order.observations)
-            if (order.remarque.isNotBlank()) obsList.add("Remarque: ${order.remarque}")
-            if (order.promoNote.isNotBlank()) obsList.add("Promo: ${order.promoNote}")
-            obsList.add("Paiement: ${order.paymentMethod}")
-            obsList.add("Expédition: ${order.modeExpedition}")
-            val finalObservations = obsList.joinToString(" | ")
+            // Build structured observations JSON containing all items and order metadata
+            val itemsJsonArr = JSONArray()
+            order.items.forEach { item ->
+                val itemObj = JSONObject().apply {
+                    put("productId", item.productId)
+                    put("productName", item.productName)
+                    put("reference", item.productReference)
+                    put("qty", item.quantity)
+                    put("qtyGratuit", item.freeQuantity)
+                    put("priceTtc", item.unitPriceTtc)
+                    put("promoTag", item.promoTag)
+                }
+                itemsJsonArr.put(itemObj)
+            }
+
+            val obsJson = JSONObject().apply {
+                put("items", itemsJsonArr)
+                put("paymentMethod", order.paymentMethod)
+                put("modeExpedition", order.modeExpedition)
+                put("remarque", order.remarque)
+                put("promoNote", order.promoNote)
+                put("remisePercent", order.remisePercent)
+                put("remiseMontant", order.remiseMontant)
+                put("commercialName", order.commercialName)
+                put("clientName", order.clientName)
+            }
 
             val json = JSONObject().apply {
                 put("order_number", order.orderNumber)
@@ -389,7 +460,7 @@ class SupabaseService(
                 put("total_discount", order.totalDiscount)
                 put("total_tva", order.totalTva)
                 put("total_ttc", order.totalTtc)
-                put("observations", finalObservations)
+                put("observations", obsJson.toString())
                 put("is_synced", true)
             }
 
