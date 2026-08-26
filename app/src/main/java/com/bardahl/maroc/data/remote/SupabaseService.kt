@@ -282,7 +282,7 @@ class SupabaseService(
             val clientsMap = clientsList.associateBy { it.id }
             val commercialsMap = commercialsList.associateBy { it.id }
 
-            val conn = getConnection("orders?select=*")
+            val conn = getConnection("orders?select=*&order=created_at.desc")
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val jsonArray = JSONArray(jsonStr)
@@ -303,8 +303,22 @@ class SupabaseService(
                     val clientObj = clientsMap[cId]
                     val commObj = commercialsMap[commId]
 
-                    val clientName = clientObj?.companyName ?: obj.optString("client_name", "Client Bardahl")
-                    val commName = commObj?.name ?: obj.optString("commercial_name", "Mohammed amine")
+                    val clientName = clientObj?.companyName ?: "Client Bardahl"
+                    val commName = commObj?.name ?: "Commercial Bardahl"
+                    val obs = obj.optString("observations", "")
+
+                    val extractedPayment = when {
+                        obs.contains("Carte Bancaire", ignoreCase = true) -> "Carte Bancaire"
+                        obs.contains("Espèces", ignoreCase = true) -> "Espèces"
+                        obs.contains("Virement", ignoreCase = true) -> "Virement"
+                        else -> "Chèque"
+                    }
+
+                    val extractedExpedition = when {
+                        obs.contains("Client Récupère", ignoreCase = true) -> "Client Récupère"
+                        obs.contains("Transporteur Privé", ignoreCase = true) -> "Transporteur Privé"
+                        else -> "Transport Bardahl"
+                    }
 
                     list.add(
                         Order(
@@ -320,9 +334,9 @@ class SupabaseService(
                             totalDiscount = obj.optDouble("total_discount", 0.0),
                             totalTva = obj.optDouble("total_tva", 0.0),
                             totalTtc = obj.optDouble("total_ttc", 0.0),
-                            observations = obj.optString("observations", ""),
-                            paymentMethod = obj.optString("payment_method", "Chèque"),
-                            modeExpedition = obj.optString("mode_expedition", "Transport Bardahl"),
+                            observations = obs,
+                            paymentMethod = extractedPayment,
+                            modeExpedition = extractedExpedition,
                             isSynced = true
                         )
                     )
@@ -337,27 +351,51 @@ class SupabaseService(
 
     suspend fun postOrder(order: Order): Boolean = withContext(Dispatchers.IO) {
         try {
+            // 1. Resolve valid commercial UUID
+            var commId = order.commercialId.trim()
+            if (commId.isBlank() || commId == "11111111-1111-1111-1111-111111111111" || !commId.contains("-")) {
+                val comms = fetchCommercials()
+                commId = comms.find { it.name.contains(order.commercialName, ignoreCase = true) }?.id
+                    ?: comms.firstOrNull()?.id
+                    ?: "b7593f2a-0dab-4281-acc7-6c404a27511a"
+            }
+
+            // 2. Resolve valid client UUID
+            var cId = order.clientId.trim()
+            if (cId.isBlank() || cId.startsWith("c") || !cId.contains("-")) {
+                val clients = fetchClients()
+                val matchedClient = clients.find { it.companyName.equals(order.clientName, ignoreCase = true) || it.id == cId }
+                cId = matchedClient?.id ?: clients.firstOrNull()?.id ?: "443e06e8-8eff-4dbd-86f1-7fae0f4f936c"
+            }
+
             val conn = getConnection("orders", "POST")
             conn.doOutput = true
+
+            val obsList = mutableListOf<String>()
+            if (order.observations?.isNotBlank() == true) obsList.add(order.observations)
+            if (order.remarque.isNotBlank()) obsList.add("Remarque: ${order.remarque}")
+            if (order.promoNote.isNotBlank()) obsList.add("Promo: ${order.promoNote}")
+            obsList.add("Paiement: ${order.paymentMethod}")
+            obsList.add("Expédition: ${order.modeExpedition}")
+            val finalObservations = obsList.joinToString(" | ")
+
             val json = JSONObject().apply {
-                put("id", order.id)
                 put("order_number", order.orderNumber)
-                put("commercial_id", order.commercialId)
-                put("client_id", order.clientId)
+                put("commercial_id", commId)
+                put("client_id", cId)
                 put("status", order.status.name.lowercase())
-                put("order_date", order.orderDate)
+                put("order_date", order.orderDate.take(10))
                 put("total_ht", order.totalHt)
                 put("total_discount", order.totalDiscount)
                 put("total_tva", order.totalTva)
                 put("total_ttc", order.totalTtc)
-                put("payment_method", order.paymentMethod)
-                put("mode_expedition", order.modeExpedition)
-                put("observations", order.observations ?: "")
-                put("commercial_name", order.commercialName)
-                put("client_name", order.clientName)
+                put("observations", finalObservations)
+                put("is_synced", true)
             }
+
             conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
-            return@withContext conn.responseCode in 200..299
+            val code = conn.responseCode
+            return@withContext code in 200..299
         } catch (e: Exception) {
             e.printStackTrace()
             return@withContext false

@@ -258,7 +258,9 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
         viewModelScope.launch {
             try {
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
-                _orders.value = remote
+                val current = _orders.value
+                val merged = (current.filter { it.isSynced.not() } + remote).distinctBy { it.orderNumber }
+                _orders.value = if (merged.isNotEmpty()) merged else remote
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -267,8 +269,15 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
 
     fun createOrder(order: Order) {
         viewModelScope.launch {
-            _orders.value = listOf(order) + _orders.value
+            _orders.value = listOf(order) + _orders.value.filter { it.orderNumber != order.orderNumber }
             orderRepository.saveOrder(order)
+            try {
+                val remote = orderRepository.fetchRemoteOrdersDirectly()
+                val merged = (listOf(order) + remote).distinctBy { it.orderNumber }
+                _orders.value = merged
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

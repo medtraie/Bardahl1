@@ -61,12 +61,18 @@ fun OrderListScreen(
         orderViewModel.refreshOrdersFromSupabase()
     }
 
-    // Role-based order filtering - mirrors Web AppContext visibleOrders logic (exact ID match)
+    // Role-based order filtering - mirrors Web AppContext visibleOrders logic
     val userCommId = currentUser?.id ?: ""
+    val userCommName = currentUser?.firstName ?: ""
+    val userEmail = currentUser?.email ?: ""
     val visibleOrders = if (isAdmin) {
         orders
     } else {
-        orders.filter { o -> o.commercialId == userCommId }
+        orders.filter { o ->
+            o.commercialId == userCommId ||
+            (userCommName.isNotBlank() && o.commercialName.contains(userCommName, ignoreCase = true)) ||
+            (userEmail.isNotBlank() && o.observations?.contains(userEmail, ignoreCase = true) == true)
+        }
     }
 
     Scaffold(
@@ -787,11 +793,14 @@ fun OrderCreateScreen(
                     if (selectedClient != null && selectedItems.isNotEmpty()) {
                         val finalOrderNumber = customOrderNumber.ifBlank { suggestedOrderNumber }
                         val today = java.time.LocalDate.now().toString()
+                        val commIdToUse = if (currentUser?.role == UserRole.ADMIN) (selectedClient!!.commercialId.takeIf { it.isNotBlank() && it.contains("-") } ?: commercialId) else commercialId
+                        val commNameToUse = if (currentUser?.role == UserRole.ADMIN) "Direction Bardahl" else commercialName
+
                         val newOrder = Order(
                             id = java.util.UUID.randomUUID().toString(),
                             orderNumber = finalOrderNumber,
-                            commercialId = commercialId,
-                            commercialName = commercialName,
+                            commercialId = commIdToUse,
+                            commercialName = commNameToUse,
                             clientId = selectedClient!!.id,
                             clientName = selectedClient!!.companyName,
                             orderDate = today,
