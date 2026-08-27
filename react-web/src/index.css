@@ -67,6 +67,16 @@ button, input, select, textarea {
   border: none;
 }
 
+/* Remove spin buttons from number inputs across browsers */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
 button {
   cursor: pointer;
 }

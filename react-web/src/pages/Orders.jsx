@@ -535,27 +535,132 @@ export default function Orders({ openWizardTrigger }) {
                   <table className="custom-table">
                     <thead>
                       <tr>
-                        <th>Réf.</th>
+                        <th style={{ minWidth: '70px' }}>Réf.</th>
                         <th>Produit</th>
-                        <th>Qté</th>
-                        <th>Gratuit</th>
-                        <th>Prix U.</th>
-                        <th>Total</th>
-                        <th>Actions</th>
+                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Qté</th>
+                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Gratuit</th>
+                        <th style={{ minWidth: '90px' }}>Prix U.</th>
+                        <th style={{ minWidth: '100px' }}>Total</th>
+                        <th style={{ minWidth: '90px', textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedProducts.map((item, idx) => (
                         <tr key={idx}>
-                          <td>{item.reference}</td>
-                          <td><strong>{item.productName}</strong>{item.promoTag && <div style={{ fontSize: '10px', color: '#34C759' }}>{item.promoTag}</div>}</td>
-                          <td><input type="number" value={item.qty} onChange={e => handleQtyChange(idx, e.target.value)} className="input-field" style={{ width: '50px' }} /></td>
-                          <td><input type="number" value={item.qtyGratuit} onChange={e => handleQtyGratuitChange(idx, e.target.value)} className="input-field" style={{ width: '50px' }} /></td>
-                          <td>{item.priceTtc.toFixed(2)}</td>
-                          <td style={{ color: 'var(--bardahl-yellow)' }}>{(item.priceTtc * item.qty).toFixed(2)}</td>
+                          <td><span style={{ fontWeight: '700', color: 'var(--bardahl-yellow)' }}>{item.reference}</span></td>
                           <td>
-                             <button type="button" onClick={() => handleTogglePromoLine(idx, '10+1')} style={{ fontSize: '10px', marginRight: '4px' }}>10+1</button>
-                             <button type="button" onClick={() => handleQtyChange(idx, 0)} style={{ color: '#FF453A' }}><Trash2 size={14} /></button>
+                            <strong>{item.productName}</strong>
+                            {item.promoTag && <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold', marginTop: '2px' }}>{item.promoTag}</div>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
+                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.qty}
+                                onChange={e => handleQtyChange(idx, e.target.value)}
+                                style={{
+                                  width: '45px',
+                                  height: '30px',
+                                  textAlign: 'center',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#FFFFFF',
+                                  fontWeight: '800',
+                                  fontSize: '14px',
+                                  outline: 'none'
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleQtyChange(idx, (parseInt(item.qty, 10) || 0) + 1)}
+                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleQtyGratuitChange(idx, Math.max(0, (parseInt(item.qtyGratuit, 10) || 0) - 1))}
+                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.qtyGratuit}
+                                onChange={e => handleQtyGratuitChange(idx, e.target.value)}
+                                style={{
+                                  width: '45px',
+                                  height: '30px',
+                                  textAlign: 'center',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: item.qtyGratuit > 0 ? '#34C759' : '#8E95A5',
+                                  fontWeight: '800',
+                                  fontSize: '14px',
+                                  outline: 'none'
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleQtyGratuitChange(idx, (parseInt(item.qtyGratuit, 10) || 0) + 1)}
+                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{item.priceTtc.toFixed(2)} DH</td>
+                          <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '800' }}>{(item.priceTtc * item.qty).toFixed(2)} DH</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePromoLine(idx, '10+1')}
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  background: item.promoTag ? 'rgba(52, 199, 89, 0.2)' : '#14171F',
+                                  color: item.promoTag ? '#34C759' : 'var(--text-secondary)',
+                                  border: item.promoTag ? '1px solid #34C759' : '1px solid var(--border-card)',
+                                  cursor: 'pointer'
+                                }}
+                                title="Appliquer Promo 10+1"
+                              >
+                                10+1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleQtyChange(idx, 0)}
+                                style={{
+                                  color: '#FF453A',
+                                  background: 'rgba(255, 69, 58, 0.1)',
+                                  border: '1px solid rgba(255, 69, 58, 0.3)',
+                                  borderRadius: '6px',
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                                title="Supprimer la ligne"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
