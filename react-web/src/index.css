@@ -334,6 +334,25 @@ button {
   box-shadow: 0 0 14px var(--bardahl-yellow-glow);
 }
 
+select.input-field {
+  color-scheme: dark;
+}
+
+select.input-field option {
+  background-color: #14171F !important;
+  color: #FFFFFF !important;
+  padding: 8px 12px;
+}
+
+[data-theme="light"] select.input-field {
+  color-scheme: light;
+}
+
+[data-theme="light"] select.input-field option {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
 [data-theme="light"] .input-field {
   background: #F8FAFC;
   border-color: #CBD5E1;

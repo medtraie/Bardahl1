@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   Gift, Tag, Plus, Edit3, Trash2, CheckCircle2, XCircle, 
-  Layers, ShoppingBag, DollarSign, Calendar, Sparkles, AlertCircle, Percent
+  Layers, ShoppingBag, DollarSign, Calendar, Sparkles, AlertCircle, Percent,
+  Search, Check, X
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
@@ -19,13 +20,19 @@ export default function Promotions() {
   const [formName, setFormName] = useState('')
   const [formDesc, setFormDesc] = useState('')
   const [formType, setFormType] = useState('TYPE_1')
-  const [formTargetType, setFormTargetType] = useState('FAMILY')
+  const [formTargetType, setFormTargetType] = useState('PRODUCT')
   const [formTargetFamily, setFormTargetFamily] = useState('ADDITIFS')
   const [formTargetProductRef, setFormTargetProductRef] = useState('')
+  const [targetSearchQuery, setTargetSearchQuery] = useState('')
+  const [showTargetDropdown, setShowTargetDropdown] = useState(false)
+
   const [formThreshold, setFormThreshold] = useState(10)
   const [formDiscountPercent, setFormDiscountPercent] = useState(5)
   const [formFreeItemType, setFormFreeItemType] = useState('SAME_PRODUCT')
   const [formFreeProductRef, setFormFreeProductRef] = useState('')
+  const [freeProductSearchQuery, setFreeProductSearchQuery] = useState('')
+  const [showFreeDropdown, setShowFreeDropdown] = useState(false)
+
   const [formFreeQuantity, setFormFreeQuantity] = useState(1)
   const [formVoucherAmount, setFormVoucherAmount] = useState(0)
   const [formIsActive, setFormIsActive] = useState(true)
@@ -43,6 +50,41 @@ export default function Promotions() {
   // Extract unique categories from products
   const families = Array.from(new Set(products.map(p => (p.category || 'AUTRES').toUpperCase()))).sort()
 
+  // Selected product lookups
+  const selectedTargetProduct = products.find(p => p.reference === formTargetProductRef) || products[0]
+  const selectedFreeProduct = products.find(p => p.reference === formFreeProductRef) || products[0]
+
+  // Filtered product lists for searchable autocomplete pickers
+  const filteredTargetProducts = products.filter(p => {
+    if (!targetSearchQuery.trim()) return true
+    const q = targetSearchQuery.toLowerCase()
+    return (p.name || '').toLowerCase().includes(q) ||
+           (p.reference || '').toLowerCase().includes(q) ||
+           (p.category || '').toLowerCase().includes(q)
+  })
+
+  const filteredFreeProducts = products.filter(p => {
+    if (!freeProductSearchQuery.trim()) return true
+    const q = freeProductSearchQuery.toLowerCase()
+    return (p.name || '').toLowerCase().includes(q) ||
+           (p.reference || '').toLowerCase().includes(q) ||
+           (p.category || '').toLowerCase().includes(q)
+  })
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.target-product-picker-container')) {
+        setShowTargetDropdown(false)
+      }
+      if (!e.target.closest('.free-product-picker-container')) {
+        setShowFreeDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const filteredPromos = promotions.filter(p => {
     const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
                           (p.targetFamily || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -57,13 +99,20 @@ export default function Promotions() {
     setFormName('')
     setFormDesc('')
     setFormType('TYPE_1')
-    setFormTargetType('FAMILY')
+    setFormTargetType('PRODUCT')
     setFormTargetFamily(families[0] || 'ADDITIFS')
-    setFormTargetProductRef(products[0]?.reference || '34131')
+    const initialProduct = products[0]
+    setFormTargetProductRef(initialProduct?.reference || '34131')
+    setTargetSearchQuery('')
+    setShowTargetDropdown(false)
+
     setFormThreshold(10)
     setFormDiscountPercent(5)
     setFormFreeItemType('SAME_PRODUCT')
-    setFormFreeProductRef(products[0]?.reference || '34131')
+    setFormFreeProductRef(initialProduct?.reference || '34131')
+    setFreeProductSearchQuery('')
+    setShowFreeDropdown(false)
+
     setFormFreeQuantity(1)
     setFormVoucherAmount(0)
     setFormIsActive(true)
@@ -83,13 +132,19 @@ export default function Promotions() {
     setFormName(promo.name || '')
     setFormDesc(promo.description || '')
     setFormType(promo.type || 'TYPE_1')
-    setFormTargetType(promo.targetType || 'FAMILY')
+    setFormTargetType(promo.targetType || (promo.targetProductRef ? 'PRODUCT' : 'FAMILY'))
     setFormTargetFamily(promo.targetFamily || families[0] || 'ADDITIFS')
     setFormTargetProductRef(promo.targetProductRef || products[0]?.reference || '')
+    setTargetSearchQuery('')
+    setShowTargetDropdown(false)
+
     setFormThreshold(promo.threshold || 10)
     setFormDiscountPercent(promo.discountPercent || 0)
     setFormFreeItemType(promo.freeItemType || 'SAME_PRODUCT')
-    setFormFreeProductRef(promo.freeProductRef || '')
+    setFormFreeProductRef(promo.freeProductRef || products[0]?.reference || '')
+    setFreeProductSearchQuery('')
+    setShowFreeDropdown(false)
+
     setFormFreeQuantity(promo.freeQuantity || 0)
     setFormVoucherAmount(promo.voucherAmount || 0)
     setFormIsActive(promo.isActive !== false)
@@ -125,15 +180,15 @@ export default function Promotions() {
       type: formType,
       targetType: formTargetType,
       targetFamily: formTargetType === 'FAMILY' ? formTargetFamily : undefined,
-      targetProductRef: formTargetType === 'PRODUCT' ? formTargetProductRef : undefined,
-      targetProductName: formTargetType === 'PRODUCT' ? (targetProductObj?.name || formTargetProductRef) : undefined,
-      targetProductId: formTargetType === 'PRODUCT' ? (targetProductObj?.id || formTargetProductRef) : undefined,
+      targetProductRef: formTargetType === 'PRODUCT' ? (formTargetProductRef || products[0]?.reference) : undefined,
+      targetProductName: formTargetType === 'PRODUCT' ? (targetProductObj?.name || formTargetProductRef || products[0]?.name) : undefined,
+      targetProductId: formTargetType === 'PRODUCT' ? (targetProductObj?.id || formTargetProductRef || products[0]?.id) : undefined,
       threshold: parseFloat(formThreshold) || 1,
       discountPercent: parseFloat(formDiscountPercent) || 0,
       freeItemType: formType === 'TYPE_2' ? formFreeItemType : undefined,
-      freeProductRef: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? formFreeProductRef : undefined,
-      freeProductName: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.name || formFreeProductRef) : undefined,
-      freeProductId: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.id || formFreeProductRef) : undefined,
+      freeProductRef: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (formFreeProductRef || products[0]?.reference) : undefined,
+      freeProductName: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.name || formFreeProductRef || products[0]?.name) : undefined,
+      freeProductId: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.id || formFreeProductRef || products[0]?.id) : undefined,
       freeQuantity: formType === 'TYPE_2' ? (parseInt(formFreeQuantity, 10) || 1) : 0,
       tiers: (formType === 'TYPE_2' && hasTiers) ? tiers : undefined,
       voucherAmount: formType === 'TYPE_3' ? (parseFloat(formVoucherAmount) || 0) : 0,
@@ -426,43 +481,242 @@ export default function Promotions() {
                 />
               </div>
 
-              {/* Target Type */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    CIBLE DE LA PROMOTION
+              {/* Target Type & Product/Family Selection */}
+              <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Layers size={15} /> CIBLE DE LA PROMOTION *
                   </label>
-                  <select value={formTargetType} onChange={e => setFormTargetType(e.target.value)} className="input-field" style={{ width: '100%' }}>
-                    <option value="FAMILY">Famille de Produits Entière</option>
-                    <option value="PRODUCT">Produit / Référence Spécifique</option>
-                  </select>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {formTargetType === 'PRODUCT' ? 'Offre sur une référence précise' : 'Offre sur toute une gamme'}
+                  </span>
                 </div>
 
-                <div>
-                  {formTargetType === 'FAMILY' ? (
-                    <>
-                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        FAMILLE CONCERNÉE
-                      </label>
-                      <select value={formTargetFamily} onChange={e => setFormTargetFamily(e.target.value)} className="input-field" style={{ width: '100%' }}>
-                        {families.map(fam => (
-                          <option key={fam} value={fam}>{fam}</option>
-                        ))}
-                      </select>
-                    </>
-                  ) : (
-                    <>
-                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        PRODUIT CONCERNÉ
-                      </label>
-                      <select value={formTargetProductRef} onChange={e => setFormTargetProductRef(e.target.value)} className="input-field" style={{ width: '100%' }}>
-                        {products.map(p => (
-                          <option key={p.id} value={p.reference}>[{p.reference}] {p.name}</option>
-                        ))}
-                      </select>
-                    </>
-                  )}
+                {/* Segmented Toggle Buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setFormTargetType('PRODUCT')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      border: formTargetType === 'PRODUCT' ? '2px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                      background: formTargetType === 'PRODUCT' ? 'rgba(255, 208, 0, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      color: formTargetType === 'PRODUCT' ? 'var(--bardahl-yellow)' : 'var(--text-secondary)',
+                      fontWeight: '800',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <ShoppingBag size={16} /> 📦 Produit Spécifique (Réf)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormTargetType('FAMILY')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      border: formTargetType === 'FAMILY' ? '2px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                      background: formTargetType === 'FAMILY' ? 'rgba(255, 208, 0, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      color: formTargetType === 'FAMILY' ? 'var(--bardahl-yellow)' : 'var(--text-secondary)',
+                      fontWeight: '800',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <Layers size={16} /> 🏷️ Famille de Produits Entière
+                  </button>
                 </div>
+
+                {/* Sub-selector depending on Target Type */}
+                {formTargetType === 'FAMILY' ? (
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      FAMILLE CONCERNÉE ({families.length} familles disponibles)
+                    </label>
+                    <select
+                      value={formTargetFamily}
+                      onChange={e => setFormTargetFamily(e.target.value)}
+                      className="input-field"
+                      style={{ width: '100%', fontWeight: '700', fontSize: '13px' }}
+                    >
+                      {families.map(fam => (
+                        <option key={fam} value={fam}>{fam}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="target-product-picker-container" style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                        RECHERCHER ET SÉLECTIONNER LE PRODUIT ({products.length} références)
+                      </label>
+                      {selectedTargetProduct && (
+                        <span style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
+                          Réf : {selectedTargetProduct.reference}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Selected Product Card Banner */}
+                    {selectedTargetProduct && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        background: 'rgba(255, 208, 0, 0.08)',
+                        border: '1px solid rgba(255, 208, 0, 0.3)',
+                        borderRadius: '10px',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ background: 'var(--bardahl-yellow)', color: '#000', fontWeight: '900', padding: '3px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                            {selectedTargetProduct.reference}
+                          </span>
+                          <div>
+                            <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '13px' }}>
+                              {selectedTargetProduct.name}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              Catégorie : <span style={{ color: '#FFF' }}>{selectedTargetProduct.category}</span> • Prix : <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>{(parseFloat(selectedTargetProduct.priceTtc) || 0).toFixed(2)} DH TTC</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={14} /> Sélectionné
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Search Input Field */}
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="🔎 Taper une référence ou nom (ex: 34131, 10W40, Additif...)"
+                        value={targetSearchQuery}
+                        onChange={e => {
+                          setTargetSearchQuery(e.target.value)
+                          setShowTargetDropdown(true)
+                        }}
+                        onFocus={() => setShowTargetDropdown(true)}
+                        style={{ paddingRight: targetSearchQuery ? '36px' : '14px' }}
+                      />
+                      {targetSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetSearchQuery('')
+                            setShowTargetDropdown(true)
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: '10px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontSize: '16px'
+                          }}
+                        >
+                          &times;
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Dropdown Options List */}
+                    {showTargetDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: '#14171F',
+                        border: '1px solid var(--border-card)',
+                        borderRadius: '10px',
+                        boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
+                        maxHeight: '220px',
+                        overflowY: 'auto',
+                        zIndex: 2500
+                      }}>
+                        {filteredTargetProducts.length === 0 ? (
+                          <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            Aucun produit trouvé pour "{targetSearchQuery}"
+                          </div>
+                        ) : (
+                          filteredTargetProducts.slice(0, 100).map(p => {
+                            const isSelected = p.reference === formTargetProductRef
+                            return (
+                              <div
+                                key={p.id}
+                                onClick={() => {
+                                  setFormTargetProductRef(p.reference)
+                                  setTargetSearchQuery('')
+                                  setShowTargetDropdown(false)
+                                }}
+                                style={{
+                                  padding: '10px 14px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                  background: isSelected ? 'rgba(255, 208, 0, 0.15)' : 'transparent',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '10px',
+                                  transition: 'background 0.15s'
+                                }}
+                                onMouseEnter={e => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                                onMouseLeave={e => !isSelected && (e.currentTarget.style.background = 'transparent')}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{
+                                    background: isSelected ? 'var(--bardahl-yellow)' : 'rgba(255,255,255,0.1)',
+                                    color: isSelected ? '#000' : '#FFF',
+                                    fontWeight: '800',
+                                    fontSize: '11px',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px'
+                                  }}>
+                                    {p.reference}
+                                  </span>
+                                  <span style={{ color: '#FFFFFF', fontSize: '13px', fontWeight: '600' }}>
+                                    {p.name}
+                                  </span>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {p.category}
+                                  </span>
+                                </div>
+                                <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                                  {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                        {filteredTargetProducts.length > 100 && (
+                          <div style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px', background: '#0D0F12' }}>
+                            Affichage des 100 premiers résultats sur {filteredTargetProducts.length}. Précisez votre recherche pour affiner.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Threshold & Discount */}
@@ -531,15 +785,150 @@ export default function Promotions() {
                   </div>
 
                   {formFreeItemType === 'DIFFERENT_PRODUCT' && (
-                    <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        RÉFÉRENCE OFFERTE EN CADEAU
-                      </label>
-                      <select value={formFreeProductRef} onChange={e => setFormFreeProductRef(e.target.value)} className="input-field" style={{ width: '100%', fontSize: '12px' }}>
-                        {products.map(p => (
-                          <option key={p.id} value={p.reference}>[{p.reference}] {p.name}</option>
-                        ))}
-                      </select>
+                    <div className="free-product-picker-container" style={{ position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                          RÉFÉRENCE OFFERTE EN CADEAU (RECHERCHE AUTOCOMPLETE)
+                        </label>
+                        {selectedFreeProduct && (
+                          <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
+                            Réf : {selectedFreeProduct.reference}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Selected Gift Card Banner */}
+                      {selectedFreeProduct && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          background: 'rgba(52, 199, 89, 0.1)',
+                          border: '1px solid rgba(52, 199, 89, 0.3)',
+                          borderRadius: '8px',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ background: '#34C759', color: '#000', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                              {selectedFreeProduct.reference}
+                            </span>
+                            <span style={{ fontWeight: '700', color: '#FFF', fontSize: '12px' }}>
+                              {selectedFreeProduct.name}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
+                            🎁 Offert
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Search Input Field */}
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="🔎 Rechercher le produit offert par réf ou nom..."
+                          value={freeProductSearchQuery}
+                          onChange={e => {
+                            setFreeProductSearchQuery(e.target.value)
+                            setShowFreeDropdown(true)
+                          }}
+                          onFocus={() => setShowFreeDropdown(true)}
+                          style={{ fontSize: '12px', paddingRight: freeProductSearchQuery ? '36px' : '14px' }}
+                        />
+                        {freeProductSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFreeProductSearchQuery('')
+                              setShowFreeDropdown(true)
+                            }}
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              fontSize: '16px'
+                            }}
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown Options List */}
+                      {showFreeDropdown && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '4px',
+                          background: '#14171F',
+                          border: '1px solid var(--border-card)',
+                          borderRadius: '8px',
+                          boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
+                          maxHeight: '180px',
+                          overflowY: 'auto',
+                          zIndex: 2500
+                        }}>
+                          {filteredFreeProducts.length === 0 ? (
+                            <div style={{ padding: '10px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                              Aucun produit trouvé pour "{freeProductSearchQuery}"
+                            </div>
+                          ) : (
+                            filteredFreeProducts.slice(0, 100).map(p => {
+                              const isSelected = p.reference === formFreeProductRef
+                              return (
+                                <div
+                                  key={p.id}
+                                  onClick={() => {
+                                    setFormFreeProductRef(p.reference)
+                                    setFreeProductSearchQuery('')
+                                    setShowFreeDropdown(false)
+                                  }}
+                                  style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                    background: isSelected ? 'rgba(52, 199, 89, 0.2)' : 'transparent',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px'
+                                  }}
+                                  onMouseEnter={e => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                                  onMouseLeave={e => !isSelected && (e.currentTarget.style.background = 'transparent')}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{
+                                      background: isSelected ? '#34C759' : 'rgba(255,255,255,0.1)',
+                                      color: isSelected ? '#000' : '#FFF',
+                                      fontWeight: '800',
+                                      fontSize: '11px',
+                                      padding: '2px 5px',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {p.reference}
+                                    </span>
+                                    <span style={{ color: '#FFFFFF', fontSize: '12px', fontWeight: '600' }}>
+                                      {p.name}
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    {p.category}
+                                  </span>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
