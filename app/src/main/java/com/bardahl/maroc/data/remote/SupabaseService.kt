@@ -311,6 +311,7 @@ class SupabaseService(
                     var parsedPromoNote = ""
                     var parsedRemisePercent = 0.0
                     var parsedRemiseMontant = 0.0
+                    var parsedVoucherDiscount = 0.0
                     var customClientName = ""
                     var customCommName = ""
 
@@ -323,6 +324,7 @@ class SupabaseService(
                             parsedPromoNote = obsJson.optString("promoNote", "")
                             parsedRemisePercent = obsJson.optDouble("remisePercent", 0.0)
                             parsedRemiseMontant = obsJson.optDouble("remiseMontant", 0.0)
+                            parsedVoucherDiscount = obsJson.optDouble("voucherDiscount", 0.0)
                             customClientName = obsJson.optString("clientName", "")
                             customCommName = obsJson.optString("commercialName", "")
 
@@ -383,6 +385,7 @@ class SupabaseService(
                             promoNote = parsedPromoNote,
                             remisePercent = parsedRemisePercent,
                             remiseMontant = parsedRemiseMontant,
+                            voucherDiscount = parsedVoucherDiscount,
                             totalFreeItems = totalFreeUnits,
                             totalHt = obj.optDouble("total_ht", 0.0),
                             totalDiscount = obj.optDouble("total_discount", 0.0),
@@ -446,6 +449,7 @@ class SupabaseService(
                 put("promoNote", order.promoNote)
                 put("remisePercent", order.remisePercent)
                 put("remiseMontant", order.remiseMontant)
+                put("voucherDiscount", order.voucherDiscount)
                 put("commercialName", order.commercialName)
                 put("clientName", order.clientName)
             }

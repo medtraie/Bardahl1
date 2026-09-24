@@ -5,6 +5,7 @@ import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
   dbGetOrders,      dbAddOrder,       dbUpdateOrder,       dbDeleteOrder,
+  dbGetPromotions,  dbAddPromotion,   dbUpdatePromotion,   dbDeletePromotion,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
@@ -135,6 +136,8 @@ function rowToOrder(row, extras = {}) {
     modeExpedition: modeExpedition,
     remisePercent: extras.remisePercent || parsedObs.remisePercent || 0,
     remiseMontant: extras.remiseMontant || parsedObs.remiseMontant || 0,
+    voucherDiscount: extras.voucherDiscount || parsedObs.voucherDiscount || 0,
+    appliedPromotions: extras.appliedPromotions || parsedObs.appliedPromotions || [],
     items: items,
   }
 }
@@ -163,6 +166,17 @@ export function AppProvider({ children }) {
       return defaultPromotions
     }
   })
+
+  // Sync promotions from Supabase if table exists
+  useEffect(() => {
+    async function loadRemotePromos() {
+      const remote = await dbGetPromotions()
+      if (remote && remote.length > 0) {
+        setPromotions(remote)
+      }
+    }
+    loadRemotePromos()
+  }, [])
 
   useEffect(() => {
     try {
@@ -467,20 +481,33 @@ export function AppProvider({ children }) {
   const addPromotion = useCallback((p) => {
     const newPromo = { ...p, id: `promo_${Date.now()}` }
     setPromotions(prev => [newPromo, ...prev])
+    dbAddPromotion(newPromo).catch(e => console.warn('Supabase promo add:', e))
     return newPromo
   }, [])
 
   const updatePromotion = useCallback((p) => {
     setPromotions(prev => prev.map(x => x.id === p.id ? p : x))
+    dbUpdatePromotion(p).catch(e => console.warn('Supabase promo update:', e))
     return p
   }, [])
 
   const deletePromotion = useCallback((id) => {
     setPromotions(prev => prev.filter(x => x.id !== id))
+    dbDeletePromotion(id).catch(e => console.warn('Supabase promo delete:', e))
   }, [])
 
   const togglePromotion = useCallback((id) => {
-    setPromotions(prev => prev.map(x => x.id === id ? { ...x, isActive: !x.isActive } : x))
+    setPromotions(prev => {
+      const updated = prev.map(x => {
+        if (x.id === id) {
+          const toggled = { ...x, isActive: !x.isActive }
+          dbUpdatePromotion(toggled).catch(e => console.warn('Supabase promo toggle:', e))
+          return toggled
+        }
+        return x
+      })
+      return updated
+    })
   }, [])
 
   // ── Role-based visibility ────────────────────────────────────────────────────

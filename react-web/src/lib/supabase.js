@@ -259,6 +259,8 @@ export async function dbAddOrder(o) {
     promoNote: o.promoNote || '',
     remisePercent: o.remisePercent || 0,
     remiseMontant: o.remiseMontant || 0,
+    voucherDiscount: o.voucherDiscount || 0,
+    appliedPromotions: o.appliedPromotions || [],
     commercialName: o.commercialName || '',
     commercialEmail: o.commercialEmail || '',
     clientName: o.clientName || '',
@@ -296,6 +298,8 @@ export async function dbUpdateOrder(o) {
     promoNote: o.promoNote || '',
     remisePercent: o.remisePercent || 0,
     remiseMontant: o.remiseMontant || 0,
+    voucherDiscount: o.voucherDiscount || 0,
+    appliedPromotions: o.appliedPromotions || [],
     commercialName: o.commercialName || '',
     commercialEmail: o.commercialEmail || '',
     clientName: o.clientName || '',
@@ -323,6 +327,125 @@ export async function dbDeleteOrder(id) {
   const { error } = await supabase.from('orders').delete().eq('id', id)
   if (error) { console.error('dbDeleteOrder:', error.message); return false }
   return true
+}
+
+// ─── PROMOTIONS ──────────────────────────────────────────────────────────────
+
+export async function dbGetPromotions() {
+  try {
+    const { data, error } = await supabase
+      .from('promotions')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.warn('dbGetPromotions notice:', error.message)
+      return null
+    }
+    return (data || []).map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      type: row.type,
+      targetType: row.target_type || 'FAMILY',
+      targetFamily: row.target_family,
+      targetProductId: row.target_product_id,
+      targetProductRef: row.target_product_ref,
+      targetProductName: row.target_product_name,
+      threshold: parseFloat(row.threshold) || 10,
+      discountPercent: parseFloat(row.discount_percent) || 0,
+      freeItemType: row.free_item_type || 'SAME_PRODUCT',
+      freeProductId: row.free_product_id,
+      freeProductRef: row.free_product_ref,
+      freeProductName: row.free_product_name,
+      freeQuantity: parseInt(row.free_quantity, 10) || 0,
+      tiers: row.tiers || [],
+      voucherAmount: parseFloat(row.voucher_amount) || 0,
+      isActive: row.is_active !== false,
+      startDate: row.start_date || '2026-01-01',
+      endDate: row.end_date || '2026-12-31'
+    }))
+  } catch (e) {
+    console.error('dbGetPromotions exception:', e)
+    return null
+  }
+}
+
+export async function dbAddPromotion(p) {
+  try {
+    const payload = {
+      id: p.id || `promo_${Date.now()}`,
+      name: p.name,
+      description: p.description || '',
+      type: p.type,
+      target_type: p.targetType || 'FAMILY',
+      target_family: p.targetFamily || null,
+      target_product_id: p.targetProductId || null,
+      target_product_ref: p.targetProductRef || null,
+      target_product_name: p.targetProductName || null,
+      threshold: parseFloat(p.threshold) || 10,
+      discount_percent: parseFloat(p.discountPercent) || 0,
+      free_item_type: p.freeItemType || null,
+      free_product_id: p.freeProductId || null,
+      free_product_ref: p.freeProductRef || null,
+      free_product_name: p.freeProductName || null,
+      free_quantity: parseInt(p.freeQuantity, 10) || 0,
+      tiers: p.tiers || [],
+      voucher_amount: parseFloat(p.voucherAmount) || 0,
+      is_active: p.isActive !== false,
+      start_date: p.startDate || null,
+      end_date: p.endDate || null
+    }
+    const { data, error } = await supabase.from('promotions').insert([payload]).select().single()
+    if (error) { console.error('dbAddPromotion error:', error.message); return null }
+    return data
+  } catch (e) {
+    console.error('dbAddPromotion exception:', e)
+    return null
+  }
+}
+
+export async function dbUpdatePromotion(p) {
+  try {
+    const payload = {
+      name: p.name,
+      description: p.description || '',
+      type: p.type,
+      target_type: p.targetType || 'FAMILY',
+      target_family: p.targetFamily || null,
+      target_product_id: p.targetProductId || null,
+      target_product_ref: p.targetProductRef || null,
+      target_product_name: p.targetProductName || null,
+      threshold: parseFloat(p.threshold) || 10,
+      discount_percent: parseFloat(p.discountPercent) || 0,
+      free_item_type: p.freeItemType || null,
+      free_product_id: p.freeProductId || null,
+      free_product_ref: p.freeProductRef || null,
+      free_product_name: p.freeProductName || null,
+      free_quantity: parseInt(p.freeQuantity, 10) || 0,
+      tiers: p.tiers || [],
+      voucher_amount: parseFloat(p.voucherAmount) || 0,
+      is_active: p.isActive !== false,
+      start_date: p.startDate || null,
+      end_date: p.endDate || null
+    }
+    const { data, error } = await supabase.from('promotions').update(payload).eq('id', p.id).select().single()
+    if (error) { console.error('dbUpdatePromotion error:', error.message); return null }
+    return data
+  } catch (e) {
+    console.error('dbUpdatePromotion exception:', e)
+    return null
+  }
+}
+
+export async function dbDeletePromotion(id) {
+  try {
+    const { error } = await supabase.from('promotions').delete().eq('id', id)
+    if (error) { console.error('dbDeletePromotion error:', error.message); return false }
+    return true
+  } catch (e) {
+    console.error('dbDeletePromotion exception:', e)
+    return false
+  }
 }
 
 // ─── REALTIME ────────────────────────────────────────────────────────────────
