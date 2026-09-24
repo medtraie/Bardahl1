@@ -253,12 +253,21 @@ object PdfGenerator {
             textPaint.isFakeBoldText = false
         }
 
-        canvas.drawText("TVA (20%) :", 350f, totalsY + 68f, textPaint)
-        canvas.drawText(String.format("%.2f DH", order.totalTva), 470f, totalsY + 68f, textPaint)
+        if (order.voucherDiscount > 0) {
+            textPaint.color = Color.parseColor("#E65100")
+            textPaint.isFakeBoldText = true
+            canvas.drawText("Bon d'Achat :", 350f, totalsY + 62f, textPaint)
+            canvas.drawText(String.format("-%.2f DH", order.voucherDiscount), 470f, totalsY + 62f, textPaint)
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+        }
+
+        canvas.drawText("TVA (20%) :", 350f, totalsY + 74f, textPaint)
+        canvas.drawText(String.format("%.2f DH", order.totalTva), 470f, totalsY + 74f, textPaint)
 
         // Total Net TTC Banner (Bardahl Yellow #FFD000)
         paint.color = Color.parseColor("#FFD000")
-        canvas.drawRoundRect(RectF(345f, totalsY + 78f, 555f, totalsY + 114f), 6f, 6f, paint)
+        canvas.drawRoundRect(RectF(345f, totalsY + 84f, 555f, totalsY + 120f), 6f, 6f, paint)
 
         textPaint.isFakeBoldText = true
         textPaint.textSize = 11.5f

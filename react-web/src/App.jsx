@@ -6,6 +6,7 @@ import Header from './components/Header'
 import Dashboard from './pages/Dashboard'
 import Clients from './pages/Clients'
 import Products from './pages/Products'
+import Promotions from './pages/Promotions'
 import Orders from './pages/Orders'
 import Commercials from './pages/Commercials'
 import Analytics from './pages/Analytics'
@@ -29,6 +30,7 @@ export default function App() {
     dashboard: "Tableau de Bord",
     clients: "Gestion des Clients",
     products: "Catalogue Produits Bardahl",
+    promotions: "Promotions & Offres Commerciales",
     orders: "Bons de Commande",
     commercials: "Équipe Commerciale & Performance",
     analytics: "Analyses Business Intelligence",
@@ -44,6 +46,7 @@ export default function App() {
         {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
         {activeTab === 'clients' && <Clients />}
         {activeTab === 'products' && <Products />}
+        {activeTab === 'promotions' && <Promotions />}
         {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
         {activeTab === 'commercials' && <Commercials />}
         {activeTab === 'analytics' && <Analytics />}

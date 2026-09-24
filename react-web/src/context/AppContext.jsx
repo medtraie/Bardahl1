@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { allProductsData } from '../data/productsData'
+import { defaultPromotions } from '../data/promotionsData'
 import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
@@ -152,6 +153,24 @@ export function AppProvider({ children }) {
   const [clients, setClients] = useState([])
   const [orders, setOrders] = useState([])
   const [localProducts, setLocalProducts] = useState(allProductsData)
+
+  // Commercial Promotions State
+  const [promotions, setPromotions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bardahl_promotions')
+      return saved ? JSON.parse(saved) : defaultPromotions
+    } catch {
+      return defaultPromotions
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bardahl_promotions', JSON.stringify(promotions))
+    } catch (e) {
+      console.error('Error saving promotions to localStorage:', e)
+    }
+  }, [promotions])
 
   // Local storage for extra order data (items, paymentMethod, modeExpedition)
   // These fields don't exist in Supabase orders table
@@ -444,6 +463,26 @@ export function AppProvider({ children }) {
     setOrders(prev => prev.filter(x => x.id !== id))
   }, [])
 
+  // ── PROMOTIONS CRUD ──────────────────────────────────────────────────────────
+  const addPromotion = useCallback((p) => {
+    const newPromo = { ...p, id: `promo_${Date.now()}` }
+    setPromotions(prev => [newPromo, ...prev])
+    return newPromo
+  }, [])
+
+  const updatePromotion = useCallback((p) => {
+    setPromotions(prev => prev.map(x => x.id === p.id ? p : x))
+    return p
+  }, [])
+
+  const deletePromotion = useCallback((id) => {
+    setPromotions(prev => prev.filter(x => x.id !== id))
+  }, [])
+
+  const togglePromotion = useCallback((id) => {
+    setPromotions(prev => prev.map(x => x.id === id ? { ...x, isActive: !x.isActive } : x))
+  }, [])
+
   // ── Role-based visibility ────────────────────────────────────────────────────
   const isAdmin = currentUser?.role === 'ADMIN'
 
@@ -471,6 +510,7 @@ export function AppProvider({ children }) {
       orders: visibleOrders, allOrders: orders,
       addOrder, updateOrder, deleteOrder,
       commercials, addCommercial, updateCommercial, deleteCommercial,
+      promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion,
       refreshAll,
     }}>
       {children}

@@ -2,7 +2,7 @@ import React from 'react'
 import { 
   LayoutDashboard, Users, Boxes, Receipt, 
   Contact, LineChart, Settings, LogOut, ShieldCheck, UserCheck,
-  Sun, Moon
+  Sun, Moon, Gift
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
@@ -13,6 +13,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'dashboard', label: 'Tableau de Bord', icon: LayoutDashboard, adminOnly: false },
     { id: 'clients', label: 'Clients', icon: Users, adminOnly: false },
     { id: 'products', label: 'Catalogue Produits', icon: Boxes, adminOnly: false },
+    { id: 'promotions', label: 'Promotions & Offres', icon: Gift, adminOnly: false },
     { id: 'orders', label: 'Bons de Commande', icon: Receipt, adminOnly: false },
     { id: 'commercials', label: 'Équipe Commerciale', icon: Contact, adminOnly: true },
     { id: 'analytics', label: 'Analyses Ventes', icon: LineChart, adminOnly: true },

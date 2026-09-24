@@ -126,6 +126,7 @@ data class Order(
     val promoNote: String = "",
     val remisePercent: Double = 0.0,
     val remiseMontant: Double = 0.0,
+    val voucherDiscount: Double = 0.0,
     val totalFreeItems: Int = 0,
     val totalHt: Double = 0.0,
     val totalDiscount: Double = 0.0,
@@ -134,6 +135,63 @@ data class Order(
     val signatureUrl: String? = null,
     val observations: String? = null,
     val isSynced: Boolean = true
+)
+
+enum class PromotionType(val label: String) {
+    TYPE_1("Type 1: Cartons → Remise %"),
+    TYPE_2("Type 2: Cartons → Remise % + Gratuit"),
+    TYPE_3("Type 3: Cartons → Remise % + Bon d'Achat"),
+    TYPE_4("Type 4: Montant Famille → Remise %")
+}
+
+enum class PromoTargetType {
+    FAMILY, PRODUCT
+}
+
+enum class FreeItemType {
+    SAME_PRODUCT, DIFFERENT_PRODUCT
+}
+
+data class PromotionTier(
+    val threshold: Int,
+    val discountPercent: Double,
+    val freeQuantity: Int
+)
+
+data class Promotion(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val description: String = "",
+    val type: PromotionType = PromotionType.TYPE_1,
+    val targetType: PromoTargetType = PromoTargetType.FAMILY,
+    val targetFamily: String? = null,
+    val targetProductId: String? = null,
+    val targetProductRef: String? = null,
+    val targetProductName: String? = null,
+    val threshold: Double = 10.0,
+    val discountPercent: Double = 0.0,
+    val freeItemType: FreeItemType = FreeItemType.SAME_PRODUCT,
+    val freeProductId: String? = null,
+    val freeProductRef: String? = null,
+    val freeProductName: String? = null,
+    val freeQuantity: Int = 0,
+    val tiers: List<PromotionTier> = emptyList(),
+    val voucherAmount: Double = 0.0,
+    val isActive: Boolean = true,
+    val startDate: String = "2026-01-01",
+    val endDate: String = "2026-12-31"
+)
+
+data class AppliedPromotionInfo(
+    val promoId: String,
+    val name: String,
+    val type: PromotionType,
+    val targetDisplay: String,
+    val conditionReached: String,
+    val discountPercent: Double = 0.0,
+    val giftSummary: String? = null,
+    val freeQuantity: Int = 0,
+    val voucherAmount: Double = 0.0
 )
 
 data class DashboardStats(

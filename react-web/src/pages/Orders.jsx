@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react'
-import { Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2, CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag, Sparkles } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2, CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag, Sparkles, AlertCircle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf } from '../utils/pdfGenerator'
 import { exportOrdersToExcel } from '../utils/excelExporter'
+import { evaluatePromotions } from '../utils/promotionEngine'
 
 export default function Orders({ openWizardTrigger }) {
-  const { orders, clients, products, commercials, addOrder, updateOrder, deleteOrder, currentUser } = useApp()
+  const { orders, clients, products, commercials, promotions, addOrder, updateOrder, deleteOrder, currentUser } = useApp()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [commercialFilter, setCommercialFilter] = useState('ALL')
@@ -22,6 +23,7 @@ export default function Orders({ openWizardTrigger }) {
   const [remiseMontant, setRemiseMontant] = useState(0)
   const [promoNote, setPromoNote] = useState('')
   const [selectedProducts, setSelectedProducts] = useState([])
+  const [commercialPromoChoices, setCommercialPromoChoices] = useState({})
 
   // Searchable Select States
   const [clientSearchQuery, setClientSearchQuery] = useState('')
@@ -174,14 +176,26 @@ export default function Orders({ openWizardTrigger }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showOrderWizard])
 
-  // Global Financial Calculations (Global Discount & Free Promo items)
+  // Real-time Automatic Promotions Engine (Sections 1-16)
+  const promoAnalysis = useMemo(() => {
+    return evaluatePromotions(selectedProducts, products, promotions, commercialPromoChoices)
+  }, [selectedProducts, products, promotions, commercialPromoChoices])
+
+  // Global Financial Calculations (Combining items, promo discounts, vouchers and manual discounts)
   const grossTotalTtc = selectedProducts.reduce((sum, item) => sum + (item.priceTtc * item.qty), 0)
-  const totalFreeItemsCount = selectedProducts.reduce((sum, item) => sum + (item.qtyGratuit || 0), 0)
-  const discountFromPercent = grossTotalTtc * (remisePercent / 100)
-  const totalDiscountAmount = discountFromPercent + (parseFloat(remiseMontant) || 0)
-  const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount)
+  const promoDiscountAmount = promoAnalysis.totalDiscountFromPromos || 0
+  const manualDiscountFromPercent = grossTotalTtc * (remisePercent / 100)
+  const manualDiscountAmount = manualDiscountFromPercent + (parseFloat(remiseMontant) || 0)
+  const totalDiscountAmount = promoDiscountAmount + manualDiscountAmount
+  const voucherDiscount = promoAnalysis.voucherDiscount || 0
+
+  const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount - voucherDiscount)
   const totalHt = netTotalTtc / 1.20
   const totalTva = netTotalTtc - totalHt
+
+  const userFreeItemsCount = selectedProducts.reduce((sum, item) => sum + (item.qtyGratuit || 0), 0)
+  const promoFreeItemsCount = (promoAnalysis.freeItems || []).reduce((sum, item) => sum + (item.qtyGratuit || 0), 0)
+  const totalFreeItemsCount = userFreeItemsCount + promoFreeItemsCount
 
   const handleSaveOrderSubmit = () => {
     if (!selectedClient) {
@@ -195,6 +209,29 @@ export default function Orders({ openWizardTrigger }) {
 
     const client = clients.find(c => c.id === selectedClient)
 
+    // Build combined items list including automatic free gift cartons from promotions
+    const combinedItems = [
+      ...selectedProducts.map((sp, idx) => ({
+        ...sp,
+        promoDiscountPercent: promoAnalysis.lineDiscounts[idx] || 0
+      })),
+      ...(promoAnalysis.freeItems || []).map(fi => ({
+        productId: fi.productId,
+        productName: fi.productName,
+        reference: fi.reference,
+        priceTtc: 0,
+        qty: 0,
+        qtyGratuit: fi.qtyGratuit,
+        promoTag: `🎁 Offert : ${fi.promoName}`
+      }))
+    ]
+
+    // Build automated promo note summary if promos are active
+    const autoPromoSummary = promoAnalysis.appliedPromotions.length > 0
+      ? promoAnalysis.appliedPromotions.map(ap => ap.name + (ap.discountPercent > 0 ? ` (${ap.discountPercent}%)` : '') + (ap.giftSummary ? ` [${ap.giftSummary}]` : '') + (ap.voucherAmount > 0 ? ` [Bon -${ap.voucherAmount} DH]` : '')).join(' | ')
+      : ''
+    const finalPromoNote = promoNote.trim() ? (autoPromoSummary ? `${autoPromoSummary} • ${promoNote.trim()}` : promoNote.trim()) : autoPromoSummary
+
     if (editingOrder) {
       const updatedOrder = {
         ...editingOrder,
@@ -205,13 +242,15 @@ export default function Orders({ openWizardTrigger }) {
         remarque: remarque,
         remisePercent: remisePercent,
         remiseMontant: parseFloat(remiseMontant) || 0,
-        promoNote: promoNote,
+        promoNote: finalPromoNote,
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
+        voucherDiscount: voucherDiscount,
         totalTva: totalTva,
         totalTtc: netTotalTtc,
         totalFreeItems: totalFreeItemsCount,
-        items: selectedProducts
+        appliedPromotions: promoAnalysis.appliedPromotions,
+        items: combinedItems
       }
       updateOrder(updatedOrder)
       generateOrderPdf(updatedOrder)
@@ -231,14 +270,16 @@ export default function Orders({ openWizardTrigger }) {
         remarque: remarque,
         remisePercent: remisePercent,
         remiseMontant: parseFloat(remiseMontant) || 0,
-        promoNote: promoNote,
+        promoNote: finalPromoNote,
         status: "VALIDATED",
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
+        voucherDiscount: voucherDiscount,
         totalTva: totalTva,
         totalTtc: netTotalTtc,
         totalFreeItems: totalFreeItemsCount,
-        items: selectedProducts
+        appliedPromotions: promoAnalysis.appliedPromotions,
+        items: combinedItems
       }
       addOrder(newOrder)
       generateOrderPdf(newOrder)
@@ -255,6 +296,7 @@ export default function Orders({ openWizardTrigger }) {
     setRemiseMontant(0)
     setPromoNote('')
     setSelectedProducts([])
+    setCommercialPromoChoices({})
   }
 
   return (
@@ -667,12 +709,104 @@ export default function Orders({ openWizardTrigger }) {
                     </tbody>
                   </table>
                 </div>
+                {/* Section 16 : Arbitrage / Choix du commercial en cas de promotions concurrentes */}
+                {promoAnalysis.conflicts && promoAnalysis.conflicts.length > 0 && (
+                  <div style={{ background: 'rgba(255, 149, 0, 0.1)', border: '1px solid #FF9500', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <AlertCircle size={18} style={{ color: '#FF9500' }} />
+                      <h4 style={{ color: '#FF9500', fontSize: '13px', fontWeight: '800' }}>
+                        CHOIX DE LA PROMOTION (Plusieurs offres applicables — Section 16)
+                      </h4>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#E2E8F0', marginBottom: '10px' }}>
+                      Deux promotions ne peuvent pas être cumulées sur le même produit ou la même famille. Veuillez sélectionner l'offre commerciale à appliquer :
+                    </p>
+                    {promoAnalysis.conflicts.map(conf => (
+                      <div key={conf.targetKey} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--bardahl-yellow)' }}>
+                          {conf.targetDisplay} :
+                        </span>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {conf.options.map(opt => {
+                            const isChosen = (commercialPromoChoices[conf.targetKey] || conf.options[0].promo.id) === opt.promo.id
+                            return (
+                              <button
+                                key={opt.promo.id}
+                                type="button"
+                                onClick={() => setCommercialPromoChoices(prev => ({ ...prev, [conf.targetKey]: opt.promo.id }))}
+                                style={{
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: '800',
+                                  background: isChosen ? 'var(--bardahl-yellow)' : '#14171F',
+                                  color: isChosen ? '#0D0F12' : '#FFF',
+                                  border: isChosen ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {opt.promo.name}
+                                {opt.discountPercent > 0 ? ` (${opt.discountPercent}%)` : ''}
+                                {opt.freeQuantity > 0 ? ` +${opt.freeQuantity} gratuit` : ''}
+                                {opt.voucherAmount > 0 ? ` +${opt.voucherAmount} DH bon` : ''}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Section 11 : Affichage des promotions appliquées */}
+                {promoAnalysis.appliedPromotions && promoAnalysis.appliedPromotions.length > 0 && (
+                  <div style={{ background: 'rgba(52, 199, 89, 0.08)', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <h4 style={{ color: '#34C759', fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Sparkles size={16} /> PROMOTIONS APPLIQUÉES AUTOMATIQUEMENT ({promoAnalysis.appliedPromotions.length})
+                      </h4>
+                      <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>Calculé en temps réel</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {promoAnalysis.appliedPromotions.map((ap, i) => (
+                        <div key={i} style={{ background: '#0D0F12', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-card)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '12px' }}>
+                          <div>
+                            <strong style={{ color: '#FFFFFF', display: 'block' }}>{ap.name}</strong>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '11px', marginTop: '2px' }}>
+                              Cible : <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>{ap.targetDisplay}</span> • Condition atteinte : {ap.conditionReached}
+                              {ap.appliedTierInfo && <span style={{ color: '#34C759', marginLeft: '6px' }}>({ap.appliedTierInfo})</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {ap.discountPercent > 0 && (
+                              <span style={{ background: 'rgba(0, 122, 255, 0.15)', color: '#007AFF', border: '1px solid rgba(0, 122, 255, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                Remise : {ap.discountPercent}%
+                              </span>
+                            )}
+                            {ap.giftSummary && (
+                              <span style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759', border: '1px solid rgba(52, 199, 89, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                🎁 {ap.giftSummary}
+                              </span>
+                            )}
+                            {ap.voucherAmount > 0 && (
+                              <span style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#FF9500', border: '1px solid rgba(255, 149, 0, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                Bon : -{ap.voucherAmount.toFixed(2)} DH
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {/* Step 4: Remise Commerciale GLOBALE sur le Total (Non linéaire) */}
               <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
                 <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Percent style={{ width: '16px', height: '16px' }} /> 5. Remise Commerciale Globale (Non linéaire)
+                  <Percent style={{ width: '16px', height: '16px' }} /> 5. Remise Commerciale Globale / Manuelle (Non linéaire)
                 </label>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -772,10 +906,24 @@ export default function Orders({ openWizardTrigger }) {
                   </div>
                 )}
 
-                {totalDiscountAmount > 0 && (
+                {promoDiscountAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#007AFF', fontWeight: '800' }}>
+                    <span>Remise Promotionnelle Automatique :</span>
+                    <span>-{promoDiscountAmount.toFixed(2)} DH</span>
+                  </div>
+                )}
+
+                {manualDiscountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#FF453A', fontWeight: '800' }}>
-                    <span>Remise Commerciale Globale {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
-                    <span>-{totalDiscountAmount.toFixed(2)} DH</span>
+                    <span>Remise Commerciale Manuelle {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
+                    <span>-{manualDiscountAmount.toFixed(2)} DH</span>
+                  </div>
+                )}
+
+                {voucherDiscount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#FF9500', fontWeight: '800' }}>
+                    <span>Bon d'Achat Immédiat (Section 6 & 7) :</span>
+                    <span>-{voucherDiscount.toFixed(2)} DH</span>
                   </div>
                 )}
 

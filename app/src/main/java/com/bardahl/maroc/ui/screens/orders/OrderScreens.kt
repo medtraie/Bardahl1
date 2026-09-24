@@ -35,14 +35,10 @@ import androidx.compose.ui.unit.sp
 import com.bardahl.maroc.domain.model.*
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
-import com.bardahl.maroc.ui.viewmodels.ClientViewModel
-import com.bardahl.maroc.ui.viewmodels.OrderViewModel
-import com.bardahl.maroc.ui.viewmodels.ProductViewModel
+import com.bardahl.maroc.ui.viewmodels.*
 import com.bardahl.maroc.util.ExcelExporter
 import com.bardahl.maroc.util.PdfGenerator
-import com.bardahl.maroc.domain.model.UserRole
-import com.bardahl.maroc.ui.viewmodels.AuthState
-import com.bardahl.maroc.ui.viewmodels.AuthViewModel
+import com.bardahl.maroc.util.PromotionEngine
 
 @Composable
 fun OrderListScreen(
@@ -378,17 +374,33 @@ fun OrderCreateScreen(
 
     // Client search state
     var clientSearch by remember { mutableStateOf("") }
+    var commercialPromoChoices by remember { mutableStateOf(mapOf<String, String>()) }
+
+    // Real-time Automatic Promotions Engine (Sections 1-16)
+    val promoAnalysis = remember(selectedItems, products, commercialPromoChoices) {
+        PromotionEngine.evaluatePromotions(
+            items = selectedItems,
+            allProducts = products,
+            selectedChoices = commercialPromoChoices
+        )
+    }
 
     // Global Financial Calculations (Free units are 0 DH)
     val grossTotalTtc = selectedItems.sumOf { it.unitPriceTtc * it.quantity }
-    val totalFreeItemsCount = selectedItems.sumOf { it.freeQuantity }
+    val promoDiscountAmount = promoAnalysis.totalDiscountFromPromos
     val globalRemisePercent = globalRemisePercentStr.toDoubleOrNull() ?: 0.0
     val globalRemiseMontant = globalRemiseMontantStr.toDoubleOrNull() ?: 0.0
-    val totalDiscountAmount = (grossTotalTtc * (globalRemisePercent / 100.0)) + globalRemiseMontant
+    val manualDiscountAmount = (grossTotalTtc * (globalRemisePercent / 100.0)) + globalRemiseMontant
+    val totalDiscountAmount = promoDiscountAmount + manualDiscountAmount
+    val voucherDiscount = promoAnalysis.voucherDiscount
 
-    val netTotalTtc = (grossTotalTtc - totalDiscountAmount).coerceAtLeast(0.0)
+    val netTotalTtc = (grossTotalTtc - totalDiscountAmount - voucherDiscount).coerceAtLeast(0.0)
     val totalHt = netTotalTtc / 1.20
     val totalTva = netTotalTtc - totalHt
+
+    val userFreeItemsCount = selectedItems.sumOf { it.freeQuantity }
+    val promoFreeItemsCount = promoAnalysis.freeItems.sumOf { it.freeQuantity }
+    val totalFreeItemsCount = userFreeItemsCount + promoFreeItemsCount
 
     Scaffold(
         topBar = {
@@ -746,11 +758,96 @@ fun OrderCreateScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // Section 16: Conflit / Choix du commercial en cas de promotions concurrentes
+            if (promoAnalysis.conflicts.isNotEmpty()) {
+                GlassCard(modifier = Modifier.fillMaxWidth(), borderColor = Color(0xFFFF9500)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF9500), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Choix de la Promotion (Plusieurs offres applicables)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF9500))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Deux promotions ne peuvent pas être cumulées sur le même produit / famille. Veuillez choisir l'offre souhaitée :", fontSize = 11.sp, color = TextSecondaryDark)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    promoAnalysis.conflicts.forEach { conflict ->
+                        Text("${conflict.targetDisplay} :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            conflict.options.forEach { opt ->
+                                val isChosen = (commercialPromoChoices[conflict.targetKey] ?: conflict.options.first().promo.id) == opt.promo.id
+                                FilterChip(
+                                    selected = isChosen,
+                                    onClick = {
+                                        commercialPromoChoices = commercialPromoChoices + (conflict.targetKey to opt.promo.id)
+                                    },
+                                    label = {
+                                        val extra = if (opt.discountPercent > 0) " (${opt.discountPercent.toInt()}%)" else ""
+                                        val gift = if (opt.freeQuantity > 0) " +${opt.freeQuantity} gratuit" else ""
+                                        val bon = if (opt.voucherAmount > 0) " +${opt.voucherAmount.toInt()} DH bon" else ""
+                                        Text("${opt.promo.name}$extra$gift$bon", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = BardahlYellow,
+                                        selectedLabelColor = BardahlBlack,
+                                        containerColor = DarkSurface,
+                                        labelColor = TextPrimaryDark
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
+            // Section 11: Affichage des promotions appliquées automatiquement
+            if (promoAnalysis.appliedPromotions.isNotEmpty()) {
+                GlassCard(modifier = Modifier.fillMaxWidth(), borderColor = StatusDelivered) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CardGiftcard, contentDescription = null, tint = StatusDelivered, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Promotions Appliquées (${promoAnalysis.appliedPromotions.size})", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = StatusDelivered)
+                        }
+                        Text("Temps réel", fontSize = 10.sp, color = StatusDelivered, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    promoAnalysis.appliedPromotions.forEach { ap ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DarkSurface)
+                                .padding(8.dp)
+                        ) {
+                            Column {
+                                Text(ap.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                Text("Cible: ${ap.targetDisplay} • Atteint: ${ap.conditionReached}", fontSize = 10.sp, color = TextSecondaryDark)
+                                Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (ap.discountPercent > 0.0) {
+                                        Text("Remise: ${ap.discountPercent}%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF007AFF))
+                                    }
+                                    if (!ap.giftSummary.isNullOrBlank()) {
+                                        Text("🎁 ${ap.giftSummary}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = StatusDelivered)
+                                    }
+                                    if (ap.voucherAmount > 0.0) {
+                                        Text("Bon: -${String.format("%.2f DH", ap.voucherAmount)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF9500))
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
 
             // Step 5: Remise Commerciale GLOBALE sur le Total (Non linéaire)
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text("5. Remise Commerciale Globale (Non linéaire)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                Text("5. Remise Commerciale Globale / Manuelle (Non linéaire)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
@@ -895,12 +992,27 @@ fun OrderCreateScreen(
                     }
                 }
 
-                if (totalDiscountAmount > 0) {
+                if (promoDiscountAmount > 0) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Remise Commerciale Globale", color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(String.format("-%.2f DH", totalDiscountAmount), color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Remise Promotionnelle Automatique", color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("-%.2f DH", promoDiscountAmount), color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                if (manualDiscountAmount > 0) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Remise Commerciale Manuelle", color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("-%.2f DH", manualDiscountAmount), color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (voucherDiscount > 0) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Bon d'Achat Immédiat (Section 6 & 7)", color = Color(0xFFFF9500), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("-%.2f DH", voucherDiscount), color = Color(0xFFFF9500), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Total HT Net", color = TextSecondaryDark, fontSize = 13.sp)
                     Text(String.format("%.2f DH", totalHt), color = TextPrimaryDark, fontSize = 13.sp)
@@ -929,6 +1041,14 @@ fun OrderCreateScreen(
                         val commIdToUse = if (currentUser?.role == UserRole.ADMIN) (selectedClient!!.commercialId.takeIf { it.isNotBlank() && it.contains("-") } ?: commercialId) else commercialId
                         val commNameToUse = if (currentUser?.role == UserRole.ADMIN) "Direction Bardahl" else commercialName
 
+                        val combinedItems = selectedItems + promoAnalysis.freeItems
+                        val autoPromoSummary = if (promoAnalysis.appliedPromotions.isNotEmpty()) {
+                            promoAnalysis.appliedPromotions.joinToString(" | ") { it.name + (if (it.discountPercent > 0) " (${it.discountPercent.toInt()}%)" else "") + (if (it.giftSummary != null) " [${it.giftSummary}]" else "") + (if (it.voucherAmount > 0) " [Bon -${it.voucherAmount.toInt()} DH]" else "") }
+                        } else ""
+                        val finalPromoNote = if (promoNoteInput.isNotBlank()) {
+                            if (autoPromoSummary.isNotBlank()) "$autoPromoSummary • $promoNoteInput" else promoNoteInput
+                        } else autoPromoSummary
+
                         val newOrder = Order(
                             id = java.util.UUID.randomUUID().toString(),
                             orderNumber = finalOrderNumber,
@@ -938,13 +1058,14 @@ fun OrderCreateScreen(
                             clientName = selectedClient!!.companyName,
                             orderDate = today,
                             status = OrderStatus.VALIDATED,
-                            items = selectedItems,
+                            items = combinedItems,
                             paymentMethod = selectedPaymentMethod,
                             modeExpedition = selectedModeExpedition,
                             remarque = remarqueInput,
-                            promoNote = promoNoteInput,
+                            promoNote = finalPromoNote,
                             remisePercent = globalRemisePercent,
                             remiseMontant = globalRemiseMontant,
+                            voucherDiscount = voucherDiscount,
                             totalFreeItems = totalFreeItemsCount,
                             totalHt = totalHt,
                             totalDiscount = totalDiscountAmount,
