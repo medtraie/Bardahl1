@@ -327,6 +327,7 @@ fun OrderCreateScreen(
     val clients by clientViewModel.clientsList.collectAsState()
     val products by productViewModel.products.collectAsState()
     val existingOrders by orderViewModel.orders.collectAsState()
+    val promotions by orderViewModel.promotions.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     val currentUser = (authState as? AuthState.Success)?.user
     val context = LocalContext.current
@@ -349,6 +350,7 @@ fun OrderCreateScreen(
         clientViewModel.refreshClientsFromSupabase()
         orderViewModel.refreshOrdersFromSupabase()
         productViewModel.refreshProductsFromSupabase()
+        orderViewModel.refreshPromotions()
     }
 
     // Suggested Next Serial Number
@@ -361,7 +363,7 @@ fun OrderCreateScreen(
     var selectedPaymentMethod by remember { mutableStateOf("Chèque") }
     var selectedModeExpedition by remember { mutableStateOf("Transport Bardahl") }
     var remarqueInput by remember { mutableStateOf("") }
-    var promoNoteInput by remember { mutableStateOf("") }
+    var selectedPromoId by remember { mutableStateOf("AUTO") }
 
     var selectedClient by remember { mutableStateOf<Client?>(null) }
     var selectedItems by remember { mutableStateOf(listOf<OrderItem>()) }
@@ -377,11 +379,13 @@ fun OrderCreateScreen(
     var commercialPromoChoices by remember { mutableStateOf(mapOf<String, String>()) }
 
     // Real-time Automatic Promotions Engine (Sections 1-16)
-    val promoAnalysis = remember(selectedItems, products, commercialPromoChoices) {
+    val promoAnalysis = remember(selectedItems, products, promotions, commercialPromoChoices, selectedPromoId) {
         PromotionEngine.evaluatePromotions(
             items = selectedItems,
             allProducts = products,
-            selectedChoices = commercialPromoChoices
+            promotions = promotions,
+            selectedChoices = commercialPromoChoices,
+            selectedPromoId = selectedPromoId
         )
     }
 
@@ -758,6 +762,175 @@ fun OrderCreateScreen(
                 }
             }
 
+            // Step 5: Promotions & Offres Commerciales
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "5. Promotions & Offres Commerciales",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BardahlYellow
+                    )
+                    if (selectedPromoId == "AUTO") {
+                        Text(
+                            "Mode Auto",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = StatusDelivered
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Choisissez une offre commerciale active ou laissez l'application détecter automatiquement les remises et gratuités éligibles :",
+                    fontSize = 11.sp,
+                    color = TextSecondaryDark
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                var promoMenuExpanded by remember { mutableStateOf(false) }
+                val selectedPromoObj = promotions.find { it.id == selectedPromoId }
+                val selectedLabel = when (selectedPromoId) {
+                    "AUTO" -> "✨ Application Automatique (Meilleure offre)"
+                    "NONE" -> "🚫 Aucune Promotion (Tarifs catalogue standards)"
+                    else -> selectedPromoObj?.name ?: "Promotion ($selectedPromoId)"
+                }
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, if (selectedPromoId != "NONE") BardahlYellow else BardahlCardBorder, RoundedCornerShape(8.dp))
+                            .clickable { promoMenuExpanded = true }
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedLabel,
+                                color = if (selectedPromoId == "AUTO") BardahlYellow else TextPrimaryDark,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = BardahlYellow)
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = promoMenuExpanded,
+                        onDismissRequest = { promoMenuExpanded = false },
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .background(DarkSurface)
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("✨ Application Automatique", fontWeight = FontWeight.Bold, color = BardahlYellow, fontSize = 13.sp)
+                                    Text("Détecte et applique les remises et cadeaux selon le panier", color = TextSecondaryDark, fontSize = 10.sp)
+                                }
+                            },
+                            onClick = {
+                                selectedPromoId = "AUTO"
+                                promoMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("🚫 Aucune Promotion", fontWeight = FontWeight.Bold, color = StatusCancelled, fontSize = 13.sp)
+                                    Text("Tarifs catalogue standards sans remises promotionnelles", color = TextSecondaryDark, fontSize = 10.sp)
+                                }
+                            },
+                            onClick = {
+                                selectedPromoId = "NONE"
+                                promoMenuExpanded = false
+                            }
+                        )
+                        if (promotions.isNotEmpty()) {
+                            HorizontalDivider(color = BardahlCardBorder, modifier = Modifier.padding(vertical = 4.dp))
+                            promotions.filter { it.isActive }.forEach { promo ->
+                                val targetStr = if (promo.targetType == PromoTargetType.FAMILY) "Famille ${promo.targetFamily}" else (promo.targetProductName ?: promo.targetProductRef ?: "")
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(promo.name, fontWeight = FontWeight.Bold, color = TextPrimaryDark, fontSize = 12.sp)
+                                            Text("Cible: $targetStr • Seuil: ${promo.threshold.toInt()}", color = TextSecondaryDark, fontSize = 10.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedPromoId = promo.id
+                                        promoMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Status card for specifically chosen promotion
+                if (promoAnalysis.selectedPromoStatus != null) {
+                    val status = promoAnalysis.selectedPromoStatus
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (status.isReached) StatusDelivered.copy(alpha = 0.15f) else Color(0xFFFF9500).copy(alpha = 0.15f))
+                            .border(1.dp, if (status.isReached) StatusDelivered else Color(0xFFFF9500), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (status.isReached) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = if (status.isReached) StatusDelivered else Color(0xFFFF9500),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                if (status.isReached) {
+                                    Text(
+                                        "🎉 Condition Atteinte !",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = StatusDelivered
+                                    )
+                                    Text(
+                                        "Bénéfices de l'offre appliqués à la commande (${status.currentValue.toInt()}/${status.threshold.toInt()} ${status.unitLabel})",
+                                        fontSize = 11.sp,
+                                        color = TextPrimaryDark
+                                    )
+                                } else {
+                                    Text(
+                                        "⚠️ Condition Non Atteinte",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFFF9500)
+                                    )
+                                    Text(
+                                        "Il manque ${status.missingValue.toInt()} ${status.unitLabel} sur ${status.targetLabel} pour débloquer cette offre (actuel: ${status.currentValue.toInt()} / seuil: ${status.threshold.toInt()})",
+                                        fontSize = 11.sp,
+                                        color = TextPrimaryDark
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
             // Section 16: Conflit / Choix du commercial en cas de promotions concurrentes
             if (promoAnalysis.conflicts.isNotEmpty()) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), borderColor = Color(0xFFFF9500)) {
@@ -845,9 +1018,9 @@ fun OrderCreateScreen(
                 Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Step 5: Remise Commerciale GLOBALE sur le Total (Non linéaire)
+            // Step 6: Remise Commerciale GLOBALE sur le Total (Non linéaire)
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text("5. Remise Commerciale Globale / Manuelle (Non linéaire)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                Text("6. Remise Commerciale Globale / Manuelle (Non linéaire)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
@@ -927,36 +1100,19 @@ fun OrderCreateScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Step 6: Note Promo & Remarques
+            // Step 7: Instructions de Livraison (Note promo manuelle supprimée)
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text("6. Promos & Remarques de Livraison", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
-                Spacer(modifier = Modifier.height(6.dp))
-
-                OutlinedTextField(
-                    value = promoNoteInput,
-                    onValueChange = { promoNoteInput = it },
-                    label = { Text("Note / Nom de l'offre promotionnelle", color = TextSecondaryDark, fontSize = 11.sp) },
-                    placeholder = { Text("Ex: Pack Vidange Été / Promo 10+1", color = TextSecondaryDark.copy(alpha = 0.5f), fontSize = 11.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BardahlYellow,
-                        unfocusedBorderColor = BardahlCardBorder,
-                        focusedTextColor = TextPrimaryDark,
-                        unfocusedTextColor = TextPrimaryDark
-                    )
-                )
-
+                Text("7. Instructions & Remarques de Livraison", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = remarqueInput,
                     onValueChange = { remarqueInput = it },
-                    label = { Text("Instructions de livraison", color = TextSecondaryDark, fontSize = 11.sp) },
-                    placeholder = { Text("Ex: Livrer avant 12h...", color = TextSecondaryDark.copy(alpha = 0.5f), fontSize = 11.sp) },
+                    label = { Text("Instructions spécifiques de livraison", color = TextSecondaryDark, fontSize = 11.sp) },
+                    placeholder = { Text("Ex: Livrer avant 12h, contacter le magasinier...", color = TextSecondaryDark.copy(alpha = 0.5f), fontSize = 11.sp) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(70.dp),
+                        .height(80.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BardahlYellow,
                         unfocusedBorderColor = BardahlCardBorder,
@@ -1045,9 +1201,7 @@ fun OrderCreateScreen(
                         val autoPromoSummary = if (promoAnalysis.appliedPromotions.isNotEmpty()) {
                             promoAnalysis.appliedPromotions.joinToString(" | ") { it.name + (if (it.discountPercent > 0) " (${it.discountPercent.toInt()}%)" else "") + (if (it.giftSummary != null) " [${it.giftSummary}]" else "") + (if (it.voucherAmount > 0) " [Bon -${it.voucherAmount.toInt()} DH]" else "") }
                         } else ""
-                        val finalPromoNote = if (promoNoteInput.isNotBlank()) {
-                            if (autoPromoSummary.isNotBlank()) "$autoPromoSummary • $promoNoteInput" else promoNoteInput
-                        } else autoPromoSummary
+                        val finalPromoNote = autoPromoSummary
 
                         val newOrder = Order(
                             id = java.util.UUID.randomUUID().toString(),

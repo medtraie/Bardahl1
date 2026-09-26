@@ -41,8 +41,8 @@
  * @param {Object} selectedChoices - Choix manuels faits par le commercial pour les conflits { [conflictKey]: promoId }
  * @returns {Object} Résultat de l'analyse promotionnelle
  */
-export function evaluatePromotions(selectedProducts = [], allProducts = [], promotions = [], selectedChoices = {}) {
-  if (!selectedProducts || selectedProducts.length === 0 || !promotions || promotions.length === 0) {
+export function evaluatePromotions(selectedProducts = [], allProducts = [], promotions = [], selectedChoices = {}, selectedPromoId = 'AUTO') {
+  if (!selectedProducts || selectedProducts.length === 0 || !promotions || promotions.length === 0 || selectedPromoId === 'NONE') {
     return {
       appliedPromotions: [],
       candidatePromos: [],
@@ -51,7 +51,8 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       totalDiscountFromPromos: 0,
       freeItems: [],
       voucherDiscount: 0,
-      eligiblePromosCount: 0
+      eligiblePromosCount: 0,
+      selectedPromoStatus: selectedPromoId === 'NONE' ? { isNone: true } : null
     }
   }
 
@@ -93,10 +94,51 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     productStats[prodKey].items.push({ item, idx })
   })
 
+  // Calcul du statut de l'offre spécifique si une offre précise est sélectionnée
+  let selectedPromoStatus = null
+  if (selectedPromoId && selectedPromoId !== 'AUTO') {
+    const chosenPromo = promotions.find(p => p.id === selectedPromoId)
+    if (chosenPromo) {
+      let currentVal = 0
+      if (chosenPromo.targetType === 'FAMILY') {
+        const famKey = (chosenPromo.targetFamily || '').toUpperCase()
+        const st = familyStats[famKey]
+        currentVal = chosenPromo.type === 'TYPE_4' ? (st?.totalAmountTtc || 0) : (st?.totalCartons || 0)
+      } else {
+        const pKey = chosenPromo.targetProductId || chosenPromo.targetProductRef
+        const st = productStats[pKey] || (chosenPromo.targetProductRef ? productStats[chosenPromo.targetProductRef] : null)
+        currentVal = st?.totalCartons || 0
+      }
+
+      const minThreshold = (chosenPromo.tiers && chosenPromo.tiers.length > 0)
+        ? Math.min(...chosenPromo.tiers.map(t => t.threshold))
+        : chosenPromo.threshold
+
+      const isReached = currentVal >= minThreshold
+      const missingValue = Math.max(0, minThreshold - currentVal)
+      const unitLabel = chosenPromo.type === 'TYPE_4' ? 'DH TTC' : 'carton(s)'
+      const targetLabel = chosenPromo.targetType === 'FAMILY' ? `la famille ${chosenPromo.targetFamily}` : (chosenPromo.targetProductName || chosenPromo.targetProductRef || 'ce produit')
+
+      selectedPromoStatus = {
+        promo: chosenPromo,
+        isReached,
+        currentVal,
+        threshold: minThreshold,
+        missingValue,
+        unitLabel,
+        targetLabel
+      }
+    }
+  }
+
   // 3. Identifier les promotions éligibles
   const candidatePromos = []
+  const activePromos = promotions.filter(p => p.isActive !== false)
+  const promosToEvaluate = (selectedPromoId && selectedPromoId !== 'AUTO')
+    ? activePromos.filter(p => p.id === selectedPromoId)
+    : activePromos
 
-  promotions.filter(p => p.isActive !== false).forEach(promo => {
+  promosToEvaluate.forEach(promo => {
     let isEligible = false
     let currentConditionValue = 0
     let applicableItems = []
@@ -296,6 +338,7 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     totalDiscountFromPromos,
     freeItems,
     voucherDiscount,
-    eligiblePromosCount: appliedPromotions.length
+    eligiblePromosCount: appliedPromotions.length,
+    selectedPromoStatus
   }
 }

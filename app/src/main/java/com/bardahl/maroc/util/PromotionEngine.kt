@@ -21,6 +21,16 @@ data class PromotionConflict(
     val options: List<CandidatePromo>
 )
 
+data class SelectedPromoStatus(
+    val promo: Promotion,
+    val isReached: Boolean,
+    val currentValue: Double,
+    val threshold: Double,
+    val missingValue: Double,
+    val unitLabel: String,
+    val targetLabel: String
+)
+
 data class PromotionResult(
     val appliedPromotions: List<AppliedPromotionInfo> = emptyList(),
     val candidatePromos: List<CandidatePromo> = emptyList(),
@@ -28,7 +38,8 @@ data class PromotionResult(
     val lineDiscounts: Map<Int, Double> = emptyMap(),
     val totalDiscountFromPromos: Double = 0.0,
     val freeItems: List<OrderItem> = emptyList(),
-    val voucherDiscount: Double = 0.0
+    val voucherDiscount: Double = 0.0,
+    val selectedPromoStatus: SelectedPromoStatus? = null
 )
 
 object PromotionEngine {
@@ -113,9 +124,10 @@ object PromotionEngine {
         items: List<OrderItem>,
         allProducts: List<Product>,
         promotions: List<Promotion> = defaultPromotions,
-        selectedChoices: Map<String, String> = emptyMap()
+        selectedChoices: Map<String, String> = emptyMap(),
+        selectedPromoId: String? = "AUTO"
     ): PromotionResult {
-        if (items.isEmpty() || promotions.isEmpty()) return PromotionResult()
+        if (items.isEmpty() || promotions.isEmpty() || selectedPromoId == "NONE") return PromotionResult()
 
         // Index products by ID, Ref, Code
         val productMap = mutableMapOf<String, Product>()
@@ -155,10 +167,54 @@ object PromotionEngine {
             }
         }
 
+        // Calculate selected promo status if a specific promo is chosen
+        var selectedPromoStatus: SelectedPromoStatus? = null
+        if (!selectedPromoId.isNullOrBlank() && selectedPromoId != "AUTO") {
+            val chosen = promotions.find { it.id == selectedPromoId }
+            if (chosen != null) {
+                val currentVal = if (chosen.targetType == PromoTargetType.FAMILY) {
+                    val fam = (chosen.targetFamily ?: "").uppercase()
+                    val st = familyStats[fam]
+                    if (chosen.type == PromotionType.TYPE_4) st?.totalAmountTtc ?: 0.0 else (st?.totalCartons ?: 0).toDouble()
+                } else {
+                    val pKey = chosen.targetProductId ?: chosen.targetProductRef ?: ""
+                    val st = productStats[pKey] ?: if (!chosen.targetProductRef.isNullOrBlank()) productStats[chosen.targetProductRef] else null
+                    (st?.totalCartons ?: 0).toDouble()
+                }
+
+                val minThreshold = if (chosen.tiers.isNotEmpty()) {
+                    chosen.tiers.minOf { it.threshold }.toDouble()
+                } else {
+                    chosen.threshold
+                }
+
+                val isReached = currentVal >= minThreshold
+                val missingVal = maxOf(0.0, minThreshold - currentVal)
+                val unitLabel = if (chosen.type == PromotionType.TYPE_4) "DH TTC" else "carton(s)"
+                val targetLabel = if (chosen.targetType == PromoTargetType.FAMILY) "la gamme ${chosen.targetFamily}" else (chosen.targetProductName ?: chosen.targetProductRef ?: "ce produit")
+
+                selectedPromoStatus = SelectedPromoStatus(
+                    promo = chosen,
+                    isReached = isReached,
+                    currentValue = currentVal,
+                    threshold = minThreshold,
+                    missingValue = missingVal,
+                    unitLabel = unitLabel,
+                    targetLabel = targetLabel
+                )
+            }
+        }
+
         // Find candidate eligible promotions
         val candidates = mutableListOf<CandidatePromo>()
+        val activePromos = promotions.filter { it.isActive }
+        val promosToEvaluate = if (!selectedPromoId.isNullOrBlank() && selectedPromoId != "AUTO") {
+            activePromos.filter { it.id == selectedPromoId }
+        } else {
+            activePromos
+        }
 
-        promotions.filter { it.isActive }.forEach { promo ->
+        promosToEvaluate.forEach { promo ->
             var isEligible = false
             var currentVal = 0.0
             var applicableIndices = emptyList<Int>()
@@ -345,7 +401,8 @@ object PromotionEngine {
             lineDiscounts = lineDiscounts,
             totalDiscountFromPromos = totalDiscountFromPromos,
             freeItems = freeItems,
-            voucherDiscount = voucherDiscount
+            voucherDiscount = voucherDiscount,
+            selectedPromoStatus = selectedPromoStatus
         )
     }
 }

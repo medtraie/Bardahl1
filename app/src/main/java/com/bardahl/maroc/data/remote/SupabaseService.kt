@@ -476,4 +476,75 @@ class SupabaseService(
             return@withContext false
         }
     }
+
+    suspend fun fetchPromotions(): List<Promotion> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<Promotion>()
+        try {
+            val conn = getConnection("promotions?select=*&is_active=eq.true&order=created_at.desc")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    val rawType = obj.optString("type", "TYPE_1")
+                    val pType = when (rawType) {
+                        "TYPE_2" -> PromotionType.TYPE_2
+                        "TYPE_3" -> PromotionType.TYPE_3
+                        "TYPE_4" -> PromotionType.TYPE_4
+                        else -> PromotionType.TYPE_1
+                    }
+
+                    val rawTargetType = obj.optString("target_type", "FAMILY")
+                    val tTargetType = if (rawTargetType.equals("PRODUCT", ignoreCase = true)) PromoTargetType.PRODUCT else PromoTargetType.FAMILY
+
+                    val rawFreeItemType = obj.optString("free_item_type", "SAME_PRODUCT")
+                    val fFreeItemType = if (rawFreeItemType.equals("DIFFERENT_PRODUCT", ignoreCase = true)) FreeItemType.DIFFERENT_PRODUCT else FreeItemType.SAME_PRODUCT
+
+                    val tiersList = mutableListOf<PromotionTier>()
+                    val tiersArr = obj.optJSONArray("tiers")
+                    if (tiersArr != null) {
+                        for (t in 0 until tiersArr.length()) {
+                            val tObj = tiersArr.getJSONObject(t)
+                            tiersList.add(
+                                PromotionTier(
+                                    threshold = tObj.optInt("threshold", 10),
+                                    discountPercent = tObj.optDouble("discountPercent", tObj.optDouble("discount_percent", 5.0)),
+                                    freeQuantity = tObj.optInt("freeQuantity", tObj.optInt("free_quantity", 1))
+                                )
+                            )
+                        }
+                    }
+
+                    list.add(
+                        Promotion(
+                            id = obj.getString("id"),
+                            name = obj.getString("name"),
+                            description = obj.optString("description", ""),
+                            type = pType,
+                            targetType = tTargetType,
+                            targetFamily = obj.optString("target_family", null),
+                            targetProductId = obj.optString("target_product_id", null),
+                            targetProductRef = obj.optString("target_product_ref", null),
+                            targetProductName = obj.optString("target_product_name", null),
+                            threshold = obj.optDouble("threshold", 10.0),
+                            discountPercent = obj.optDouble("discount_percent", 0.0),
+                            freeItemType = fFreeItemType,
+                            freeProductId = obj.optString("free_product_id", null),
+                            freeProductRef = obj.optString("free_product_ref", null),
+                            freeProductName = obj.optString("free_product_name", null),
+                            freeQuantity = obj.optInt("free_quantity", 0),
+                            tiers = tiersList,
+                            voucherAmount = obj.optDouble("voucher_amount", 0.0),
+                            isActive = obj.optBoolean("is_active", true),
+                            startDate = obj.optString("start_date", "2026-01-01"),
+                            endDate = obj.optString("end_date", "2026-12-31")
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext if (list.isNotEmpty()) list else com.bardahl.maroc.util.PromotionEngine.defaultPromotions
+    }
 }

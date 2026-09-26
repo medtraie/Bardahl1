@@ -247,11 +247,29 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
 }
 
 class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel() {
+    private val supabaseService = com.bardahl.maroc.data.remote.SupabaseService()
     private val _orders = MutableStateFlow<List<Order>>(emptyList())
     val orders: StateFlow<List<Order>> = _orders.asStateFlow()
 
+    private val _promotions = MutableStateFlow<List<Promotion>>(com.bardahl.maroc.util.PromotionEngine.defaultPromotions)
+    val promotions: StateFlow<List<Promotion>> = _promotions.asStateFlow()
+
     init {
         refreshOrdersFromSupabase()
+        refreshPromotions()
+    }
+
+    fun refreshPromotions() {
+        viewModelScope.launch {
+            try {
+                val remote = supabaseService.fetchPromotions()
+                if (remote.isNotEmpty()) {
+                    _promotions.value = remote
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun refreshOrdersFromSupabase() {
