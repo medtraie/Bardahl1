@@ -50,7 +50,7 @@ export default function App() {
         <Header 
           title={titles[activeTab] || "Bardahl Maroc"} 
           onNewOrderClick={handleOpenNewOrder} 
-          showNewOrderButton={activeTab !== 'orders' && activeTab !== 'dashboard'} 
+          showNewOrderButton={activeTab === 'promotions'} 
           actionButtonText={activeTab === 'promotions' ? "Nouvelle Promotion" : "Nouveau Bon"}
           onActionClick={activeTab === 'promotions' ? handleOpenNewPromo : handleOpenNewOrder}
         />

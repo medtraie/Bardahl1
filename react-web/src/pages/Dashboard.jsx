@@ -1,5 +1,5 @@
 import React from 'react'
-import { Receipt, TrendingUp, Calendar, Users, ArrowUpRight, Plus, ChevronRight, UserCheck, ShieldCheck } from 'lucide-react'
+import { Receipt, TrendingUp, Calendar, Users, ArrowUpRight, ChevronRight, UserCheck, ShieldCheck } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import {
   Chart as ChartJS,
@@ -98,12 +98,6 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
               ? 'Aperçu global des performances et ventes de l\'ensemble du réseau Bardahl Maghreb'
               : `Statistiques personnelles et suivi des bons de commande pour ${currentUser?.name}`}
           </p>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button onClick={onNewOrderClick} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px' }}>
-            <Plus style={{ width: '16px', height: '16px' }} /> Nouveau Bon
-          </button>
         </div>
       </div>
 
@@ -267,7 +261,7 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
               <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                 <Receipt style={{ width: '32px', height: '32px', color: 'var(--text-secondary)', margin: '0 auto 8px auto', opacity: 0.5 }} />
                 <p style={{ fontSize: '14px', fontWeight: '700', color: '#FFFFFF' }}>Aucun bon de commande trouvé</p>
-                <p style={{ fontSize: '12px', marginTop: '4px' }}>Utilisez le bouton "Nouveau Bon" pour en créer un.</p>
+                <p style={{ fontSize: '12px', marginTop: '4px' }}>Accédez à la section Bons de Commande pour en créer un.</p>
               </div>
             ) : (
               <table className="custom-table">
