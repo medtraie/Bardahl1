@@ -41,7 +41,11 @@ export default function App() {
     <div className="app-container">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="main-content">
-        <Header title={titles[activeTab] || "Bardahl Maroc"} onNewOrderClick={handleOpenNewOrder} />
+        <Header 
+          title={titles[activeTab] || "Bardahl Maroc"} 
+          onNewOrderClick={handleOpenNewOrder} 
+          showNewOrderButton={activeTab !== 'orders' && activeTab !== 'dashboard'} 
+        />
         
         {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
         {activeTab === 'clients' && <Clients />}
