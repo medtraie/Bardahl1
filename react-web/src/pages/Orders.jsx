@@ -140,12 +140,182 @@ export default function Orders({ openWizardTrigger }) {
     }
   }
 
+  const handleSelectPromotion = (promoId) => {
+    setSelectedPromoId(promoId)
+    setCommercialPromoChoices({})
+
+    if (promoId === 'NONE') {
+      setRemisePercent(0)
+      setRemiseMontant(0)
+      return
+    }
+
+    if (promoId === 'AUTO') {
+      return
+    }
+
+    const promo = promotions.find(p => p.id === promoId)
+    if (!promo) return
+
+    // 1. Locate the target product in catalog
+    let targetProduct = null
+    if (promo.targetType === 'PRODUCT') {
+      targetProduct = products.find(p =>
+        p.id === promo.targetProductId ||
+        p.reference === promo.targetProductRef ||
+        (promo.targetProductRef && p.code === promo.targetProductRef) ||
+        (promo.targetProductName && p.name && p.name.toLowerCase() === promo.targetProductName.toLowerCase()) ||
+        (promo.targetProductRef && p.name && p.name.toLowerCase().includes(promo.targetProductRef.toLowerCase())) ||
+        (promo.targetProductName && p.name && p.name.toLowerCase().includes(promo.targetProductName.toLowerCase()))
+      )
+    } else if (promo.targetType === 'FAMILY') {
+      targetProduct = products.find(p =>
+        (p.category || p.categoryId || '').toUpperCase() === (promo.targetFamily || '').toUpperCase()
+      )
+    }
+
+    // Fallback: search in promo name or description
+    if (!targetProduct) {
+      targetProduct = products.find(p =>
+        (promo.name && p.name && promo.name.toLowerCase().includes(p.name.toLowerCase())) ||
+        (promo.name && p.reference && promo.name.toLowerCase().includes(p.reference.toLowerCase())) ||
+        (promo.description && p.name && promo.description.toLowerCase().includes(p.name.toLowerCase()))
+      )
+    }
+
+    // 2. Required quantity
+    let requiredQty = 10
+    if (promo.tiers && promo.tiers.length > 0) {
+      requiredQty = promo.tiers[0].threshold || 10
+    } else if (promo.threshold > 0) {
+      if (promo.type === 'TYPE_4' && targetProduct) {
+        const price = parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 100)
+        requiredQty = Math.max(1, Math.ceil(promo.threshold / price))
+      } else {
+        requiredQty = promo.threshold
+      }
+    }
+
+    // 3. Free quantity (TYPE_2)
+    let freeQty = 0
+    if (promo.type === 'TYPE_2') {
+      freeQty = promo.freeQuantity || (promo.tiers && promo.tiers[0]?.freeQuantity) || 1
+    }
+
+    // 4. Discount & Voucher
+    let discountPct = 0
+    if (promo.tiers && promo.tiers.length > 0) {
+      discountPct = promo.tiers[0].discountPercent || 0
+    } else {
+      discountPct = promo.discountPercent || 0
+    }
+    const voucherAmt = promo.voucherAmount || 0
+
+    // 5. Add or update target product in selectedProducts
+    if (targetProduct) {
+      setSelectedProducts(prev => {
+        const existingIdx = prev.findIndex(item => item.productId === targetProduct.id || item.reference === targetProduct.reference)
+        if (existingIdx >= 0) {
+          return prev.map((item, idx) => {
+            if (idx === existingIdx) {
+              const newQty = Math.max(item.qty || 0, requiredQty)
+              const newFree = (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT')
+                ? Math.max(item.qtyGratuit || 0, freeQty)
+                : (item.qtyGratuit || 0)
+              return {
+                ...item,
+                qty: newQty,
+                qtyGratuit: newFree,
+                promoTag: promo.name
+              }
+            }
+            return item
+          })
+        } else {
+          const newItem = {
+            productId: targetProduct.id,
+            reference: targetProduct.reference || 'REF',
+            productName: targetProduct.name,
+            category: targetProduct.category || targetProduct.categoryId || 'PROMO',
+            priceTtc: parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 0),
+            qty: requiredQty,
+            qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? freeQty : 0,
+            promoTag: promo.name
+          }
+
+          const newItems = [...prev, newItem]
+
+          if (promo.type === 'TYPE_2' && promo.freeItemType === 'DIFFERENT_PRODUCT' && freeQty > 0) {
+            const freeProd = products.find(p => p.id === promo.freeProductId || p.reference === promo.freeProductRef)
+            if (freeProd) {
+              newItems.push({
+                productId: freeProd.id,
+                reference: freeProd.reference || 'CADEAU',
+                productName: freeProd.name,
+                category: freeProd.category || freeProd.categoryId || 'CADEAU',
+                priceTtc: parseFloat(freeProd.unitPriceTtc || freeProd.priceTtc || 0),
+                qty: 0,
+                qtyGratuit: freeQty,
+                promoTag: `🎁 Offert : ${promo.name}`
+              })
+            }
+          }
+
+          return newItems
+        }
+      })
+    }
+
+    // 6. Apply features of the offer to Remise Commerciale Globale / Manuelle (Section 6)
+    if (discountPct > 0) {
+      setRemisePercent(discountPct)
+      setRemiseMontant(0)
+    } else if (voucherAmt > 0) {
+      setRemiseMontant(voucherAmt)
+      setRemisePercent(0)
+    }
+  }
+
   const handleQtyChange = (index, newQty) => {
     const val = parseInt(newQty, 10)
     if (isNaN(val) || val <= 0) {
       setSelectedProducts(prev => prev.filter((_, i) => i !== index))
     } else {
       setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: val } : p))
+
+      // If a specific promotion is active, dynamically update remise and gratuit based on quantity/tiers
+      if (selectedPromoId && selectedPromoId !== 'AUTO' && selectedPromoId !== 'NONE') {
+        const promo = promotions.find(p => p.id === selectedPromoId)
+        if (promo) {
+          if (promo.tiers && promo.tiers.length > 0) {
+            const sortedTiers = [...promo.tiers].sort((a, b) => b.threshold - a.threshold)
+            const matchedTier = sortedTiers.find(t => val >= t.threshold)
+            if (matchedTier) {
+              setRemisePercent(matchedTier.discountPercent || 0)
+              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
+                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: matchedTier.freeQuantity || 0 } : p))
+              }
+            } else {
+              setRemisePercent(0)
+              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
+                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: 0 } : p))
+              }
+            }
+          } else if (promo.threshold > 0) {
+            if (val >= promo.threshold) {
+              if (promo.discountPercent > 0) setRemisePercent(promo.discountPercent)
+              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
+                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: promo.freeQuantity || 1 } : p))
+              }
+            } else {
+              setRemisePercent(0)
+              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
+                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: 0 } : p))
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -191,8 +361,15 @@ export default function Orders({ openWizardTrigger }) {
   const promoDiscountAmount = promoAnalysis.totalDiscountFromPromos || 0
   const manualDiscountFromPercent = grossTotalTtc * (remisePercent / 100)
   const manualDiscountAmount = manualDiscountFromPercent + (parseFloat(remiseMontant) || 0)
-  const totalDiscountAmount = promoDiscountAmount + manualDiscountAmount
-  const voucherDiscount = promoAnalysis.voucherDiscount || 0
+
+  // Prevent double deduction if remisePercent or remiseMontant covers the promo discount/voucher
+  const isPromoInRemise = selectedPromoId && selectedPromoId !== 'NONE' && remisePercent >= (promoAnalysis.appliedPromotions[0]?.discountPercent || 0)
+  const effectivePromoDiscount = isPromoInRemise ? 0 : promoDiscountAmount
+  const isVoucherInRemise = (parseFloat(remiseMontant) || 0) >= (promoAnalysis.voucherDiscount || 0)
+  const effectiveVoucherDiscount = isVoucherInRemise ? 0 : (promoAnalysis.voucherDiscount || 0)
+
+  const totalDiscountAmount = effectivePromoDiscount + manualDiscountAmount
+  const voucherDiscount = effectiveVoucherDiscount
 
   const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount - voucherDiscount)
   const totalHt = netTotalTtc / 1.20
@@ -731,10 +908,7 @@ export default function Orders({ openWizardTrigger }) {
                 <div>
                   <select
                     value={selectedPromoId}
-                    onChange={e => {
-                      setSelectedPromoId(e.target.value)
-                      setCommercialPromoChoices({})
-                    }}
+                    onChange={e => handleSelectPromotion(e.target.value)}
                     className="input-field"
                     style={{ width: '100%', fontWeight: '700', fontSize: '13px', padding: '12px 14px' }}
                   >
@@ -995,16 +1169,16 @@ export default function Orders({ openWizardTrigger }) {
                   </div>
                 )}
 
-                {promoDiscountAmount > 0 && (
+                {effectivePromoDiscount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#007AFF', fontWeight: '800' }}>
                     <span>Remise Promotionnelle Automatique :</span>
-                    <span>-{promoDiscountAmount.toFixed(2)} DH</span>
+                    <span>-{effectivePromoDiscount.toFixed(2)} DH</span>
                   </div>
                 )}
 
                 {manualDiscountAmount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#FF453A', fontWeight: '800' }}>
-                    <span>Remise Commerciale Manuelle {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#007AFF', fontWeight: '800' }}>
+                    <span>Remise Commerciale Globale {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
                     <span>-{manualDiscountAmount.toFixed(2)} DH</span>
                   </div>
                 )}

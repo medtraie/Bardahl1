@@ -395,12 +395,116 @@ fun OrderCreateScreen(
     val globalRemisePercent = globalRemisePercentStr.toDoubleOrNull() ?: 0.0
     val globalRemiseMontant = globalRemiseMontantStr.toDoubleOrNull() ?: 0.0
     val manualDiscountAmount = (grossTotalTtc * (globalRemisePercent / 100.0)) + globalRemiseMontant
-    val totalDiscountAmount = promoDiscountAmount + manualDiscountAmount
-    val voucherDiscount = promoAnalysis.voucherDiscount
+
+    // Prevent double deduction if globalRemisePercent or globalRemiseMontant covers the promo discount/voucher
+    val isPromoInRemise = selectedPromoId != "NONE" && selectedPromoId != "AUTO" && globalRemisePercent >= (promoAnalysis.appliedPromotions.firstOrNull()?.discountPercent ?: 0.0)
+    val effectivePromoDiscount = if (isPromoInRemise) 0.0 else promoDiscountAmount
+    val isVoucherInRemise = globalRemiseMontant >= promoAnalysis.voucherDiscount
+    val effectiveVoucherDiscount = if (isVoucherInRemise) 0.0 else promoAnalysis.voucherDiscount
+
+    val totalDiscountAmount = effectivePromoDiscount + manualDiscountAmount
+    val voucherDiscount = effectiveVoucherDiscount
 
     val netTotalTtc = (grossTotalTtc - totalDiscountAmount - voucherDiscount).coerceAtLeast(0.0)
     val totalHt = netTotalTtc / 1.20
     val totalTva = netTotalTtc - totalHt
+
+    val applyPromotionToOrder: (Promotion) -> Unit = { promo ->
+        // 1. Locate the target product in catalog
+        val targetProduct = if (promo.targetType == PromoTargetType.PRODUCT) {
+            products.find { p ->
+                p.id == promo.targetProductId ||
+                p.reference == promo.targetProductRef ||
+                (promo.targetProductRef != null && p.code == promo.targetProductRef) ||
+                (promo.targetProductName != null && p.name.contains(promo.targetProductName!!, ignoreCase = true)) ||
+                (promo.targetProductRef != null && p.name.contains(promo.targetProductRef!!, ignoreCase = true))
+            }
+        } else {
+            products.find { p ->
+                (p.categoryId ?: "").equals(promo.targetFamily ?: "", ignoreCase = true)
+            }
+        } ?: products.find { p ->
+            promo.name.contains(p.name, ignoreCase = true) || (p.reference.isNotBlank() && promo.name.contains(p.reference, ignoreCase = true))
+        }
+
+        // Required quantity
+        val requiredQty = if (promo.tiers.isNotEmpty()) {
+            promo.tiers.first().threshold.toInt().coerceAtLeast(1)
+        } else if (promo.threshold > 0) {
+            if (promo.type == PromotionType.TYPE_4 && targetProduct != null && targetProduct.unitPriceTtc > 0) {
+                kotlin.math.ceil(promo.threshold / targetProduct.unitPriceTtc).toInt().coerceAtLeast(1)
+            } else {
+                promo.threshold.toInt().coerceAtLeast(1)
+            }
+        } else 10
+
+        // Free quantity
+        val freeQty = if (promo.type == PromotionType.TYPE_2) {
+            if (promo.tiers.isNotEmpty()) promo.tiers.first().freeQuantity else promo.freeQuantity.coerceAtLeast(1)
+        } else 0
+
+        // Discount & Voucher
+        val discountPct = if (promo.tiers.isNotEmpty()) {
+            promo.tiers.first().discountPercent
+        } else {
+            promo.discountPercent
+        }
+        val voucherAmt = promo.voucherAmount
+
+        // 2. Add or update target product in selectedItems
+        if (targetProduct != null) {
+            val existingIdx = selectedItems.indexOfFirst { it.productId == targetProduct.id || it.productReference == targetProduct.reference }
+            if (existingIdx >= 0) {
+                selectedItems = selectedItems.mapIndexed { idx, itm ->
+                    if (idx == existingIdx) {
+                        val newQty = maxOf(itm.quantity, requiredQty)
+                        val newFree = if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.SAME_PRODUCT) maxOf(itm.freeQuantity, freeQty) else itm.freeQuantity
+                        itm.copy(quantity = newQty, freeQuantity = newFree, promoTag = promo.name)
+                    } else itm
+                }
+            } else {
+                val newItem = OrderItem(
+                    productId = targetProduct.id,
+                    productName = targetProduct.name,
+                    productReference = targetProduct.reference,
+                    quantity = requiredQty,
+                    freeQuantity = if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.SAME_PRODUCT) freeQty else 0,
+                    unitPriceTtc = targetProduct.unitPriceTtc,
+                    promoTag = promo.name
+                )
+                val updatedList = selectedItems.toMutableList()
+                updatedList.add(newItem)
+
+                // If DIFFERENT_PRODUCT for free item
+                if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.DIFFERENT_PRODUCT && freeQty > 0) {
+                    val freeProd = products.find { it.id == promo.freeProductId || it.reference == promo.freeProductRef }
+                    if (freeProd != null) {
+                        updatedList.add(
+                            OrderItem(
+                                productId = freeProd.id,
+                                productName = freeProd.name,
+                                productReference = freeProd.reference,
+                                quantity = 0,
+                                freeQuantity = freeQty,
+                                unitPriceTtc = freeProd.unitPriceTtc,
+                                promoTag = "🎁 Cadeau Offert (${promo.name})"
+                            )
+                        )
+                    }
+                }
+                selectedItems = updatedList
+            }
+        }
+
+        // 3. Apply features of the offer to Step 6 Remise Commerciale Globale / Manuelle
+        if (discountPct > 0) {
+            globalRemisePercentStr = if (discountPct % 1.0 == 0.0) discountPct.toInt().toString() else discountPct.toString()
+            globalRemiseMontantStr = ""
+        } else if (voucherAmt > 0) {
+            globalRemiseMontantStr = if (voucherAmt % 1.0 == 0.0) voucherAmt.toInt().toString() else voucherAmt.toString()
+            globalRemisePercentStr = "0"
+        }
+    }
 
     val userFreeItemsCount = selectedItems.sumOf { it.freeQuantity }
     val promoFreeItemsCount = promoAnalysis.freeItems.sumOf { it.freeQuantity }
@@ -854,6 +958,8 @@ fun OrderCreateScreen(
                             onClick = {
                                 selectedPromoId = "NONE"
                                 promoMenuExpanded = false
+                                globalRemisePercentStr = "0"
+                                globalRemiseMontantStr = ""
                             }
                         )
                         if (promotions.isNotEmpty()) {
@@ -870,6 +976,7 @@ fun OrderCreateScreen(
                                     onClick = {
                                         selectedPromoId = promo.id
                                         promoMenuExpanded = false
+                                        applyPromotionToOrder(promo)
                                     }
                                 )
                             }
@@ -1148,17 +1255,18 @@ fun OrderCreateScreen(
                     }
                 }
 
-                if (promoDiscountAmount > 0) {
+                if (effectivePromoDiscount > 0) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Remise Promotionnelle Automatique", color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(String.format("-%.2f DH", promoDiscountAmount), color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("-%.2f DH", effectivePromoDiscount), color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 if (manualDiscountAmount > 0) {
+                    val discountLabel = if (globalRemisePercent > 0) "Remise Commerciale Globale (${globalRemisePercent.toInt()}%)" else "Remise Commerciale Globale"
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Remise Commerciale Manuelle", color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(String.format("-%.2f DH", manualDiscountAmount), color = StatusCancelled, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(discountLabel, color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("-%.2f DH", manualDiscountAmount), color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
