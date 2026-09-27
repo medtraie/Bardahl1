@@ -116,21 +116,35 @@ object PdfGenerator {
         canvas.drawText("Mode d'Expédition : ${order.modeExpedition}", 315f, 206f, textPaint)
         canvas.drawText("Statut Commande : ${order.status.label}", 315f, 220f, textPaint)
 
-        // Optional Remarques Box
+        // Optional Remarks & Promotions Box
         var tableTop = 240f
-        if (!order.remarque.isNullOrBlank()) {
+        val hasRemarque = !order.remarque.isNullOrBlank()
+        val hasPromoNote = !order.promoNote.isNullOrBlank()
+
+        if (hasRemarque || hasPromoNote) {
+            val boxHeight = if (hasRemarque && hasPromoNote) 38f else 24f
             paint.color = Color.parseColor("#F8F9FA")
-            canvas.drawRoundRect(RectF(30f, 236f, 565f, 260f), 6f, 6f, paint)
+            canvas.drawRoundRect(RectF(30f, 236f, 565f, 236f + boxHeight), 6f, 6f, paint)
             paint.color = Color.parseColor("#FFD000")
             paint.style = Paint.Style.STROKE
-            canvas.drawRoundRect(RectF(30f, 236f, 565f, 260f), 6f, 6f, paint)
+            canvas.drawRoundRect(RectF(30f, 236f, 565f, 236f + boxHeight), 6f, 6f, paint)
             paint.style = Paint.Style.FILL
 
-            textPaint.color = Color.parseColor("#0D0F12")
-            textPaint.textSize = 8.5f
-            textPaint.isFakeBoldText = true
-            canvas.drawText("Remarques / Instructions : ${order.remarque}", 42f, 252f, textPaint)
-            tableTop = 268f
+            var textY = 250f
+            if (hasPromoNote) {
+                textPaint.color = Color.parseColor("#2E7D32")
+                textPaint.textSize = 8.5f
+                textPaint.isFakeBoldText = true
+                canvas.drawText("OFFRE PROMOTIONNELLE : ${order.promoNote}", 42f, textY, textPaint)
+                textY += 13f
+            }
+            if (hasRemarque) {
+                textPaint.color = Color.parseColor("#0D0F12")
+                textPaint.textSize = 8.5f
+                textPaint.isFakeBoldText = true
+                canvas.drawText("Instructions de livraison : ${order.remarque}", 42f, textY, textPaint)
+            }
+            tableTop = 244f + boxHeight
         }
 
         // =========================================================================
