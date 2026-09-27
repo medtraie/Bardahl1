@@ -16,6 +16,7 @@ export default function App() {
   const { currentUser } = useApp()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [openOrderWizardTrigger, setOpenOrderWizardTrigger] = useState(0)
+  const [openNewPromoTrigger, setOpenNewPromoTrigger] = useState(0)
 
   if (!currentUser) {
     return <Login />
@@ -24,6 +25,11 @@ export default function App() {
   const handleOpenNewOrder = () => {
     setActiveTab('orders')
     setOpenOrderWizardTrigger(prev => prev + 1)
+  }
+
+  const handleOpenNewPromo = () => {
+    setActiveTab('promotions')
+    setOpenNewPromoTrigger(prev => prev + 1)
   }
 
   const titles = {
@@ -45,12 +51,14 @@ export default function App() {
           title={titles[activeTab] || "Bardahl Maroc"} 
           onNewOrderClick={handleOpenNewOrder} 
           showNewOrderButton={activeTab !== 'orders' && activeTab !== 'dashboard'} 
+          actionButtonText={activeTab === 'promotions' ? "Nouvelle Promotion" : "Nouveau Bon"}
+          onActionClick={activeTab === 'promotions' ? handleOpenNewPromo : handleOpenNewOrder}
         />
         
         {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
         {activeTab === 'clients' && <Clients />}
         {activeTab === 'products' && <Products />}
-        {activeTab === 'promotions' && <Promotions />}
+        {activeTab === 'promotions' && <Promotions openNewPromoTrigger={openNewPromoTrigger} />}
         {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
         {activeTab === 'commercials' && <Commercials />}
         {activeTab === 'analytics' && <Analytics />}

@@ -25,7 +25,7 @@ export const getFamilyInfo = (categoryOrFamily) => {
   return { id: c, label: categoryOrFamily, icon: '🏷️', color: '#8E8E93' }
 }
 
-export default function Promotions() {
+export default function Promotions({ openNewPromoTrigger } = {}) {
   const { orders = [], promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion, products, currentUser } = useApp()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('ALL')
@@ -260,6 +260,12 @@ export default function Promotions() {
     setShowModal(true)
   }
 
+  useEffect(() => {
+    if (openNewPromoTrigger && openNewPromoTrigger > 0) {
+      handleOpenAdd()
+    }
+  }, [openNewPromoTrigger])
+
   const handleOpenEdit = (promo) => {
     setEditingPromo(promo)
     setFormName(promo.name || '')
@@ -377,11 +383,6 @@ export default function Promotions() {
             Définition et calcul automatique des remises, cartons gratuits (Options A & B, Paliers) et bons d'achat
           </p>
         </div>
-        {isAdmin && (
-          <button onClick={handleOpenAdd} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Plus size={18} /> Nouvelle Promotion
-          </button>
-        )}
       </div>
 
       {/* Summary KPI Cards with Real Sales Impact */}
