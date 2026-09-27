@@ -104,10 +104,10 @@ data class OrderItem(
     val promoTag: String = "",
     val tvaRate: Double = 20.0
 ) {
-    val totalHt: Double
-        get() = (unitPriceTtc / (1 + (tvaRate / 100))) * quantity
     val totalTtc: Double
-        get() = unitPriceTtc * quantity
+        get() = (unitPriceTtc * quantity) * (1.0 - (discountPercentage / 100.0))
+    val totalHt: Double
+        get() = totalTtc / (1.0 + (tvaRate / 100.0))
 }
 
 data class Order(

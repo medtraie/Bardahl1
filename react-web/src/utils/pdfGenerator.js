@@ -99,8 +99,11 @@ export function generateOrderPdf(order) {
     const qty = parseInt(i.qty || i.quantity || 1, 10)
     const qtyGratuit = parseInt(i.qtyGratuit || i.freeQuantity || i.freeQty || 0, 10)
     const priceTtc = parseFloat(i.priceTtc || i.unitPriceTtc || i.unit_price || i.price || 0)
-    const lineTotal = (priceTtc * qty)
+    const remisePercent = parseFloat(i.remisePercent || i.remise || i.discountPercent || 0)
+    const lineGross = (priceTtc * qty)
+    const lineNet = lineGross * (1 - remisePercent / 100)
     const gratuitText = qtyGratuit > 0 ? `+${qtyGratuit} Offert` : '-'
+    const remiseText = remisePercent > 0 ? `${remisePercent}%` : '-'
 
     return [
       ref,
@@ -108,13 +111,14 @@ export function generateOrderPdf(order) {
       qty.toString(),
       gratuitText,
       priceTtc.toFixed(2) + " DH",
-      lineTotal.toFixed(2) + " DH"
+      remiseText,
+      lineNet.toFixed(2) + " DH"
     ]
   })
 
   doc.autoTable({
     startY: 96,
-    head: [['Réf.', 'Désignation de la Marchandise', 'Qté Fact.', 'Gratuité', 'Prix U. TTC', 'Total TTC']],
+    head: [['Réf.', 'Désignation de la Marchandise', 'Qté Fact.', 'Gratuité', 'Prix U. TTC', 'Remise', 'Total Net TTC']],
     body: rows,
     headStyles: {
       fillColor: [20, 23, 31],
@@ -192,7 +196,7 @@ export function generateOrderPdf(order) {
     tY += 6
     doc.setTextColor(229, 57, 53)
     doc.setFont('helvetica', 'bold')
-    doc.text("Remise Commerciale :", 123, tY)
+    doc.text("Remises Lignes :", 123, tY)
     doc.text("-" + order.totalDiscount.toFixed(2) + " DH", 191, tY, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(45, 55, 72)

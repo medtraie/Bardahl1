@@ -105,10 +105,12 @@ export default function Orders({ openWizardTrigger }) {
       productId: i.productId || i.reference,
       productName: i.productName || i.name,
       reference: i.reference || i.code,
+      category: i.category || '',
       priceTtc: parseFloat(i.priceTtc || i.unitPriceTtc || 0),
       qty: parseInt(i.qty || i.quantity || 1, 10),
       qtyGratuit: parseInt(i.qtyGratuit || i.freeQty || 0, 10),
-      promoTag: i.promoTag || ''
+      promoTag: i.promoTag || '',
+      remisePercent: parseFloat(i.remisePercent || i.remise || 0)
     })) : [])
     setShowOrderWizard(true)
   }
@@ -131,13 +133,24 @@ export default function Orders({ openWizardTrigger }) {
           productId: prod.id,
           productName: prod.name,
           reference: prod.reference,
+          category: prod.category || '',
           priceTtc: parseFloat(prod.priceTtc) || 0,
           qty: 1,
           qtyGratuit: 0,
-          promoTag: ''
+          promoTag: '',
+          remisePercent: 0
         }])
       }
     }
+  }
+
+  const handleLineRemiseChange = (index, newPercent) => {
+    const val = newPercent === '' ? '' : Math.max(0, Math.min(100, parseFloat(newPercent) || 0))
+    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, remisePercent: val } : p))
+  }
+
+  const handleApplyBatchRemise = (pct) => {
+    setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: pct })))
   }
 
   const handleSelectPromotion = (promoId) => {
@@ -145,7 +158,7 @@ export default function Orders({ openWizardTrigger }) {
     setCommercialPromoChoices({})
 
     if (promoId === 'NONE') {
-      setRemisePercent(0)
+      setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: 0 })))
       setRemiseMontant(0)
       return
     }
@@ -211,7 +224,7 @@ export default function Orders({ openWizardTrigger }) {
     }
     const voucherAmt = promo.voucherAmount || 0
 
-    // 5. Add or update target product in selectedProducts
+    // 5. Add or update target product in selectedProducts with per-product remise
     if (targetProduct) {
       setSelectedProducts(prev => {
         const existingIdx = prev.findIndex(item => item.productId === targetProduct.id || item.reference === targetProduct.reference)
@@ -226,6 +239,15 @@ export default function Orders({ openWizardTrigger }) {
                 ...item,
                 qty: newQty,
                 qtyGratuit: newFree,
+                remisePercent: discountPct > 0 ? discountPct : (item.remisePercent || 0),
+                promoTag: promo.name
+              }
+            }
+            // If family promo, update other items of the same family
+            if (promo.targetType === 'FAMILY' && promo.targetFamily && (item.category || '').toUpperCase().includes(promo.targetFamily.toUpperCase())) {
+              return {
+                ...item,
+                remisePercent: discountPct > 0 ? discountPct : (item.remisePercent || 0),
                 promoTag: promo.name
               }
             }
@@ -240,6 +262,7 @@ export default function Orders({ openWizardTrigger }) {
             priceTtc: parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 0),
             qty: requiredQty,
             qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? freeQty : 0,
+            remisePercent: discountPct,
             promoTag: promo.name
           }
 
@@ -256,6 +279,7 @@ export default function Orders({ openWizardTrigger }) {
                 priceTtc: parseFloat(freeProd.unitPriceTtc || freeProd.priceTtc || 0),
                 qty: 0,
                 qtyGratuit: freeQty,
+                remisePercent: 0,
                 promoTag: `🎁 Offert : ${promo.name}`
               })
             }
@@ -266,13 +290,8 @@ export default function Orders({ openWizardTrigger }) {
       })
     }
 
-    // 6. Apply features of the offer to Remise Commerciale Globale / Manuelle (Section 6)
-    if (discountPct > 0) {
-      setRemisePercent(discountPct)
-      setRemiseMontant(0)
-    } else if (voucherAmt > 0) {
+    if (voucherAmt > 0) {
       setRemiseMontant(voucherAmt)
-      setRemisePercent(0)
     }
   }
 
@@ -283,7 +302,7 @@ export default function Orders({ openWizardTrigger }) {
     } else {
       setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: val } : p))
 
-      // If a specific promotion is active, dynamically update remise and gratuit based on quantity/tiers
+      // If a specific promotion is active, dynamically update remise per product and gratuit based on quantity/tiers
       if (selectedPromoId && selectedPromoId !== 'AUTO' && selectedPromoId !== 'NONE') {
         const promo = promotions.find(p => p.id === selectedPromoId)
         if (promo) {
@@ -291,27 +310,31 @@ export default function Orders({ openWizardTrigger }) {
             const sortedTiers = [...promo.tiers].sort((a, b) => b.threshold - a.threshold)
             const matchedTier = sortedTiers.find(t => val >= t.threshold)
             if (matchedTier) {
-              setRemisePercent(matchedTier.discountPercent || 0)
-              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
-                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: matchedTier.freeQuantity || 0 } : p))
-              }
+              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
+                ...p,
+                remisePercent: matchedTier.discountPercent || 0,
+                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? (matchedTier.freeQuantity || 0) : p.qtyGratuit
+              } : p))
             } else {
-              setRemisePercent(0)
-              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
-                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: 0 } : p))
-              }
+              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
+                ...p,
+                remisePercent: 0,
+                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? 0 : p.qtyGratuit
+              } : p))
             }
           } else if (promo.threshold > 0) {
             if (val >= promo.threshold) {
-              if (promo.discountPercent > 0) setRemisePercent(promo.discountPercent)
-              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
-                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: promo.freeQuantity || 1 } : p))
-              }
+              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
+                ...p,
+                remisePercent: promo.discountPercent || 0,
+                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? (promo.freeQuantity || 1) : p.qtyGratuit
+              } : p))
             } else {
-              setRemisePercent(0)
-              if (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') {
-                setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: 0 } : p))
-              }
+              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
+                ...p,
+                remisePercent: 0,
+                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? 0 : p.qtyGratuit
+              } : p))
             }
           }
         }
@@ -356,20 +379,21 @@ export default function Orders({ openWizardTrigger }) {
     return evaluatePromotions(selectedProducts, products, promotions, commercialPromoChoices, selectedPromoId)
   }, [selectedProducts, products, promotions, commercialPromoChoices, selectedPromoId])
 
-  // Global Financial Calculations (Combining items, promo discounts, vouchers and manual discounts)
+  // Financial Calculations per Product Line (Remise Commerciale par produit)
   const grossTotalTtc = selectedProducts.reduce((sum, item) => sum + (item.priceTtc * item.qty), 0)
-  const promoDiscountAmount = promoAnalysis.totalDiscountFromPromos || 0
-  const manualDiscountFromPercent = grossTotalTtc * (remisePercent / 100)
-  const manualDiscountAmount = manualDiscountFromPercent + (parseFloat(remiseMontant) || 0)
 
-  // Prevent double deduction if remisePercent or remiseMontant covers the promo discount/voucher
-  const isPromoInRemise = selectedPromoId && selectedPromoId !== 'NONE' && remisePercent >= (promoAnalysis.appliedPromotions[0]?.discountPercent || 0)
-  const effectivePromoDiscount = isPromoInRemise ? 0 : promoDiscountAmount
-  const isVoucherInRemise = (parseFloat(remiseMontant) || 0) >= (promoAnalysis.voucherDiscount || 0)
-  const effectiveVoucherDiscount = isVoucherInRemise ? 0 : (promoAnalysis.voucherDiscount || 0)
+  // Total discounts from individual product lines
+  const totalLineDiscountAmount = selectedProducts.reduce((sum, item, idx) => {
+    const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+    const finalPct = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '')
+      ? parseFloat(item.remisePercent) || 0
+      : promoDiscount
+    return sum + ((item.priceTtc * item.qty) * (finalPct / 100))
+  }, 0)
 
-  const totalDiscountAmount = effectivePromoDiscount + manualDiscountAmount
-  const voucherDiscount = effectiveVoucherDiscount
+  // Voucher discount (either from Type 3 promo or explicit manual voucher)
+  const voucherDiscount = Math.max(promoAnalysis.voucherDiscount || 0, parseFloat(remiseMontant) || 0)
+  const totalDiscountAmount = totalLineDiscountAmount
 
   const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount - voucherDiscount)
   const totalHt = netTotalTtc / 1.20
@@ -391,12 +415,19 @@ export default function Orders({ openWizardTrigger }) {
 
     const client = clients.find(c => c.id === selectedClient)
 
-    // Build combined items list including automatic free gift cartons from promotions
+    // Build combined items list including line remisePercent and automatic free gifts
     const combinedItems = [
-      ...selectedProducts.map((sp, idx) => ({
-        ...sp,
-        promoDiscountPercent: promoAnalysis.lineDiscounts[idx] || 0
-      })),
+      ...selectedProducts.map((sp, idx) => {
+        const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+        const finalPct = (sp.remisePercent !== undefined && sp.remisePercent !== null && sp.remisePercent !== '')
+          ? parseFloat(sp.remisePercent) || 0
+          : promoDiscount
+        return {
+          ...sp,
+          remisePercent: finalPct,
+          promoDiscountPercent: promoDiscount
+        }
+      }),
       ...(promoAnalysis.freeItems || []).map(fi => ({
         productId: fi.productId,
         productName: fi.productName,
@@ -404,6 +435,7 @@ export default function Orders({ openWizardTrigger }) {
         priceTtc: 0,
         qty: 0,
         qtyGratuit: fi.qtyGratuit,
+        remisePercent: 0,
         promoTag: `🎁 Offert : ${fi.promoName}`
       }))
     ]
@@ -422,7 +454,7 @@ export default function Orders({ openWizardTrigger }) {
         paymentMethod: paymentMethod,
         modeExpedition: modeExpedition,
         remarque: remarque,
-        remisePercent: remisePercent,
+        remisePercent: 0,
         remiseMontant: parseFloat(remiseMontant) || 0,
         promoNote: finalPromoNote,
         totalHt: totalHt,
@@ -450,7 +482,7 @@ export default function Orders({ openWizardTrigger }) {
         paymentMethod: paymentMethod,
         modeExpedition: modeExpedition,
         remarque: remarque,
-        remisePercent: remisePercent,
+        remisePercent: 0,
         remiseMontant: parseFloat(remiseMontant) || 0,
         promoNote: finalPromoNote,
         status: "VALIDATED",
@@ -761,133 +793,188 @@ export default function Orders({ openWizardTrigger }) {
                       <tr>
                         <th style={{ minWidth: '70px' }}>Réf.</th>
                         <th>Produit</th>
-                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Qté</th>
-                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Gratuit</th>
-                        <th style={{ minWidth: '90px' }}>Prix U.</th>
-                        <th style={{ minWidth: '100px' }}>Total</th>
+                        <th style={{ textAlign: 'center', minWidth: '110px' }}>Qté</th>
+                        <th style={{ textAlign: 'center', minWidth: '110px' }}>Gratuit</th>
+                        <th style={{ minWidth: '85px' }}>Prix U.</th>
+                        <th style={{ minWidth: '100px', textAlign: 'center' }}>Remise (%)</th>
+                        <th style={{ minWidth: '105px' }}>Total Net TTC</th>
                         <th style={{ minWidth: '90px', textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProducts.map((item, idx) => (
-                        <tr key={idx}>
-                          <td><span style={{ fontWeight: '700', color: 'var(--bardahl-yellow)' }}>{item.reference}</span></td>
-                          <td>
-                            <strong>{item.productName}</strong>
-                            {item.promoTag && <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold', marginTop: '2px' }}>{item.promoTag}</div>}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
-                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.qty}
-                                onChange={e => handleQtyChange(idx, e.target.value)}
-                                style={{
-                                  width: '45px',
-                                  height: '30px',
-                                  textAlign: 'center',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: '#FFFFFF',
-                                  fontWeight: '800',
-                                  fontSize: '14px',
-                                  outline: 'none'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleQtyChange(idx, (parseInt(item.qty, 10) || 0) + 1)}
-                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleQtyGratuitChange(idx, Math.max(0, (parseInt(item.qtyGratuit, 10) || 0) - 1))}
-                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                value={item.qtyGratuit}
-                                onChange={e => handleQtyGratuitChange(idx, e.target.value)}
-                                style={{
-                                  width: '45px',
-                                  height: '30px',
-                                  textAlign: 'center',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: item.qtyGratuit > 0 ? '#34C759' : '#8E95A5',
-                                  fontWeight: '800',
-                                  fontSize: '14px',
-                                  outline: 'none'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleQtyGratuitChange(idx, (parseInt(item.qtyGratuit, 10) || 0) + 1)}
-                                style={{ width: '28px', height: '30px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </td>
-                          <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{item.priceTtc.toFixed(2)} DH</td>
-                          <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '800' }}>{(item.priceTtc * item.qty).toFixed(2)} DH</td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleTogglePromoLine(idx, '10+1')}
-                                style={{
-                                  fontSize: '11px',
-                                  fontWeight: '800',
-                                  padding: '4px 8px',
-                                  borderRadius: '6px',
-                                  background: item.promoTag ? 'rgba(52, 199, 89, 0.2)' : '#14171F',
-                                  color: item.promoTag ? '#34C759' : 'var(--text-secondary)',
-                                  border: item.promoTag ? '1px solid #34C759' : '1px solid var(--border-card)',
-                                  cursor: 'pointer'
-                                }}
-                                title="Appliquer Promo 10+1"
-                              >
-                                10+1
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleQtyChange(idx, 0)}
-                                style={{
-                                  color: '#FF453A',
-                                  background: 'rgba(255, 69, 58, 0.1)',
-                                  border: '1px solid rgba(255, 69, 58, 0.3)',
-                                  borderRadius: '6px',
-                                  padding: '4px 8px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                                title="Supprimer la ligne"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {selectedProducts.map((item, idx) => {
+                        const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+                        const currentRemise = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '') ? item.remisePercent : promoDiscount
+                        const lineGross = item.priceTtc * item.qty
+                        const lineDiscountVal = lineGross * ((parseFloat(currentRemise) || 0) / 100)
+                        const lineNet = Math.max(0, lineGross - lineDiscountVal)
+
+                        return (
+                          <tr key={idx}>
+                            <td><span style={{ fontWeight: '700', color: 'var(--bardahl-yellow)' }}>{item.reference}</span></td>
+                            <td>
+                              <strong>{item.productName}</strong>
+                              {item.promoTag && <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold', marginTop: '2px' }}>{item.promoTag}</div>}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
+                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.qty}
+                                  onChange={e => handleQtyChange(idx, e.target.value)}
+                                  style={{
+                                    width: '40px',
+                                    height: '28px',
+                                    textAlign: 'center',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    fontWeight: '800',
+                                    fontSize: '13px',
+                                    outline: 'none'
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleQtyChange(idx, (parseInt(item.qty, 10) || 0) + 1)}
+                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQtyGratuitChange(idx, Math.max(0, (parseInt(item.qtyGratuit, 10) || 0) - 1))}
+                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.qtyGratuit}
+                                  onChange={e => handleQtyGratuitChange(idx, e.target.value)}
+                                  style={{
+                                    width: '40px',
+                                    height: '28px',
+                                    textAlign: 'center',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: item.qtyGratuit > 0 ? '#34C759' : '#8E95A5',
+                                    fontWeight: '800',
+                                    fontSize: '13px',
+                                    outline: 'none'
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleQtyGratuitChange(idx, (parseInt(item.qtyGratuit, 10) || 0) + 1)}
+                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '12px' }}>{item.priceTtc.toFixed(2)} DH</td>
+
+                            {/* Remise Commerciale (%) par produit */}
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 4px' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.5"
+                                  value={currentRemise}
+                                  onChange={e => handleLineRemiseChange(idx, e.target.value)}
+                                  placeholder="0"
+                                  style={{
+                                    width: '40px',
+                                    height: '26px',
+                                    textAlign: 'center',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: currentRemise > 0 ? '#007AFF' : '#FFFFFF',
+                                    fontWeight: '800',
+                                    fontSize: '12px',
+                                    outline: 'none'
+                                  }}
+                                  title="Remise commerciale en % sur cet article"
+                                />
+                                <span style={{ fontSize: '11px', fontWeight: 'bold', color: currentRemise > 0 ? '#007AFF' : 'var(--text-secondary)', paddingRight: '2px' }}>%</span>
+                              </div>
+                            </td>
+
+                            {/* Total Net TTC */}
+                            <td>
+                              {currentRemise > 0 ? (
+                                <div>
+                                  <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '800', fontSize: '13px' }}>
+                                    {lineNet.toFixed(2)} DH
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                                    {lineGross.toFixed(2)} DH
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '800', fontSize: '13px' }}>
+                                  {lineGross.toFixed(2)} DH
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePromoLine(idx, '10+1')}
+                                  style={{
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    padding: '4px 6px',
+                                    borderRadius: '6px',
+                                    background: item.promoTag ? 'rgba(52, 199, 89, 0.2)' : '#14171F',
+                                    color: item.promoTag ? '#34C759' : 'var(--text-secondary)',
+                                    border: item.promoTag ? '1px solid #34C759' : '1px solid var(--border-card)',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Appliquer Promo 10+1"
+                                >
+                                  10+1
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQtyChange(idx, 0)}
+                                  style={{
+                                    color: '#FF453A',
+                                    background: 'rgba(255, 69, 58, 0.1)',
+                                    border: '1px solid rgba(255, 69, 58, 0.3)',
+                                    borderRadius: '6px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                  title="Supprimer la ligne"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1082,59 +1169,52 @@ export default function Orders({ openWizardTrigger }) {
                 )}
               </div>
 
-              {/* Step 6: Remise Commerciale GLOBALE sur le Total (Non linéaire) */}
+              {/* Step 6: Remises Commerciales par Produit (Récapitulatif & Actions Rapides) */}
               <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
-                <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Percent style={{ width: '16px', height: '16px' }} /> 6. Remise Commerciale Globale / Manuelle (Non linéaire)
-                </label>
-                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Percent style={{ width: '16px', height: '16px' }} /> 6. Remises Commerciales par Produit (Lignes)
+                  </label>
+                  <span style={{ fontSize: '11px', color: totalLineDiscountAmount > 0 ? '#007AFF' : 'var(--text-secondary)', fontWeight: 'bold' }}>
+                    {totalLineDiscountAmount > 0 ? `Total remises calculées : -${totalLineDiscountAmount.toFixed(2)} DH` : 'Définies par article dans le tableau des produits'}
+                  </span>
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Appliquer uniformément à tous les articles :</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {[0, 5, 10, 15, 20].map(pct => (
                       <button
                         key={pct}
                         type="button"
-                        onClick={() => { setRemisePercent(pct); setRemiseMontant(0); }}
+                        onClick={() => handleApplyBatchRemise(pct)}
                         style={{
-                          padding: '6px 12px',
+                          padding: '5px 10px',
                           borderRadius: '8px',
-                          fontSize: '12px',
+                          fontSize: '11px',
                           fontWeight: '800',
-                          background: (remisePercent === pct && !remiseMontant) ? 'var(--bardahl-yellow)' : '#0D0F12',
-                          color: (remisePercent === pct && !remiseMontant) ? '#0D0F12' : 'var(--text-secondary)',
-                          border: (remisePercent === pct && !remiseMontant) ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                          background: '#0D0F12',
+                          color: pct === 0 ? 'var(--text-secondary)' : '#007AFF',
+                          border: '1px solid var(--border-card)',
                           cursor: 'pointer'
                         }}
+                        title={`Définir ${pct}% de remise sur chaque ligne`}
                       >
-                        {pct}%
+                        {pct}% partout
                       </button>
                     ))}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>% Personnalisé :</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={remisePercent}
-                      onChange={e => { setRemisePercent(parseFloat(e.target.value) || 0); setRemiseMontant(0); }}
-                      placeholder="%"
-                      className="input-field"
-                      style={{ width: '70px', fontSize: '12px', padding: '6px 8px' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Ou Montant Fixe (DH) :</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Bon / Déduction Fixe (DH) :</span>
                     <input
                       type="number"
                       min="0"
                       value={remiseMontant}
-                      onChange={e => { setRemiseMontant(parseFloat(e.target.value) || 0); setRemisePercent(0); }}
-                      placeholder="Montant DH"
+                      onChange={e => setRemiseMontant(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00 DH"
                       className="input-field"
-                      style={{ width: '100px', fontSize: '12px', padding: '6px 8px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}
+                      style={{ width: '95px', fontSize: '12px', padding: '5px 8px', color: '#FF9500', fontWeight: 'bold' }}
                     />
                   </div>
                 </div>
@@ -1169,23 +1249,16 @@ export default function Orders({ openWizardTrigger }) {
                   </div>
                 )}
 
-                {effectivePromoDiscount > 0 && (
+                {totalLineDiscountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#007AFF', fontWeight: '800' }}>
-                    <span>Remise Promotionnelle Automatique :</span>
-                    <span>-{effectivePromoDiscount.toFixed(2)} DH</span>
-                  </div>
-                )}
-
-                {manualDiscountAmount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#007AFF', fontWeight: '800' }}>
-                    <span>Remise Commerciale Globale {remisePercent > 0 ? `(${remisePercent}%)` : ''} :</span>
-                    <span>-{manualDiscountAmount.toFixed(2)} DH</span>
+                    <span>Total Remises Commerciales sur Produits (Lignes) :</span>
+                    <span>-{totalLineDiscountAmount.toFixed(2)} DH</span>
                   </div>
                 )}
 
                 {voucherDiscount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#FF9500', fontWeight: '800' }}>
-                    <span>Bon d'Achat Immédiat (Section 6 & 7) :</span>
+                    <span>Bon d'Achat Immédiat (DH) :</span>
                     <span>-{voucherDiscount.toFixed(2)} DH</span>
                   </div>
                 )}

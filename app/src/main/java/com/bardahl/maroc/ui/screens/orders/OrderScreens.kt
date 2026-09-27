@@ -786,6 +786,10 @@ fun OrderCreateScreen(
                                     
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                                         Text("Facturé: ${item.quantity}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                        if (item.discountPercentage > 0.0) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Remise: ${item.discountPercentage.toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF007AFF))
+                                        }
                                         if (item.freeQuantity > 0) {
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text("+${item.freeQuantity} Gratuit(s)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StatusDelivered)
@@ -795,11 +799,37 @@ fun OrderCreateScreen(
                                             Text("• ${item.promoTag}", fontSize = 10.sp, color = StatusDelivered)
                                         }
                                     }
-                                    Text("Total TTC: ${String.format("%.2f DH", item.totalTtc)}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = BardahlYellow)
+                                    Text("Total Net TTC: ${String.format("%.2f DH", item.totalTtc)}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = BardahlYellow)
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Quick Promo Buttons
+                                    // Quick Remise Cycle Button (0% -> 5% -> 10% -> 15% -> 20% -> 0%)
+                                    IconButton(
+                                        onClick = {
+                                            selectedItems = selectedItems.mapIndexed { i, itm ->
+                                                if (i == idx) {
+                                                    val nextRemise = when (itm.discountPercentage) {
+                                                        0.0 -> 5.0
+                                                        5.0 -> 10.0
+                                                        10.0 -> 15.0
+                                                        15.0 -> 20.0
+                                                        else -> 0.0
+                                                    }
+                                                    itm.copy(discountPercentage = nextRemise)
+                                                } else itm
+                                            }
+                                        },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Text(
+                                            text = if (item.discountPercentage > 0.0) "${item.discountPercentage.toInt()}%" else "%",
+                                            color = if (item.discountPercentage > 0.0) Color(0xFF007AFF) else TextSecondaryDark,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    // Quick Promo 10+1 Button
                                     IconButton(
                                         onClick = {
                                             // Toggle 10+1 free promo
