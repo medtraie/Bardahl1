@@ -467,36 +467,74 @@ export default function Commercials() {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="input-field"
-              style={{ paddingLeft: '36px', height: '38px', fontSize: '12px' }}
+              style={{ paddingLeft: '36px', height: '38px', fontSize: '12px', borderRadius: '10px' }}
             />
           </div>
 
           {/* Sector Filter */}
-          <div style={{ minWidth: '150px' }}>
+          <div style={{ position: 'relative', minWidth: '185px' }}>
+            <MapPin style={{ width: '14px', height: '14px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
             <select
               value={sectorFilter}
               onChange={e => setSectorFilter(e.target.value)}
-              className="input-field"
-              style={{ height: '38px', fontSize: '12px' }}
+              style={{
+                width: '100%',
+                height: '38px',
+                paddingLeft: '34px',
+                paddingRight: '30px',
+                fontSize: '12px',
+                fontWeight: '700',
+                color: '#FFFFFF',
+                backgroundColor: 'var(--bg-obsidian)',
+                border: '1px solid var(--border-card)',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFD000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 10px center'
+              }}
             >
-              <option value="ALL">📍 Tous les Secteurs</option>
+              <option value="ALL" style={{ background: '#14171F', color: '#FFFFFF' }}>Tous les Secteurs</option>
               {AVAILABLE_SECTORS.map(sec => (
-                <option key={sec} value={sec}>{sec}</option>
+                <option key={sec} value={sec} style={{ background: '#14171F', color: '#FFFFFF' }}>{sec}</option>
               ))}
             </select>
           </div>
 
           {/* Status Filter */}
-          <div style={{ minWidth: '140px' }}>
+          <div style={{ position: 'relative', minWidth: '175px' }}>
+            <Filter style={{ width: '13px', height: '13px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="input-field"
-              style={{ height: '38px', fontSize: '12px' }}
+              style={{
+                width: '100%',
+                height: '38px',
+                paddingLeft: '34px',
+                paddingRight: '30px',
+                fontSize: '12px',
+                fontWeight: '700',
+                color: '#FFFFFF',
+                backgroundColor: 'var(--bg-obsidian)',
+                border: '1px solid var(--border-card)',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFD000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 10px center'
+              }}
             >
-              <option value="ALL">⚡ Tous les Statuts</option>
-              <option value="ACTIVE">✓ Actifs uniquement</option>
-              <option value="INACTIVE">⏸ Désactivés uniquement</option>
+              <option value="ALL" style={{ background: '#14171F', color: '#FFFFFF' }}>Tous les Statuts</option>
+              <option value="ACTIVE" style={{ background: '#14171F', color: '#FFFFFF' }}>✓ Actifs uniquement</option>
+              <option value="INACTIVE" style={{ background: '#14171F', color: '#FFFFFF' }}>⏸ Désactivés uniquement</option>
             </select>
           </div>
         </div>
