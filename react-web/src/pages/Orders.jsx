@@ -1,9 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2, CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag, Sparkles, AlertCircle } from 'lucide-react'
+import {
+  Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2,
+  CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag,
+  Sparkles, AlertCircle, Package, X, ShoppingBag, Layers
+} from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf } from '../utils/pdfGenerator'
 import { exportOrdersToExcel } from '../utils/excelExporter'
 import { evaluatePromotions } from '../utils/promotionEngine'
+
+const PRODUCT_CATEGORIES = [
+  { id: 'ALL', label: 'Toutes les Gammes' },
+  { id: 'ADDITIFS', label: 'Additifs' },
+  { id: 'LUBRIFIANTS', label: 'Lubrifiants Auto' },
+  { id: 'FLUIDES', label: 'Fluides & LR' },
+  { id: 'AEROSOLS', label: 'Aérosols & Nettoyants' },
+  { id: 'INDUSTRIE', label: 'Industrie & Graisses' },
+]
 
 export default function Orders({ openWizardTrigger }) {
   const { orders, clients, products, commercials, promotions, addOrder, updateOrder, deleteOrder, currentUser } = useApp()
@@ -31,6 +44,7 @@ export default function Orders({ openWizardTrigger }) {
   const [showClientDropdown, setShowClientDropdown] = useState(false)
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
+  const [selectedProductCategoryFilter, setSelectedProductCategoryFilter] = useState('ALL')
 
   const suggestedOrderNumber = `BC-2026-00${4332 + orders.length + 1}`
   const activeOrderNumber = customOrderNumber.trim() || suggestedOrderNumber
@@ -59,12 +73,22 @@ export default function Orders({ openWizardTrigger }) {
            (c.city || '').toLowerCase().includes(q)
   })
 
-  const filteredProductOptions = products.filter(p => {
-    const q = productSearchQuery.toLowerCase()
-    return (p.name || '').toLowerCase().includes(q) ||
-           (p.reference || '').toLowerCase().includes(q) ||
-           (p.code || '').toLowerCase().includes(q)
-  })
+  const filteredProductOptions = useMemo(() => {
+    const q = (productSearchQuery || '').toLowerCase().trim()
+    return (products || []).filter(p => {
+      if (selectedProductCategoryFilter !== 'ALL') {
+        const cat = (p.category || p.categoryId || '').toUpperCase()
+        if (!cat.includes(selectedProductCategoryFilter)) return false
+      }
+      if (!q) return true
+      const matchName = (p.name || '').toLowerCase().includes(q)
+      const matchRef = (p.reference || '').toLowerCase().includes(q)
+      const matchCode = (p.code || '').toLowerCase().includes(q)
+      const matchCat = (p.category || '').toLowerCase().includes(q)
+      const matchVisc = (p.viscosity || '').toLowerCase().includes(q)
+      return matchName || matchRef || matchCode || matchCat || matchVisc
+    })
+  }, [products, productSearchQuery, selectedProductCategoryFilter])
 
   const handleOpenAddWizard = () => {
     setEditingOrder(null)
@@ -669,78 +693,155 @@ export default function Orders({ openWizardTrigger }) {
 
       {/* Order Creation / Edit Wizard Dialog */}
       {showOrderWizard && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '840px', maxHeight: '90vh', overflowY: 'auto', borderColor: 'rgba(255, 208, 0, 0.4)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
+          <div className="glass-card" style={{ width: '96vw', maxWidth: '1280px', maxHeight: '94vh', overflowY: 'auto', borderColor: 'rgba(255, 208, 0, 0.45)', padding: '26px' }}>
             
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid var(--border-card)' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileText style={{ width: '22px', height: '22px', color: 'var(--bardahl-yellow)' }} />
-                {editingOrder ? `Modifier Bon de Commande ${editingOrder.orderNumber}` : 'Création Bon de Commande Bardahl'}
-              </h3>
-              <button onClick={() => { setShowOrderWizard(false); setEditingOrder(null); setClientSearchQuery(''); setProductSearchQuery(''); }} style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer', background: 'none', border: 'none' }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border-card)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, var(--bardahl-yellow), #E5B800)',
+                  color: '#0D0F12',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 15px rgba(255, 208, 0, 0.3)'
+                }}>
+                  <FileText style={{ width: '22px', height: '22px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '19px', fontWeight: '900', color: '#FFFFFF' }}>
+                    {editingOrder ? `Modifier Bon de Commande ${editingOrder.orderNumber}` : 'Création Bon de Commande Bardahl'}
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Saisie complète du bon commercial • Articles, Gratuités, Remises Lignes et Offres Bardahl
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { setShowOrderWizard(false); setEditingOrder(null); setClientSearchQuery(''); setProductSearchQuery(''); }}
+                style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer', background: 'none', border: 'none', padding: '4px' }}
+                title="Fermer"
+              >
                 &times;
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               
-              <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
-                <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Hash style={{ width: '16px', height: '16px' }} /> N° de Bon
-                </label>
-                <input type="text" value={customOrderNumber} onChange={e => setCustomOrderNumber(e.target.value)} placeholder={suggestedOrderNumber} className="input-field" />
-              </div>
-
-              {/* Step 1: Select Client */}
-              <div className="client-search-container" style={{ position: 'relative' }}>
-                <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
-                  1. Sélectionner le Client *
-                </label>
-                <div style={{ position: 'relative' }}>
+              {/* N° de Bon & Client Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '16px', alignItems: 'start' }}>
+                {/* N° de Bon */}
+                <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Hash style={{ width: '15px', height: '15px' }} /> N° de Bon de Commande
+                  </label>
                   <input
                     type="text"
+                    value={customOrderNumber}
+                    onChange={e => setCustomOrderNumber(e.target.value)}
+                    placeholder={suggestedOrderNumber}
                     className="input-field"
-                    placeholder="🔎 Rechercher par code client (ex: CL00477), nom ou ville..."
-                    value={clientSearchQuery}
-                    onChange={e => {
-                      setClientSearchQuery(e.target.value)
-                      setShowClientDropdown(true)
-                      if (!e.target.value) setSelectedClient('')
-                    }}
-                    onFocus={() => setShowClientDropdown(true)}
+                    style={{ fontWeight: '800', fontSize: '13px', color: '#FFFFFF' }}
                   />
-                  {showClientDropdown && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-card)',
-                      borderRadius: '12px', maxHeight: '200px', overflowY: 'auto', zIndex: 1010, boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                    }}>
-                      {filteredClientOptions.map(c => (
-                        <div key={c.id} onClick={() => { setSelectedClient(c.id); setClientSearchQuery(`${c.companyName} (${c.city})`); setShowClientDropdown(false); }} style={{ padding: '10px', cursor: 'pointer', borderBottom: '1px solid #222' }}>
-                          <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.codeClient}</strong> - {c.companyName} ({c.city})
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                </div>
+
+                {/* Step 1: Select Client */}
+                <div className="client-search-container" style={{ position: 'relative', background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      1. Sélectionner le Client *
+                    </label>
+                    {selectedClient && (
+                      <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '800' }}>
+                        ✓ Client Assigné
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <Search style={{ width: '15px', height: '15px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="🔎 Rechercher par code client (ex: CL00477), nom ou ville..."
+                      value={clientSearchQuery}
+                      onChange={e => {
+                        setClientSearchQuery(e.target.value)
+                        setShowClientDropdown(true)
+                        if (!e.target.value) setSelectedClient('')
+                      }}
+                      onFocus={() => setShowClientDropdown(true)}
+                      style={{ paddingLeft: '36px', paddingRight: clientSearchQuery ? '36px' : '14px', height: '40px', fontSize: '13px', borderRadius: '10px' }}
+                    />
+                    {clientSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => { setClientSearchQuery(''); setSelectedClient(''); }}
+                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                        title="Effacer"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                    {showClientDropdown && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#181C24', border: '1px solid var(--border-card)',
+                        borderRadius: '12px', maxHeight: '220px', overflowY: 'auto', zIndex: 1020, boxShadow: '0 12px 35px rgba(0,0,0,0.7)'
+                      }}>
+                        {filteredClientOptions.length === 0 ? (
+                          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            Aucun client trouvé pour « {clientSearchQuery} »
+                          </div>
+                        ) : (
+                          filteredClientOptions.map(c => (
+                            <div
+                              key={c.id}
+                              onClick={() => { setSelectedClient(c.id); setClientSearchQuery(`${c.codeClient ? '[' + c.codeClient + '] ' : ''}${c.companyName} (${c.city})`); setShowClientDropdown(false); }}
+                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 208, 0, 0.08)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <strong style={{ color: 'var(--bardahl-yellow)', fontSize: '12px' }}>{c.codeClient || 'CLIENT'}</strong>
+                                <span style={{ color: '#FFFFFF', fontWeight: '700', marginLeft: '8px', fontSize: '13px' }}>{c.companyName}</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '6px' }}>({c.city})</span>
+                              </div>
+                              {c.ice && (
+                                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', background: '#14171F', padding: '2px 6px', borderRadius: '4px' }}>
+                                  ICE: {c.ice}
+                                </span>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Step 2: Mode de Paiement & Expédition */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CreditCard style={{ width: '16px', height: '16px' }} /> 2. Mode de Paiement
+                  <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CreditCard style={{ width: '15px', height: '15px' }} /> 2. Mode de Paiement
                   </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
                     {['Chèque', 'Virement', 'Carte Bancaire', 'Espèces', 'Traite'].map(method => (
                       <button
                         key={method}
                         type="button"
                         onClick={() => setPaymentMethod(method)}
                         style={{
-                          padding: '8px 6px', borderRadius: '8px', fontSize: '11px', fontWeight: '800', cursor: 'pointer',
+                          padding: '9px 6px', borderRadius: '8px', fontSize: '11px', fontWeight: '800', cursor: 'pointer',
                           background: paymentMethod === method ? 'var(--bardahl-yellow)' : '#14171F',
                           color: paymentMethod === method ? '#0D0F12' : 'var(--text-secondary)',
-                          border: paymentMethod === method ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
+                          border: paymentMethod === method ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                          transition: 'all 0.15s ease'
                         }}
                       >
                         {method}
@@ -750,231 +851,544 @@ export default function Orders({ openWizardTrigger }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Truck style={{ width: '16px', height: '16px' }} /> 3. Mode d'Expédition
+                  <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Truck style={{ width: '15px', height: '15px' }} /> 3. Mode d'Expédition
                   </label>
-                  <select value={modeExpedition} onChange={e => setModeExpedition(e.target.value)} className="input-field">
-                    <option value="Transport Bardahl">Transport Bardahl</option>
-                    <option value="Livraison Client">Livraison Client</option>
-                    <option value="Enlèvement Magasin">Enlèvement Magasin</option>
-                    <option value="Transporteur Externe">Transporteur Externe</option>
+                  <select
+                    value={modeExpedition}
+                    onChange={e => setModeExpedition(e.target.value)}
+                    className="input-field"
+                    style={{ height: '38px', fontSize: '12px', fontWeight: '700' }}
+                  >
+                    <option value="Transport Bardahl">Transport Bardahl (Livraison Interne)</option>
+                    <option value="Livraison Client">Livraison Client directe</option>
+                    <option value="Enlèvement Magasin">Enlèvement Magasin (Client Récupère)</option>
+                    <option value="Transporteur Externe">Transporteur Externe / Privé</option>
                   </select>
                 </div>
               </div>
 
               {/* Step 3: Add Products */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Gift style={{ width: '16px', height: '16px' }} /> 4. Articles & Gratuités *
-                  </label>
-                  <div className="product-search-container" style={{ position: 'relative', width: '340px' }}>
-                    <input
-                      type="text" className="input-field" placeholder="🔎 Rechercher article..."
-                      value={productSearchQuery}
-                      onChange={e => { setProductSearchQuery(e.target.value); setShowProductDropdown(true); }}
-                      onFocus={() => setShowProductDropdown(true)}
-                    />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Gift style={{ width: '18px', height: '18px' }} /> 4. Articles & Gratuités *
+                    </label>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {selectedProducts.length === 0 ? 'Ajoutez les articles au bon de commande' : `${selectedProducts.length} référence(s) sélectionnée(s)`}
+                    </span>
+                  </div>
+
+                  {/* Advanced Search Bar with Floating Catalog Picker */}
+                  <div className="product-search-container" style={{ position: 'relative', width: '520px', maxWidth: '100%' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Search style={{ width: '16px', height: '16px', position: 'absolute', left: '14px', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="Rechercher par référence (ex: 2580), désignation, gamme..."
+                        value={productSearchQuery}
+                        onChange={e => {
+                          setProductSearchQuery(e.target.value)
+                          setShowProductDropdown(true)
+                        }}
+                        onFocus={() => setShowProductDropdown(true)}
+                        style={{
+                          paddingLeft: '40px',
+                          paddingRight: productSearchQuery ? '40px' : '16px',
+                          height: '42px',
+                          fontSize: '13px',
+                          borderRadius: '12px',
+                          border: showProductDropdown ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+                          boxShadow: showProductDropdown ? '0 0 14px var(--bardahl-yellow-glow)' : 'none'
+                        }}
+                      />
+                      {productSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => { setProductSearchQuery('') }}
+                          style={{
+                            position: 'absolute',
+                            right: '12px',
+                            background: 'rgba(255,255,255,0.1)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '22px',
+                            height: '22px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer'
+                          }}
+                          title="Effacer la recherche"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Floating Product Dropdown Picker */}
                     {showProductDropdown && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#14171F', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', zIndex: 1010 }}>
-                        {filteredProductOptions.map(p => (
-                          <div key={p.id} onClick={() => { handleAddProduct(p.id); setProductSearchQuery(''); setShowProductDropdown(false); }} style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #222' }}>
-                            {p.reference} - {p.name}
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        right: 0,
+                        width: '640px',
+                        maxWidth: '92vw',
+                        background: 'rgba(18, 21, 28, 0.98)',
+                        border: '1px solid rgba(255, 208, 0, 0.35)',
+                        borderRadius: '16px',
+                        boxShadow: '0 16px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(255, 208, 0, 0.08)',
+                        backdropFilter: 'blur(16px)',
+                        zIndex: 1100,
+                        overflow: 'hidden'
+                      }}>
+                        {/* Header: Category Filter Pills */}
+                        <div style={{ padding: '12px 14px', background: 'rgba(13, 15, 18, 0.95)', borderBottom: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+                            {PRODUCT_CATEGORIES.map(cat => (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => setSelectedProductCategoryFilter(cat.id)}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer',
+                                  border: 'none',
+                                  background: selectedProductCategoryFilter === cat.id ? 'var(--bardahl-yellow)' : '#1F2430',
+                                  color: selectedProductCategoryFilter === cat.id ? '#0D0F12' : 'var(--text-secondary)',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {cat.label}
+                              </button>
+                            ))}
                           </div>
-                        ))}
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                              {filteredProductOptions.length} article(s)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowProductDropdown(false)}
+                              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                              title="Fermer"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* List of Product Results */}
+                        <div style={{ maxHeight: '340px', overflowY: 'auto', padding: '6px' }}>
+                          {filteredProductOptions.length === 0 ? (
+                            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              <AlertCircle size={28} style={{ color: 'var(--bardahl-yellow)', margin: '0 auto 8px' }} />
+                              <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>Aucun article trouvé</div>
+                              <div style={{ fontSize: '11px', marginTop: '4px' }}>
+                                Aucun produit ne correspond à votre recherche dans cette catégorie.
+                              </div>
+                            </div>
+                          ) : (
+                            filteredProductOptions.slice(0, 40).map(p => {
+                              const alreadySelected = selectedProducts.find(item => item.productId === p.id || item.reference === p.reference)
+
+                              return (
+                                <div
+                                  key={p.id}
+                                  onClick={() => handleAddProduct(p.id)}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '12px',
+                                    background: alreadySelected ? 'rgba(255, 208, 0, 0.06)' : 'transparent',
+                                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                    transition: 'background 0.15s ease'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 208, 0, 0.12)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = alreadySelected ? 'rgba(255, 208, 0, 0.06)' : 'transparent'}
+                                >
+                                  {/* Left: Ref + Category + Name */}
+                                  <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                                      <span style={{
+                                        fontSize: '11px',
+                                        fontWeight: '900',
+                                        padding: '2px 7px',
+                                        borderRadius: '5px',
+                                        background: 'rgba(255, 208, 0, 0.18)',
+                                        color: 'var(--bardahl-yellow)',
+                                        letterSpacing: '0.4px'
+                                      }}>
+                                        REF: {p.reference}
+                                      </span>
+                                      <span style={{
+                                        fontSize: '10px',
+                                        fontWeight: '700',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        background: '#2B313E',
+                                        color: '#CBD5E1'
+                                      }}>
+                                        {p.category || 'BARDAHL'}
+                                      </span>
+                                      {p.viscosity && p.viscosity !== 'N/A' && (
+                                        <span style={{ fontSize: '10px', fontWeight: '800', color: '#007AFF' }}>
+                                          {p.viscosity}
+                                        </span>
+                                      )}
+                                      {alreadySelected && (
+                                        <span style={{ fontSize: '10px', fontWeight: '800', color: '#34C759', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                          ✓ Dans le bon (Qté: {alreadySelected.qty})
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {p.name}
+                                    </div>
+
+                                    {p.packaging && (
+                                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                        Carton : {p.packaging}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Right: Price + Add Button */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontSize: '14px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>
+                                        {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
+                                      </div>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                        TTC
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleAddProduct(p.id)
+                                      }}
+                                      style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        cursor: 'pointer',
+                                        background: alreadySelected ? '#34C759' : 'var(--bardahl-yellow)',
+                                        color: '#0D0F12',
+                                        border: 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                                      }}
+                                    >
+                                      <Plus size={13} /> {alreadySelected ? '+1' : 'Ajouter'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+
+                        {/* Footer note */}
+                        <div style={{ padding: '8px 14px', background: 'rgba(13, 15, 18, 0.95)', borderTop: '1px solid var(--border-card)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            💡 Cliquez sur un article ou sur "+1" pour l'ajouter instantanément au bon de commande.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowProductDropdown(false)}
+                            className="btn-secondary"
+                            style={{ padding: '3px 12px', fontSize: '11px' }}
+                          >
+                            Fermer
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
 
+                {/* Batch Remise Quick Buttons Bar */}
+                {selectedProducts.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255, 208, 0, 0.05)', padding: '8px 14px', borderRadius: '10px', border: '1px dashed rgba(255, 208, 0, 0.25)', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Percent style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
+                      <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                        Application Rapide de la Remise sur Tout le Panier :
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {[
+                        { pct: 0, label: '0% (Standard)' },
+                        { pct: 5, label: '5%' },
+                        { pct: 10, label: '10%' },
+                        { pct: 15, label: '15%' },
+                        { pct: 20, label: '20%' },
+                      ].map(b => (
+                        <button
+                          key={b.pct}
+                          type="button"
+                          onClick={() => handleApplyBatchRemise(b.pct)}
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            borderRadius: '6px',
+                            background: '#14171F',
+                            color: b.pct === 0 ? 'var(--text-secondary)' : '#007AFF',
+                            border: b.pct === 0 ? '1px solid var(--border-card)' : '1px solid rgba(0, 122, 255, 0.4)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Wide and Spacious Items Table */}
                 <div style={{ borderRadius: '12px', border: '1px solid var(--border-card)', overflow: 'hidden' }}>
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ width: '100%', margin: 0 }}>
                     <thead>
                       <tr>
-                        <th style={{ minWidth: '70px' }}>Réf.</th>
-                        <th>Produit</th>
-                        <th style={{ textAlign: 'center', minWidth: '110px' }}>Qté</th>
-                        <th style={{ textAlign: 'center', minWidth: '110px' }}>Gratuit</th>
-                        <th style={{ minWidth: '85px' }}>Prix U.</th>
-                        <th style={{ minWidth: '100px', textAlign: 'center' }}>Remise (%)</th>
-                        <th style={{ minWidth: '105px' }}>Total Net TTC</th>
-                        <th style={{ minWidth: '90px', textAlign: 'center' }}>Actions</th>
+                        <th style={{ minWidth: '85px' }}>Réf.</th>
+                        <th style={{ minWidth: '240px' }}>Désignation Produit</th>
+                        <th style={{ minWidth: '110px' }}>Gamme</th>
+                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Quantité</th>
+                        <th style={{ textAlign: 'center', minWidth: '120px' }}>Gratuit</th>
+                        <th style={{ minWidth: '105px', textAlign: 'right' }}>Prix U. TTC</th>
+                        <th style={{ minWidth: '110px', textAlign: 'center' }}>Remise (%)</th>
+                        <th style={{ minWidth: '125px', textAlign: 'right' }}>Total Net TTC</th>
+                        <th style={{ minWidth: '110px', textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProducts.map((item, idx) => {
-                        const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
-                        const currentRemise = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '') ? item.remisePercent : promoDiscount
-                        const lineGross = item.priceTtc * item.qty
-                        const lineDiscountVal = lineGross * ((parseFloat(currentRemise) || 0) / 100)
-                        const lineNet = Math.max(0, lineGross - lineDiscountVal)
+                      {selectedProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan="9" style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-secondary)' }}>
+                            <ShoppingBag style={{ width: '36px', height: '36px', color: 'var(--text-muted)', margin: '0 auto 8px', display: 'block' }} />
+                            <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '14px' }}>Aucun article dans ce bon de commande</div>
+                            <div style={{ fontSize: '12px', marginTop: '4px', color: 'var(--text-secondary)' }}>
+                              Recherchez un produit ou une référence ci-dessus pour composer la commande.
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        selectedProducts.map((item, idx) => {
+                          const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+                          const currentRemise = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '') ? item.remisePercent : promoDiscount
+                          const lineGross = item.priceTtc * item.qty
+                          const lineDiscountVal = lineGross * ((parseFloat(currentRemise) || 0) / 100)
+                          const lineNet = Math.max(0, lineGross - lineDiscountVal)
 
-                        return (
-                          <tr key={idx}>
-                            <td><span style={{ fontWeight: '700', color: 'var(--bardahl-yellow)' }}>{item.reference}</span></td>
-                            <td>
-                              <strong>{item.productName}</strong>
-                              {item.promoTag && <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold', marginTop: '2px' }}>{item.promoTag}</div>}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
-                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  -
-                                </button>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={item.qty}
-                                  onChange={e => handleQtyChange(idx, e.target.value)}
-                                  style={{
-                                    width: '40px',
-                                    height: '28px',
-                                    textAlign: 'center',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: '#FFFFFF',
-                                    fontWeight: '800',
-                                    fontSize: '13px',
-                                    outline: 'none'
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleQtyChange(idx, (parseInt(item.qty, 10) || 0) + 1)}
-                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleQtyGratuitChange(idx, Math.max(0, (parseInt(item.qtyGratuit, 10) || 0) - 1))}
-                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  -
-                                </button>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={item.qtyGratuit}
-                                  onChange={e => handleQtyGratuitChange(idx, e.target.value)}
-                                  style={{
-                                    width: '40px',
-                                    height: '28px',
-                                    textAlign: 'center',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: item.qtyGratuit > 0 ? '#34C759' : '#8E95A5',
-                                    fontWeight: '800',
-                                    fontSize: '13px',
-                                    outline: 'none'
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleQtyGratuitChange(idx, (parseInt(item.qtyGratuit, 10) || 0) + 1)}
-                                  style={{ width: '26px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '15px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </td>
-                            <td style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '12px' }}>{item.priceTtc.toFixed(2)} DH</td>
-
-                            {/* Remise Commerciale (%) par produit */}
-                            <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 4px' }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  step="0.5"
-                                  value={currentRemise}
-                                  onChange={e => handleLineRemiseChange(idx, e.target.value)}
-                                  placeholder="0"
-                                  style={{
-                                    width: '40px',
-                                    height: '26px',
-                                    textAlign: 'center',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: currentRemise > 0 ? '#007AFF' : '#FFFFFF',
-                                    fontWeight: '800',
-                                    fontSize: '12px',
-                                    outline: 'none'
-                                  }}
-                                  title="Remise commerciale en % sur cet article"
-                                />
-                                <span style={{ fontSize: '11px', fontWeight: 'bold', color: currentRemise > 0 ? '#007AFF' : 'var(--text-secondary)', paddingRight: '2px' }}>%</span>
-                              </div>
-                            </td>
-
-                            {/* Total Net TTC */}
-                            <td>
-                              {currentRemise > 0 ? (
-                                <div>
-                                  <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '800', fontSize: '13px' }}>
-                                    {lineNet.toFixed(2)} DH
+                          return (
+                            <tr key={idx}>
+                              <td>
+                                <span style={{
+                                  fontWeight: '900',
+                                  fontSize: '11px',
+                                  color: 'var(--bardahl-yellow)',
+                                  background: 'rgba(255, 208, 0, 0.12)',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  display: 'inline-block'
+                                }}>
+                                  {item.reference}
+                                </span>
+                              </td>
+                              <td>
+                                <strong style={{ color: '#FFFFFF', fontSize: '13px', display: 'block' }}>{item.productName}</strong>
+                                {item.promoTag && (
+                                  <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                    <Sparkles size={10} /> {item.promoTag}
                                   </div>
-                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                                )}
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '5px', background: '#2B313E', color: '#CBD5E1', fontWeight: '700' }}>
+                                  {item.category || 'Bardahl'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
+                                    style={{ width: '28px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.qty}
+                                    onChange={e => handleQtyChange(idx, e.target.value)}
+                                    style={{
+                                      width: '42px',
+                                      height: '28px',
+                                      textAlign: 'center',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#FFFFFF',
+                                      fontWeight: '800',
+                                      fontSize: '13px',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQtyChange(idx, (parseInt(item.qty, 10) || 0) + 1)}
+                                    style={{ width: '28px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQtyGratuitChange(idx, Math.max(0, (parseInt(item.qtyGratuit, 10) || 0) - 1))}
+                                    style={{ width: '28px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={item.qtyGratuit}
+                                    onChange={e => handleQtyGratuitChange(idx, e.target.value)}
+                                    style={{
+                                      width: '42px',
+                                      height: '28px',
+                                      textAlign: 'center',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: item.qtyGratuit > 0 ? '#34C759' : '#8E95A5',
+                                      fontWeight: '800',
+                                      fontSize: '13px',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQtyGratuitChange(idx, (parseInt(item.qtyGratuit, 10) || 0) + 1)}
+                                    style={{ width: '28px', height: '28px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontSize: '12px' }}>
+                                {item.priceTtc.toFixed(2)} DH
+                              </td>
+
+                              {/* Remise Commerciale (%) par produit */}
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 6px' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    value={currentRemise}
+                                    onChange={e => handleLineRemiseChange(idx, e.target.value)}
+                                    placeholder="0"
+                                    style={{
+                                      width: '42px',
+                                      height: '26px',
+                                      textAlign: 'center',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: currentRemise > 0 ? '#007AFF' : '#FFFFFF',
+                                      fontWeight: '800',
+                                      fontSize: '12px',
+                                      outline: 'none'
+                                    }}
+                                    title="Remise commerciale en % sur cet article"
+                                  />
+                                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: currentRemise > 0 ? '#007AFF' : 'var(--text-secondary)', paddingRight: '2px' }}>%</span>
+                                </div>
+                              </td>
+
+                              {/* Total Net TTC */}
+                              <td style={{ textAlign: 'right' }}>
+                                {currentRemise > 0 ? (
+                                  <div>
+                                    <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '13px' }}>
+                                      {lineNet.toFixed(2)} DH
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                                      {lineGross.toFixed(2)} DH
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '13px' }}>
                                     {lineGross.toFixed(2)} DH
                                   </div>
-                                </div>
-                              ) : (
-                                <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '800', fontSize: '13px' }}>
-                                  {lineGross.toFixed(2)} DH
-                                </div>
-                              )}
-                            </td>
+                                )}
+                              </td>
 
-                            <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleTogglePromoLine(idx, '10+1')}
-                                  style={{
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    padding: '4px 6px',
-                                    borderRadius: '6px',
-                                    background: item.promoTag ? 'rgba(52, 199, 89, 0.2)' : '#14171F',
-                                    color: item.promoTag ? '#34C759' : 'var(--text-secondary)',
-                                    border: item.promoTag ? '1px solid #34C759' : '1px solid var(--border-card)',
-                                    cursor: 'pointer'
-                                  }}
-                                  title="Appliquer Promo 10+1"
-                                >
-                                  10+1
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleQtyChange(idx, 0)}
-                                  style={{
-                                    color: '#FF453A',
-                                    background: 'rgba(255, 69, 58, 0.1)',
-                                    border: '1px solid rgba(255, 69, 58, 0.3)',
-                                    borderRadius: '6px',
-                                    padding: '4px 6px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}
-                                  title="Supprimer la ligne"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePromoLine(idx, '10+1')}
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      padding: '5px 8px',
+                                      borderRadius: '6px',
+                                      background: item.promoTag ? 'rgba(52, 199, 89, 0.2)' : '#14171F',
+                                      color: item.promoTag ? '#34C759' : 'var(--text-secondary)',
+                                      border: item.promoTag ? '1px solid #34C759' : '1px solid var(--border-card)',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Appliquer Promo 10+1 (1 offert pour 10 achetés)"
+                                  >
+                                    10+1
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQtyChange(idx, 0)}
+                                    style={{
+                                      color: '#FF453A',
+                                      background: 'rgba(255, 69, 58, 0.1)',
+                                      border: '1px solid rgba(255, 69, 58, 0.3)',
+                                      borderRadius: '6px',
+                                      padding: '5px 8px',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                    title="Supprimer la ligne"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
