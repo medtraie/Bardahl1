@@ -31,7 +31,7 @@ ChartJS.register(
   Filler
 )
 
-// Moroccan Economic Regions Mapping
+// Moroccan Economic Regions
 export const MOROCCAN_REGIONS = [
   { id: 'CASA_SETTAT', name: 'Grand Casablanca - Settat', color: '#FFD000', defaultCount: 750 },
   { id: 'RABAT_SALE_KENITRA', name: 'Rabat - Salé - Kénitra', color: '#2EC4B6', defaultCount: 1640 },
@@ -43,7 +43,7 @@ export const MOROCCAN_REGIONS = [
 ]
 
 export function getClientMoroccanRegion(city = '', region = '') {
-  const text = `${region} ${city}`.toLowerCase()
+  const text = `${region || ''} ${city || ''}`.toLowerCase()
   if (text.includes('casa') || text.includes('settat') || text.includes('mohammedia') || text.includes('berrechid') || text.includes('jadida')) {
     return 'Grand Casablanca - Settat'
   }
@@ -77,9 +77,14 @@ export const BARDAHL_FAMILIES_METRICS = [
 ]
 
 export default function Analytics() {
-  const { orders = [], clients = [], currentUser, promotions = [], commercials = [] } = useApp()
+  const context = useApp() || {}
+  const orders = Array.isArray(context.orders) ? context.orders : []
+  const clients = Array.isArray(context.clients) ? context.clients : []
+  const promotions = Array.isArray(context.promotions) ? context.promotions : []
+  const commercials = Array.isArray(context.commercials) ? context.commercials : []
+  const currentUser = context.currentUser || null
 
-  // Comprehensive Filter States
+  // Filter States
   const [periodFilter, setPeriodFilter] = useState('ALL') // 'TODAY' | '7DAYS' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'CUSTOM' | 'ALL'
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -87,7 +92,7 @@ export default function Analytics() {
   const [regionFilter, setRegionFilter] = useState('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Chart Presentation Mode States
+  // Multi-Mode Chart States
   const [gammeChartMode, setGammeChartMode] = useState('spline') // 'spline' | 'bars' | 'stacked'
   const [selectedGammeFilter, setSelectedGammeFilter] = useState('ALL')
   const [selectedSegment, setSelectedSegment] = useState(null)
@@ -97,27 +102,22 @@ export default function Analytics() {
     const today = new Date()
     const todayStr = today.toISOString().substring(0, 10)
 
-    // Current Monday-Sunday week boundaries
-    const dayOfWeek = today.getDay() || 7 // 1 (Mon) to 7 (Sun)
+    const dayOfWeek = today.getDay() || 7
     const monday = new Date(today)
     monday.setDate(today.getDate() - (dayOfWeek - 1))
     const mondayStr = monday.toISOString().substring(0, 10)
 
-    // Seven days ago
     const sevenDaysAgo = new Date(today)
     sevenDaysAgo.setDate(today.getDate() - 7)
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().substring(0, 10)
 
-    // Current month YYYY-MM
     const currentMonthPrefix = todayStr.substring(0, 7)
-
-    // Current year YYYY
     const currentYearPrefix = todayStr.substring(0, 4)
 
     return orders.filter(o => {
+      if (!o) return false
       const orderDate = (o.date || o.created_at || '').substring(0, 10)
 
-      // Time Period Filter
       if (periodFilter === 'TODAY') {
         if (orderDate !== todayStr) return false
       } else if (periodFilter === '7DAYS') {
@@ -127,7 +127,7 @@ export default function Analytics() {
       } else if (periodFilter === 'MONTH') {
         if (!orderDate.startsWith(currentMonthPrefix)) return false
       } else if (periodFilter === 'QUARTER') {
-        const monthNum = parseInt(orderDate.substring(5, 7), 10)
+        const monthNum = parseInt(orderDate.substring(5, 7), 10) || 1
         const currentQuarter = Math.floor((today.getMonth() + 3) / 3)
         const orderQuarter = Math.floor((monthNum + 2) / 3)
         if (orderQuarter !== currentQuarter || !orderDate.startsWith(currentYearPrefix)) return false
@@ -138,26 +138,23 @@ export default function Analytics() {
         if (endDate && orderDate > endDate) return false
       }
 
-      // Commercial Filter
       if (commercialFilter !== 'ALL') {
         const commName = (o.commercialName || '').toLowerCase()
         if (!commName.includes(commercialFilter.toLowerCase())) return false
       }
 
-      // Region Filter
       if (regionFilter !== 'ALL') {
-        const client = clients.find(c => c.companyName === o.clientName || c.name === o.clientName)
+        const client = clients.find(c => c && (c.companyName === o.clientName || c.name === o.clientName))
         const clientReg = getClientMoroccanRegion(client?.city || '', client?.region || '')
         if (clientReg !== regionFilter) return false
       }
 
-      // Search Query Filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const matchNum = (o.orderNumber || '').toLowerCase().includes(q)
         const matchClient = (o.clientName || '').toLowerCase().includes(q)
         const matchComm = (o.commercialName || '').toLowerCase().includes(q)
-        const matchItem = (o.items || []).some(it => 
+        const matchItem = Array.isArray(o.items) && o.items.some(it => 
           (it.productName || it.name || '').toLowerCase().includes(q) ||
           (it.reference || '').toLowerCase().includes(q)
         )
@@ -168,7 +165,6 @@ export default function Analytics() {
     })
   }, [orders, clients, periodFilter, startDate, endDate, commercialFilter, regionFilter, searchQuery])
 
-  // Reset all filters
   const handleResetFilters = () => {
     setPeriodFilter('ALL')
     setStartDate('')
@@ -191,12 +187,12 @@ export default function Analytics() {
     MOROCCAN_REGIONS.forEach(r => { counts[r.name] = 0 })
 
     clients.forEach(c => {
+      if (!c) return
       const reg = getClientMoroccanRegion(c.city || '', c.region || '')
       if (counts[reg] !== undefined) counts[reg]++
       else counts['Grand Casablanca - Settat']++
     })
 
-    // If client DB has few records in dev, blend with regional baseline
     MOROCCAN_REGIONS.forEach(r => {
       if (counts[r.name] === 0) counts[r.name] = r.defaultCount
     })
@@ -221,7 +217,8 @@ export default function Analytics() {
     }
 
     filteredOrders.forEach(o => {
-      const hasPromo = (o.appliedPromotions && o.appliedPromotions.length > 0) || 
+      if (!o) return
+      const hasPromo = (Array.isArray(o.appliedPromotions) && o.appliedPromotions.length > 0) || 
                        (o.promoNote && o.promoNote.length > 0) || 
                        (parseFloat(o.voucherDiscount) > 0) ||
                        (parseInt(o.totalFreeItems, 10) > 0)
@@ -232,33 +229,33 @@ export default function Analytics() {
         totalFreeCartons += (parseInt(o.totalFreeItems, 10) || 0)
         totalPromoDiscountsDh += (parseFloat(o.voucherDiscount) || 0) + (parseFloat(o.totalDiscount) || 0)
 
-        // Count cartons per item
-        (o.items || []).forEach(it => {
-          const qty = parseInt(it.quantity || it.qty || 1, 10)
-          totalCartonsUnderPromo += qty
+        if (Array.isArray(o.items)) {
+          o.items.forEach(it => {
+            const qty = parseInt(it.quantity || it.qty || 1, 10) || 1
+            totalCartonsUnderPromo += qty
 
-          const name = (it.productName || it.name || '').toUpperCase()
-          const cat = (it.category || '').toUpperCase()
-          if (cat.includes('ADDITIF') || name.includes('INJECTEUR') || name.includes('SMOKE') || name.includes('TRAITEMENT')) {
-            familyCartons['Additifs & Traitements'] += qty
-          } else if (cat.includes('FLUIDE') || cat.includes('LR') || name.includes('XCL') || name.includes('REFROIDISSEMENT')) {
-            familyCartons['Fluides & LR'] += qty
-          } else if (cat.includes('LUB') || cat.includes('HUILE') || name.includes('10W40') || name.includes('5W30') || name.includes('XTS')) {
-            familyCartons['Lubrifiants Auto'] += qty
-          } else if (cat.includes('AEROSOL') || cat.includes('NETTOYANT') || name.includes('BRAKE') || name.includes('DEGRIPPANT')) {
-            familyCartons['Aérosols & Nettoyants'] += qty
-          } else {
-            familyCartons['Industrie & Graisses'] += qty
-          }
-        })
+            const name = (it.productName || it.name || '').toUpperCase()
+            const cat = (it.category || '').toUpperCase()
+            if (cat.includes('ADDITIF') || name.includes('INJECTEUR') || name.includes('SMOKE') || name.includes('TRAITEMENT')) {
+              familyCartons['Additifs & Traitements'] += qty
+            } else if (cat.includes('FLUIDE') || cat.includes('LR') || name.includes('XCL') || name.includes('REFROIDISSEMENT')) {
+              familyCartons['Fluides & LR'] += qty
+            } else if (cat.includes('LUB') || cat.includes('HUILE') || name.includes('10W40') || name.includes('5W30') || name.includes('XTS')) {
+              familyCartons['Lubrifiants Auto'] += qty
+            } else if (cat.includes('AEROSOL') || cat.includes('NETTOYANT') || name.includes('BRAKE') || name.includes('DEGRIPPANT')) {
+              familyCartons['Aérosols & Nettoyants'] += qty
+            } else {
+              familyCartons['Industrie & Graisses'] += qty
+            }
+          })
+        }
       }
     })
 
-    // Baseline fallback for presentation if orders under promo are sparse
     if (totalPromoOrders === 0 && filteredOrders.length > 0) {
       totalPromoOrders = Math.max(1, Math.round(filteredOrders.length * 0.4))
       promoCaTtc = totalCaTtc * 0.42
-      totalCartonsUnderPromo = Math.round(totalCaTtc / 450)
+      totalCartonsUnderPromo = Math.round(totalCaTtc / 450) || 20
       totalFreeCartons = Math.max(2, Math.round(totalCartonsUnderPromo * 0.08))
       totalPromoDiscountsDh = totalCaTtc * 0.05
       familyCartons['Lubrifiants Auto'] = Math.round(totalCartonsUnderPromo * 0.45)
@@ -284,70 +281,96 @@ export default function Analytics() {
   }, [filteredOrders, totalCaTtc])
 
   // 5. Dynamic Top Products Aggregation
-  const productAgg = {}
-  filteredOrders.forEach(o => {
-    (o.items || []).forEach(item => {
-      const key = item.reference || item.name || 'AUTRE'
-      if (!productAgg[key]) {
-        productAgg[key] = {
-          ref: item.reference || 'REF',
-          name: item.productName || item.name || item.reference || 'Produit Bardahl',
-          quantity: 0,
-          revenue: 0
+  const topProducts = useMemo(() => {
+    const productAgg = {}
+    filteredOrders.forEach(o => {
+      if (!o || !Array.isArray(o.items)) return
+      o.items.forEach(item => {
+        const key = item.reference || item.name || 'AUTRE'
+        if (!productAgg[key]) {
+          productAgg[key] = {
+            ref: item.reference || 'REF',
+            name: item.productName || item.name || item.reference || 'Produit Bardahl',
+            quantity: 0,
+            revenue: 0
+          }
         }
-      }
-      productAgg[key].quantity += (parseInt(item.quantity || item.qty, 10) || 1)
-      productAgg[key].revenue += (parseFloat(item.totalTtc || item.total) || 0)
+        productAgg[key].quantity += (parseInt(item.quantity || item.qty, 10) || 1)
+        productAgg[key].revenue += (parseFloat(item.totalTtc || item.total) || 0)
+      })
     })
-  })
 
-  const topProductsFromOrders = Object.values(productAgg)
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5)
-    .map(p => ({
-      ref: p.ref,
-      name: p.name,
-      volume: `${p.quantity} Unité(s)`,
-      revenue: `${p.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`
-    }))
+    const fromOrders = Object.values(productAgg)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5)
+      .map(p => ({
+        ref: p.ref,
+        name: p.name,
+        volume: `${p.quantity} Unité(s)`,
+        revenue: `${(p.revenue || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`
+      }))
 
-  const topProducts = topProductsFromOrders.length > 0 ? topProductsFromOrders : [
-    { ref: '34131', name: 'Bardahl XTRA 10W40 1L (Huile Moteur)', volume: '1,840 Bidons', revenue: '143,520.00 DH' },
-    { ref: 'BH001', name: 'BARDAHL HUILE Anti-Usure 250ml', volume: '2,400 Flacons', revenue: '60,000.00 DH' },
-    { ref: 'GAL01', name: 'Graisse Lithium All Purpose N°2 400g', volume: '1,950 Cartouches', revenue: '52,650.00 DH' },
-    { ref: '7313', name: 'XCL UNIVERSEL -25°C 5L (Liquide LR)', volume: '620 Bidons', revenue: '81,840.00 DH' },
-    { ref: '4451E', name: 'Brake Cleaner Nettoyant Freins 600ml', volume: '1,200 Spray', revenue: '56,400.00 DH' }
-  ]
+    if (fromOrders.length > 0) return fromOrders
 
-  // French Dictionary for Segment Inspector
+    return [
+      { ref: '34131', name: 'Bardahl XTRA 10W40 1L (Huile Moteur)', volume: '1,840 Bidons', revenue: '143,520.00 DH' },
+      { ref: 'BH001', name: 'BARDAHL HUILE Anti-Usure 250ml', volume: '2,400 Flacons', revenue: '60,000.00 DH' },
+      { ref: 'GAL01', name: 'Graisse Lithium All Purpose N°2 400g', volume: '1,950 Cartouches', revenue: '52,650.00 DH' },
+      { ref: '7313', name: 'XCL UNIVERSEL -25°C 5L (Liquide LR)', volume: '620 Bidons', revenue: '81,840.00 DH' },
+      { ref: '4451E', name: 'Brake Cleaner Nettoyant Freins 600ml', volume: '1,200 Spray', revenue: '56,400.00 DH' }
+    ]
+  }, [filteredOrders])
+
+  // French Dictionary for Segment Inspector (Zero Arabic)
   const segmentDetails = {
     'Lubrifiants Auto (BVM-BVA)': {
       category: 'Gamme Phare & Volume Stratégique',
       color: '#FFD000',
-      value: `${(totalCaTtc * 0.42).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (42% du CA)`,
+      value: `${((totalCaTtc || 0) * 0.42).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (42% du CA)`,
       description: "Représente la gamme majeure des huiles moteur de synthèse, semi-synthèse et fluides de transmission Bardahl. Moteur clé de pénétration auprès des ateliers de réparation automobile, centres spécialisés et stations de service.",
       actionPlan: "Maintenir les accords annuels et renforcer les offres de livraison rapide de fûts et cartons pour fidéliser les grands comptes."
     },
     'Additifs & Aérosols': {
       category: 'Gamme Haute Marge Commerciale',
       color: '#FF9F43',
-      value: `${(totalCaTtc * 0.26).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (26% du CA)`,
+      value: `${((totalCaTtc || 0) * 0.26).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (26% du CA)`,
       description: "Englobe les traitements curatifs et préventifs (nettoyants d'injecteurs haute pression, stop-fumée, décalaminants moteur) et aérosols de maintenance technique. Délivre la marge brute unitaire la plus élevée de notre catalogue.",
       actionPlan: "Stimuler les ventes additionnelles au comptoir et accompagner les distributeurs par des présentoirs de démonstration."
     },
     'Industrie & Graisses': {
       category: 'Gamme B2B & Grands Comptes Industriels',
       color: '#FF5252',
-      value: `${(totalCaTtc * 0.18).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (18% du CA)`,
+      value: `${((totalCaTtc || 0) * 0.18).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (18% du CA)`,
       description: "Comprend les graisses complexes au lithium, pâtes anti-grippantes haute température et lubrifiants certifiés H1 pour l'agro-alimentaire. Segment caractérisé par des commandes récurrentes et une fidélité client élevée.",
       actionPlan: "Développer le ciblage des directeurs d'usine et gestionnaires de flottes de transport de marchandises."
     },
     'Fluides & LR': {
       category: 'Gamme Refroidissement & Sécurité',
       color: '#0077B6',
-      value: `${(totalCaTtc * 0.14).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (14% du CA)`,
+      value: `${((totalCaTtc || 0) * 0.14).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (14% du CA)`,
       description: "Regroupe les liquides de refroidissement XCL longue durée (-25°C à -35°C), lave-glaces techniques et liquides de frein DOT 4 et DOT 5.1. Demande constante soumise aux variations climatiques saisonnières.",
       actionPlan: "Anticiper les campagnes pré-estivales et hivernales avec des offres packagées en amont des pics d'entretien."
+    },
+    'Mohammed amine': {
+      category: 'Commercial Top Performer',
+      color: '#FFD000',
+      value: 'Secteur Casablanca & Mohammedia',
+      description: "Délégué commercial responsable du bassin Grand Casablanca. Portefeuille dynamique avec un niveau de réassort soutenu sur les gammes Lubrifiants et Additifs.",
+      actionPlan: "Poursuivre le développement de la prospection sur les nouvelles zones industrielles de Tit Mellil et Sapino."
+    },
+    'Bahjaji': {
+      category: 'Commercial Senior Réseau',
+      color: '#2EC4B6',
+      value: 'Secteur Rabat, Salé et Kénitra',
+      description: "Délégué commercial couvrant le corridor Rabat-Kénitra. Volume important sur les marchés de flottes automobiles et centres de contrôle technique.",
+      actionPlan: "Cibler les contrats de maintenance des parcs de taxis et véhicules utilitaires légers."
+    },
+    'Objectif Moyen Mensuel': {
+      category: 'Cible Stratégique Réseau Bardahl',
+      color: '#34C759',
+      value: '100,000.00 DH / mois par secteur',
+      description: "Seuil mensuel d'équilibre et de rentabilité fixé par la direction commerciale pour assurer les objectifs de croissance annuelle.",
+      actionPlan: "Équilibrer les ventes entre produits de volume (huiles) et produits à haute valeur ajoutée (traitements injecteurs)."
     },
     'Grand Casablanca - Settat': {
       category: 'Région Économique Leader',
@@ -400,7 +423,6 @@ export default function Analytics() {
     }
   }
 
-  // Open French Inspector Modal
   const handleInspectSegment = (name) => {
     const details = segmentDetails[name] || {
       category: 'Indicateur Commercial Stratégique',
@@ -412,7 +434,7 @@ export default function Analytics() {
     setSelectedSegment({ name, ...details })
   }
 
-  // 6. Chart: Évolution Mensuelle du CA par Gamme Bardahl (Redesigned with Multi-Mode)
+  // 6. Chart: Évolution Mensuelle du CA par Gamme Bardahl
   const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct']
   
   const gammeRawDatasets = [
@@ -421,32 +443,28 @@ export default function Analytics() {
       id: 'LUB',
       data: [180000, 210000, 195000, 235000, 250000, 280000, 290000, 310000, 335000, Math.max(350000, totalCaTtc * 0.42)],
       color: '#FFD000',
-      gradientStart: 'rgba(255, 208, 0, 0.45)',
-      gradientEnd: 'rgba(255, 208, 0, 0.02)'
+      gradientStart: 'rgba(255, 208, 0, 0.45)'
     },
     {
       label: 'Additifs & Aérosols',
       id: 'ADD',
       data: [110000, 125000, 118000, 140000, 148000, 165000, 172000, 180000, 195000, Math.max(210000, totalCaTtc * 0.26)],
       color: '#FF9F43',
-      gradientStart: 'rgba(255, 159, 67, 0.45)',
-      gradientEnd: 'rgba(255, 159, 67, 0.02)'
+      gradientStart: 'rgba(255, 159, 67, 0.45)'
     },
     {
       label: 'Industrie & Graisses',
       id: 'IND',
       data: [75000, 88000, 82000, 95000, 102000, 115000, 120000, 128000, 135000, Math.max(145000, totalCaTtc * 0.18)],
       color: '#FF5252',
-      gradientStart: 'rgba(255, 82, 82, 0.45)',
-      gradientEnd: 'rgba(255, 82, 82, 0.02)'
+      gradientStart: 'rgba(255, 82, 82, 0.45)'
     },
     {
       label: 'Fluides & LR',
       id: 'LQD',
       data: [45000, 52000, 48000, 61000, 58000, 72000, 75000, 80000, 88000, Math.max(98000, totalCaTtc * 0.14)],
       color: '#0077B6',
-      gradientStart: 'rgba(0, 119, 182, 0.45)',
-      gradientEnd: 'rgba(0, 119, 182, 0.02)'
+      gradientStart: 'rgba(0, 119, 182, 0.45)'
     }
   ]
 
@@ -489,7 +507,7 @@ export default function Analytics() {
         bodyColor: '#FFFFFF',
         padding: 12,
         callbacks: {
-          label: (context) => ` ${context.dataset.label} : ${context.raw.toLocaleString('fr-FR')} DH TTC`
+          label: (context) => ` ${context.dataset.label} : ${(context.raw || 0).toLocaleString('fr-FR')} DH TTC`
         }
       }
     },
@@ -504,13 +522,74 @@ export default function Analytics() {
         ticks: { 
           color: '#9EA6B8', 
           font: { size: 11 },
-          callback: (value) => `${(value / 1000).toFixed(0)}k DH`
+          callback: (value) => `${(Number(value) / 1000).toFixed(0)}k DH`
         } 
       }
     }
   }
 
-  // 7. Chart: Portefeuille Client par Région (Bar chart)
+  // 7. Chart: Objectif vs Ventes Réelles par Commercial
+  const repLineData = {
+    labels: monthLabels,
+    datasets: [
+      {
+        label: 'Mohammed amine',
+        data: [85000, 95000, 90000, 110000, 115000, 125000, 130000, 140000, 145000, Math.max(150000, totalCaTtc * 0.55)],
+        borderColor: '#FFD000',
+        backgroundColor: 'rgba(255, 208, 0, 0.1)',
+        tension: 0.35,
+        borderWidth: 2.5
+      },
+      {
+        label: 'Bahjaji',
+        data: [70000, 80000, 78000, 92000, 98000, 105000, 112000, 118000, 122000, Math.max(130000, totalCaTtc * 0.45)],
+        borderColor: '#2EC4B6',
+        backgroundColor: 'rgba(46, 196, 182, 0.1)',
+        tension: 0.35,
+        borderWidth: 2.5
+      },
+      {
+        label: 'Objectif Moyen Mensuel',
+        data: [100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000],
+        borderColor: '#34C759',
+        borderDash: [6, 6],
+        borderWidth: 2,
+        pointRadius: 0
+      }
+    ]
+  }
+
+  const repLineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0D0F12',
+        borderColor: '#FFD000',
+        borderWidth: 1,
+        titleColor: '#FFD000',
+        bodyColor: '#FFFFFF',
+        padding: 10,
+        callbacks: {
+          label: (ctx) => ` ${ctx.dataset.label} : ${(ctx.raw || 0).toLocaleString('fr-FR')} DH TTC`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#9EA6B8', font: { size: 10 } } },
+      y: { 
+        grid: { color: 'rgba(255,255,255,0.04)' }, 
+        ticks: { 
+          color: '#9EA6B8', 
+          font: { size: 10 },
+          callback: (value) => `${(Number(value) / 1000).toFixed(0)}k DH`
+        } 
+      }
+    }
+  }
+
+  // 8. Chart: Portefeuille Client par Région (Bar chart)
   const regionChartData = {
     labels: MOROCCAN_REGIONS.map(r => r.name),
     datasets: [
@@ -538,7 +617,7 @@ export default function Analytics() {
         bodyColor: '#FFFFFF',
         padding: 10,
         callbacks: {
-          label: (ctx) => ` Portefeuille : ${ctx.raw.toLocaleString('fr-FR')} clients enregistrés`
+          label: (ctx) => ` Portefeuille : ${(ctx.raw || 0).toLocaleString('fr-FR')} clients enregistrés`
         }
       }
     },
@@ -548,10 +627,8 @@ export default function Analytics() {
         ticks: { 
           color: '#9EA6B8', 
           font: { size: 10, weight: '600' },
-          callback: function(val, index) {
-            const label = this.getLabelForValue(val)
-            return label.length > 16 ? label.substring(0, 14) + '...' : label
-          }
+          maxRotation: 25,
+          minRotation: 0
         } 
       },
       y: { 
@@ -561,12 +638,15 @@ export default function Analytics() {
     }
   }
 
-  // 8. Chart: Répartition CA Promo vs Standard (Doughnut)
+  // 9. Chart: Répartition CA Promo vs Standard (Doughnut)
   const promoSplitChartData = {
     labels: ['Commandes avec Promotions Bardahl', 'Ventes Catalogue Standard'],
     datasets: [
       {
-        data: [promoMetrics.promoCaTtc, promoMetrics.standardCaTtc],
+        data: [
+          Math.max(0, promoMetrics.promoCaTtc || (totalCaTtc === 0 ? 1 : 0)), 
+          Math.max(0, promoMetrics.standardCaTtc || (totalCaTtc === 0 ? 1 : 0))
+        ],
         backgroundColor: ['#FFD000', '#007AFF'],
         borderColor: '#14171F',
         borderWidth: 3,
@@ -588,14 +668,14 @@ export default function Analytics() {
         bodyColor: '#FFFFFF',
         padding: 12,
         callbacks: {
-          label: (ctx) => ` ${ctx.label} : ${ctx.raw.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH TTC`
+          label: (ctx) => ` ${ctx.label} : ${(ctx.raw || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH TTC`
         }
       }
     },
     cutout: '72%'
   }
 
-  // 9. Chart: Cartons par Famille sous Promo (Bar)
+  // 10. Chart: Cartons par Famille sous Promo (Bar)
   const familyPromoChartData = {
     labels: BARDAHL_FAMILIES_METRICS.map(f => f.label),
     datasets: [
@@ -621,7 +701,7 @@ export default function Analytics() {
         bodyColor: '#FFFFFF',
         padding: 10,
         callbacks: {
-          label: (ctx) => ` Volume : ${ctx.raw} cartons vendus`
+          label: (ctx) => ` Volume : ${ctx.raw || 0} cartons vendus`
         }
       }
     },
@@ -631,10 +711,8 @@ export default function Analytics() {
         ticks: { 
           color: '#9EA6B8', 
           font: { size: 10, weight: '700' },
-          callback: function(val) {
-            const label = this.getLabelForValue(val)
-            return label.length > 14 ? label.substring(0, 12) + '..' : label
-          }
+          maxRotation: 20,
+          minRotation: 0
         } 
       },
       y: { 
@@ -642,6 +720,39 @@ export default function Analytics() {
         ticks: { color: '#9EA6B8', font: { size: 10 } } 
       }
     }
+  }
+
+  // 11. Chart: Répartition CA par Gamme (%)
+  const donutData = {
+    labels: ['Lubrifiants Auto (BVM-BVA)', 'Additifs & Aérosols', 'Industrie & Graisses', 'Fluides & LR'],
+    datasets: [
+      {
+        data: [42, 26, 18, 14],
+        backgroundColor: ['#FFD000', '#FF9F43', '#FF5252', '#0077B6'],
+        borderColor: '#14171F',
+        borderWidth: 3
+      }
+    ]
+  }
+
+  const donutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0D0F12',
+        borderColor: '#FFD000',
+        borderWidth: 1,
+        titleColor: '#FFD000',
+        bodyColor: '#FFFFFF',
+        padding: 10,
+        callbacks: {
+          label: (context) => ` ${context.label} : ${context.raw}% du CA`
+        }
+      }
+    },
+    cutout: '70%'
   }
 
   return (
@@ -652,7 +763,7 @@ export default function Analytics() {
       {/* ============================================================== */}
       <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
-        {/* Top Header of Filter Bar */}
+        {/* Header of Filter Bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: '900', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -719,7 +830,6 @@ export default function Analytics() {
         {/* Secondary Filter Row: Dates, Commercial, Region & Search */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'center' }}>
           
-          {/* Custom Date Pickers */}
           {periodFilter === 'CUSTOM' && (
             <div style={{ display: 'flex', gap: '8px', gridColumn: 'span 2' }}>
               <input
@@ -741,7 +851,6 @@ export default function Analytics() {
             </div>
           )}
 
-          {/* Commercial Dropdown */}
           <div style={{ position: 'relative' }}>
             <select
               value={commercialFilter}
@@ -756,7 +865,6 @@ export default function Analytics() {
             </select>
           </div>
 
-          {/* Region Dropdown */}
           <div style={{ position: 'relative' }}>
             <select
               value={regionFilter}
@@ -771,7 +879,6 @@ export default function Analytics() {
             </select>
           </div>
 
-          {/* Search Input */}
           <div style={{ position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
             <input
@@ -796,7 +903,7 @@ export default function Analytics() {
           <div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '800', textTransform: 'uppercase' }}>CA TOTAL HT RÉALISÉ</span>
             <div style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF', margin: '4px 0 2px 0' }}>
-              {totalHt.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+              {(totalHt || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
             </div>
             <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px' }}>
               <ArrowUpRight size={13} /> {totalOrdersCount} bon(s) validé(s)
@@ -811,7 +918,7 @@ export default function Analytics() {
           <div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '800', textTransform: 'uppercase' }}>CA TOTAL TTC FACTURÉ</span>
             <div style={{ fontSize: '24px', fontWeight: '900', color: '#FFD000', margin: '4px 0 2px 0' }}>
-              {totalCaTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+              {(totalCaTtc || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>TVA 20% légale incluse</span>
           </div>
@@ -824,7 +931,7 @@ export default function Analytics() {
           <div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '800', textTransform: 'uppercase' }}>PANIER MOYEN PAR BON</span>
             <div style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF', margin: '4px 0 2px 0' }}>
-              {panierMoyen.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+              {(panierMoyen || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
             </div>
             <span style={{ fontSize: '11px', color: '#007AFF', fontWeight: '700' }}>Moyenne nette par commande</span>
           </div>
@@ -873,7 +980,7 @@ export default function Analytics() {
             </div>
           </div>
           <span style={{ fontSize: '12px', color: 'var(--bardahl-yellow)', fontWeight: '800' }}>
-            {promotions.filter(p => p.isActive !== false).length} offres actives au catalogue
+            {promotions.filter(p => p && p.isActive !== false).length} offres actives au catalogue
           </span>
         </div>
 
@@ -898,7 +1005,7 @@ export default function Analytics() {
           <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
             <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '800', textTransform: 'uppercase' }}>REMISES & BONS D'ACHAT ACCORDÉS</span>
             <div style={{ fontSize: '22px', fontWeight: '900', color: '#FF5252', margin: '4px 0 2px 0' }}>
-              - {promoMetrics.totalPromoDiscountsDh.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+              - {(promoMetrics.totalPromoDiscountsDh || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remises lignes + vouchers TTC</span>
           </div>
@@ -908,7 +1015,7 @@ export default function Analytics() {
             <div style={{ fontSize: '22px', fontWeight: '900', color: '#007AFF', margin: '4px 0 2px 0' }}>
               {promoMetrics.promoSharePercent}% <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>du CA</span>
             </div>
-            <span style={{ fontSize: '11px', color: '#34C759' }}>{promoMetrics.promoCaTtc.toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DH générés</span>
+            <span style={{ fontSize: '11px', color: '#34C759' }}>{(promoMetrics.promoCaTtc || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0 })} DH générés</span>
           </div>
         </div>
 
@@ -921,15 +1028,15 @@ export default function Analytics() {
               <PieChart size={16} style={{ color: 'var(--bardahl-yellow)' }} /> Répartition du CA : Ventes avec Promo vs Catalogue Standard
             </h4>
             <div style={{ height: '190px', width: '100%', position: 'relative' }}>
-              <Doughnut data={promoSplitChartData} options={promoSplitChartOptions} />
+              <Doughnut key="promo_split_doughnut" data={promoSplitChartData} options={promoSplitChartOptions} />
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                 <span style={{ fontSize: '20px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>{promoMetrics.promoSharePercent}%</span>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Part Promo</span>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '12px', fontSize: '11px' }}>
-              <span style={{ color: '#FFD000', fontWeight: '700' }}>● Sous Promo : {promoMetrics.promoCaTtc.toLocaleString('fr-FR')} DH</span>
-              <span style={{ color: '#007AFF', fontWeight: '700' }}>● Ventes Standard : {promoMetrics.standardCaTtc.toLocaleString('fr-FR')} DH</span>
+              <span style={{ color: '#FFD000', fontWeight: '700' }}>● Sous Promo : {(promoMetrics.promoCaTtc || 0).toLocaleString('fr-FR')} DH</span>
+              <span style={{ color: '#007AFF', fontWeight: '700' }}>● Ventes Standard : {(promoMetrics.standardCaTtc || 0).toLocaleString('fr-FR')} DH</span>
             </div>
           </div>
 
@@ -939,7 +1046,7 @@ export default function Analytics() {
               <BarChart3 size={16} style={{ color: 'var(--bardahl-yellow)' }} /> Volumes de Cartons Écoulés sous Promo par Famille Bardahl
             </h4>
             <div style={{ height: '210px', width: '100%' }}>
-              <Bar data={familyPromoChartData} options={familyPromoChartOptions} />
+              <Bar key="family_promo_bar" data={familyPromoChartData} options={familyPromoChartOptions} />
             </div>
           </div>
 
@@ -1041,23 +1148,68 @@ export default function Analytics() {
           ))}
         </div>
 
-        {/* Chart Canvas */}
+        {/* Chart Canvas with explicit key */}
         <div style={{ height: '300px', width: '100%' }}>
           {gammeChartMode === 'bars' ? (
-            <Bar data={gammeChartData} options={gammeChartOptions} />
+            <Bar key={`gamme_bars_${selectedGammeFilter}`} data={gammeChartData} options={gammeChartOptions} />
           ) : (
-            <Line data={gammeChartData} options={gammeChartOptions} />
+            <Line key={`gamme_line_${gammeChartMode}_${selectedGammeFilter}`} data={gammeChartData} options={gammeChartOptions} />
           )}
         </div>
 
       </div>
 
       {/* ============================================================== */}
-      {/* 5. BOTTOM SECTION : PORTEFEUILLE CLIENT PAR RÉGION & TOP VENTES */}
+      {/* 5. CHART 2: OBJECTIF VS VENTES RÉELLES PAR COMMERCIAL          */}
+      {/* ============================================================== */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BarChart3 size={20} style={{ color: 'var(--bardahl-yellow)' }} /> Objectif vs Ventes Réelles par Commercial
+          </h3>
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Cliquez sur un délégué commercial pour analyser sa performance</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          {[
+            { name: 'Mohammed amine', color: '#FFD000' },
+            { name: 'Bahjaji', color: '#2EC4B6' },
+            { name: 'Objectif Moyen Mensuel', color: '#34C759' }
+          ].map(c => (
+            <button
+              key={c.name}
+              onClick={() => handleInspectSegment(c.name)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: '#14171F',
+                border: `1px solid ${c.color}`,
+                color: '#FFFFFF',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+            >
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: c.color }} />
+              {c.name}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ height: '280px', width: '100%' }}>
+          <Line key="rep_performance_line" data={repLineData} options={repLineOptions} />
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 6. BOTTOM DUAL GRID: PORTEFEUILLE CLIENT RÉGION & RÉPARTITION  */}
       {/* ============================================================== */}
       <div className="dashboard-dual-grid">
         
-        {/* CHART 3: Portefeuille Client par Région (Fixed Title & Non-overlapping tags) */}
+        {/* CHART 3: Portefeuille Client par Région */}
         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div>
@@ -1065,7 +1217,7 @@ export default function Analytics() {
                 <MapPin size={18} style={{ color: 'var(--bardahl-yellow)' }} /> Portefeuille Client par Région
               </h3>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                Répartition territoriale des clients actifs du Royaume
+                Répartition territoriale des clients actifs selon les pôles économiques du Royaume
               </p>
             </div>
             <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '800' }}>
@@ -1101,40 +1253,50 @@ export default function Analytics() {
           </div>
 
           <div style={{ height: '230px', width: '100%' }}>
-            <Bar data={regionChartData} options={regionChartOptions} />
+            <Bar key="region_portfolio_bar" data={regionChartData} options={regionChartOptions} />
           </div>
         </div>
 
-        {/* TOP 5 PRODUITS LES PLUS VENDUS */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '14px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trophy size={18} style={{ color: 'var(--bardahl-yellow)' }} /> Top 5 Produits les Plus Vendus (Bardahl Maroc)
+        {/* CHART 4: Répartition du CA par Gamme Produit (%) */}
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '14px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <PieChart size={18} style={{ color: 'var(--bardahl-yellow)' }} /> Répartition du CA par Gamme Produit (%)
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {topProducts.map((p, i) => (
-              <div 
-                key={i} 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  padding: '10px 14px', 
-                  borderRadius: '10px', 
-                  background: '#14171F', 
-                  border: '1px solid var(--border-card)' 
+
+          <div style={{ height: '200px', width: '200px', margin: '0 auto 12px auto' }}>
+            <Doughnut key="gamme_donut" data={donutData} options={donutOptions} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+            {[
+              { name: 'Lubrifiants Auto (BVM-BVA)', pct: '42%', color: '#FFD000' },
+              { name: 'Additifs & Aérosols', pct: '26%', color: '#FF9F43' },
+              { name: 'Industrie & Graisses', pct: '18%', color: '#FF5252' },
+              { name: 'Fluides & LR', pct: '14%', color: '#0077B6' }
+            ].map(seg => (
+              <button
+                key={seg.name}
+                onClick={() => handleInspectSegment(seg.name)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  background: '#14171F',
+                  border: `1px solid ${seg.color}`,
+                  color: '#FFFFFF',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Star size={16} style={{ color: 'var(--bardahl-yellow)', fill: 'var(--bardahl-yellow)' }} />
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>{p.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      Réf: <strong style={{ color: 'var(--bardahl-yellow)' }}>{p.ref}</strong> | {p.volume}
-                    </div>
-                  </div>
-                </div>
-                <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>{p.revenue}</span>
-              </div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
+                  {seg.name}
+                </span>
+                <strong style={{ color: seg.color, marginLeft: '4px' }}>{seg.pct}</strong>
+              </button>
             ))}
           </div>
         </div>
@@ -1142,11 +1304,47 @@ export default function Analytics() {
       </div>
 
       {/* ============================================================== */}
-      {/* 6. MODAL D'INSPECTION COMMERCIALE (100% EN FRANÇAIS - SANS ARABE) */}
+      {/* 7. TOP 5 PRODUITS LES PLUS VENDUS (BARDAHL MAROC)              */}
+      {/* ============================================================== */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '14px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Trophy size={18} style={{ color: 'var(--bardahl-yellow)' }} /> Top 5 Produits les Plus Vendus (Bardahl Maroc)
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {topProducts.map((p, i) => (
+            <div 
+              key={i} 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                padding: '10px 14px', 
+                borderRadius: '10px', 
+                background: '#14171F', 
+                border: '1px solid var(--border-card)' 
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Star size={16} style={{ color: 'var(--bardahl-yellow)', fill: 'var(--bardahl-yellow)' }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>{p.name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Réf: <strong style={{ color: 'var(--bardahl-yellow)' }}>{p.ref}</strong> | {p.volume}
+                  </div>
+                </div>
+              </div>
+              <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>{p.revenue}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 8. MODAL D'INSPECTION COMMERCIALE (100% EN FRANÇAIS - SANS ARABE) */}
       {/* ============================================================== */}
       {selectedSegment && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '540px', borderColor: selectedSegment.color, boxShadow: `0 0 30px rgba(0,0,0,0.8)` }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '540px', borderColor: selectedSegment.color, boxShadow: '0 0 30px rgba(0,0,0,0.8)' }}>
             
             {/* Modal Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-card)' }}>
