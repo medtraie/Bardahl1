@@ -218,6 +218,9 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   }, [promoAnalytics])
 
   const filteredPromos = promotions.filter(p => {
+    // Les comptes commerciaux ne voient que les promotions actives
+    if (!isAdmin && p.isActive === false) return false
+
     const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
                           (p.targetFamily || '').toLowerCase().includes(search.toLowerCase()) ||
                           (p.description || '').toLowerCase().includes(search.toLowerCase())
@@ -227,6 +230,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   })
 
   const handleOpenAdd = () => {
+    if (!isAdmin) return
     setEditingPromo(null)
     setFormName('')
     setFormDesc('')
@@ -261,10 +265,10 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   }
 
   useEffect(() => {
-    if (openNewPromoTrigger && openNewPromoTrigger > 0) {
+    if (isAdmin && openNewPromoTrigger && openNewPromoTrigger > 0) {
       handleOpenAdd()
     }
-  }, [openNewPromoTrigger])
+  }, [openNewPromoTrigger, isAdmin])
 
   const handleOpenEdit = (promo) => {
     setEditingPromo(promo)
@@ -392,9 +396,13 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '800', textTransform: 'uppercase' }}>TOTAL OFFRES</span>
             <Tag size={16} style={{ color: 'var(--bardahl-yellow)' }} />
           </div>
-          <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', marginTop: '4px' }}>{promotions.length}</div>
+          <div style={{ fontSize: '26px', fontWeight: '900', color: '#FFFFFF', marginTop: '4px' }}>
+            {isAdmin ? promotions.length : promotions.filter(p => p.isActive !== false).length}
+          </div>
           <div style={{ fontSize: '11px', color: '#34C759', marginTop: '2px', fontWeight: '700' }}>
-            ● {promotions.filter(p => p.isActive !== false).length} actives / {promotions.filter(p => p.isActive === false).length} inactives
+            {isAdmin 
+              ? `● ${promotions.filter(p => p.isActive !== false).length} actives / ${promotions.filter(p => p.isActive === false).length} inactives`
+              : `● ${promotions.filter(p => p.isActive !== false).length} offres actives disponibles`}
           </div>
         </div>
 
@@ -458,11 +466,13 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
             <option value="TYPE_4">Type 4 : Montant Famille → Remise</option>
           </select>
 
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field" style={{ width: '130px' }}>
-            <option value="ALL">Tous Statuts</option>
-            <option value="ACTIVE">Actives</option>
-            <option value="INACTIVE">Inactives</option>
-          </select>
+          {isAdmin && (
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field" style={{ width: '130px' }}>
+              <option value="ALL">Tous Statuts</option>
+              <option value="ACTIVE">Actives</option>
+              <option value="INACTIVE">Inactives</option>
+            </select>
+          )}
         </div>
 
         {/* View Mode Toggle: Grid Cards vs List Table */}
@@ -515,7 +525,9 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
         <div className="glass-card" style={{ textAlign: 'center', padding: '40px' }}>
           <AlertCircle size={40} style={{ color: 'var(--text-secondary)', margin: '0 auto 12px' }} />
           <h4 style={{ color: '#FFFFFF', fontSize: '16px', fontWeight: '700' }}>Aucune promotion trouvée</h4>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Modifiez vos filtres ou créez une nouvelle offre commerciale.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+            {isAdmin ? 'Modifiez vos filtres ou créez une nouvelle offre commerciale.' : 'Aucune offre promotionnelle active pour cette sélection.'}
+          </p>
         </div>
       ) : viewMode === 'grid' ? (
         /* 1. Grid Cards View */
@@ -531,29 +543,31 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                   display: 'flex', 
                   flexDirection: 'column', 
                   justifyContent: 'space-between',
-                  borderLeft: `4px solid ${isActive ? 'var(--bardahl-yellow)' : '#555'}`,
-                  opacity: isActive ? 1 : 0.65
+                  borderLeft: `4px solid ${(isActive || !isAdmin) ? 'var(--bardahl-yellow)' : '#555'}`,
+                  opacity: (isActive || !isAdmin) ? 1 : 0.65
                 }}
               >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
                     {getTypeBadge(promo.type)}
-                    <button
-                      onClick={() => togglePromotion(promo.id)}
-                      style={{
-                        padding: '3px 8px',
-                        borderRadius: '20px',
-                        fontSize: '10px',
-                        fontWeight: '800',
-                        cursor: 'pointer',
-                        border: 'none',
-                        background: isActive ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 69, 58, 0.2)',
-                        color: isActive ? '#34C759' : '#FF453A'
-                      }}
-                      title="Activer / Désactiver la promotion"
-                    >
-                      {isActive ? '● ACTIVE' : '○ INACTIVE'}
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => togglePromotion(promo.id)}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: '20px',
+                          fontSize: '10px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          border: 'none',
+                          background: isActive ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 69, 58, 0.2)',
+                          color: isActive ? '#34C759' : '#FF453A'
+                        }}
+                        title="Activer / Désactiver la promotion"
+                      >
+                        {isActive ? '● ACTIVE' : '○ INACTIVE'}
+                      </button>
+                    )}
                   </div>
 
                   <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px' }}>
@@ -700,7 +714,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
             <table className="custom-table">
               <thead>
                 <tr>
-                  <th style={{ minWidth: '90px' }}>Statut</th>
+                  {isAdmin && <th style={{ minWidth: '90px' }}>Statut</th>}
                   <th style={{ minWidth: '130px' }}>Type d'Offre</th>
                   <th>Promotion & Cible</th>
                   <th style={{ minWidth: '120px' }}>Condition Seuil</th>
@@ -716,23 +730,25 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                   const stat = promoAnalytics[promo.id] || { invoicesCount: 0, cartonsCount: 0, freeCartonsCount: 0, revenueTtc: 0, discountDh: 0 }
                   return (
                     <tr key={promo.id}>
-                      <td>
-                        <button
-                          onClick={() => togglePromotion(promo.id)}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: '12px',
-                            fontSize: '10px',
-                            fontWeight: '800',
-                            cursor: 'pointer',
-                            border: 'none',
-                            background: isActive ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 69, 58, 0.2)',
-                            color: isActive ? '#34C759' : '#FF453A'
-                          }}
-                        >
-                          {isActive ? '● ACTIVE' : '○ INACTIVE'}
-                        </button>
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <button
+                            onClick={() => togglePromotion(promo.id)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '12px',
+                              fontSize: '10px',
+                              fontWeight: '800',
+                              cursor: 'pointer',
+                              border: 'none',
+                              background: isActive ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 69, 58, 0.2)',
+                              color: isActive ? '#34C759' : '#FF453A'
+                            }}
+                          >
+                            {isActive ? '● ACTIVE' : '○ INACTIVE'}
+                          </button>
+                        </td>
+                      )}
                       <td>{getTypeBadge(promo.type)}</td>
                       <td>
                         <strong style={{ color: '#FFFFFF', display: 'block', fontSize: '13px' }}>{promo.name}</strong>
@@ -825,7 +841,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       )}
 
       {/* Modal Add / Edit Promotion */}
-      {showModal && (
+      {showModal && isAdmin && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 2000 }}>
           <div className="glass-card" style={{ width: '100%', maxWidth: '640px', maxHeight: '92vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', paddingBottom: '10px', borderBottom: '1px solid var(--border-card)' }}>

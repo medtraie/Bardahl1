@@ -43,6 +43,8 @@ export default function App() {
     settings: "Paramètres & Entreprise"
   }
 
+  const isAdmin = currentUser?.role === 'ADMIN'
+
   return (
     <div className="app-container">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -50,7 +52,7 @@ export default function App() {
         <Header 
           title={titles[activeTab] || "Bardahl Maroc"} 
           onNewOrderClick={handleOpenNewOrder} 
-          showNewOrderButton={activeTab === 'promotions'} 
+          showNewOrderButton={isAdmin && activeTab === 'promotions'} 
           actionButtonText={activeTab === 'promotions' ? "Nouvelle Promotion" : "Nouveau Bon"}
           onActionClick={activeTab === 'promotions' ? handleOpenNewPromo : handleOpenNewOrder}
         />
