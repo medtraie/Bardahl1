@@ -3,7 +3,8 @@ import {
   Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2,
   CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag,
   Sparkles, AlertCircle, Package, X, ShoppingBag, Layers,
-  Scale, Calculator, ArrowRight, Clock, History, AlertTriangle, RefreshCw, BadgePercent, Coins, CheckSquare, Square
+  Scale, Calculator, ArrowRight, Clock, History, AlertTriangle, RefreshCw, BadgePercent, Coins, CheckSquare, Square,
+  ChevronDown
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf } from '../utils/pdfGenerator'
@@ -58,6 +59,7 @@ export default function Orders({ openWizardTrigger }) {
   const [selectedPromoId, setSelectedPromoId] = useState('AUTO')
   const [selectedProducts, setSelectedProducts] = useState([])
   const [commercialPromoChoices, setCommercialPromoChoices] = useState({})
+  const [customBatchRemise, setCustomBatchRemise] = useState('')
 
   // Searchable Select States
   const [clientSearchQuery, setClientSearchQuery] = useState('')
@@ -124,6 +126,7 @@ export default function Orders({ openWizardTrigger }) {
     setSelectedPromoId('AUTO')
     setCommercialPromoChoices({})
     setSelectedProducts([])
+    setCustomBatchRemise('')
     setShowOrderWizard(true)
   }
 
@@ -145,6 +148,7 @@ export default function Orders({ openWizardTrigger }) {
     setPromoNote(order.promoNote || '')
     setSelectedPromoId('AUTO')
     setCommercialPromoChoices({})
+    setCustomBatchRemise('')
     setSelectedProducts(order.items ? order.items.map(i => ({
       productId: i.productId || i.reference,
       productName: i.productName || i.name,
@@ -195,6 +199,12 @@ export default function Orders({ openWizardTrigger }) {
 
   const handleApplyBatchRemise = (pct) => {
     setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: pct })))
+  }
+
+  const handleApplyCustomBatchRemise = (val) => {
+    if (val === '' || val === null || val === undefined) return
+    const parsed = Math.max(0, Math.min(100, parseFloat(val) || 0))
+    handleApplyBatchRemise(parsed)
   }
 
   // ── Handlers for Smart Remise Adjustment / Compensation ─────────────────────
@@ -740,6 +750,7 @@ export default function Orders({ openWizardTrigger }) {
     setPromoNote('')
     setSelectedProducts([])
     setCommercialPromoChoices({})
+    setCustomBatchRemise('')
     setAppliedAvoirCompensation(null)
   }
 
@@ -1539,17 +1550,52 @@ export default function Orders({ openWizardTrigger }) {
                   <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Truck style={{ width: '15px', height: '15px' }} /> 3. Mode d'Expédition
                   </label>
-                  <select
-                    value={modeExpedition}
-                    onChange={e => setModeExpedition(e.target.value)}
-                    className="input-field"
-                    style={{ height: '38px', fontSize: '12px', fontWeight: '700' }}
-                  >
-                    <option value="Transport Bardahl">Transport Bardahl (Livraison Interne)</option>
-                    <option value="Livraison Client">Livraison Client directe</option>
-                    <option value="Enlèvement Magasin">Enlèvement Magasin (Client Récupère)</option>
-                    <option value="Transporteur Externe">Transporteur Externe / Privé</option>
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={modeExpedition}
+                      onChange={e => setModeExpedition(e.target.value)}
+                      style={{
+                        width: '100%',
+                        height: '40px',
+                        fontSize: '13px',
+                        fontWeight: '800',
+                        color: '#FFFFFF',
+                        backgroundColor: '#161922',
+                        border: '1.5px solid rgba(255, 208, 0, 0.45)',
+                        borderRadius: '8px',
+                        paddingLeft: '14px',
+                        paddingRight: '36px',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                        appearance: 'none',
+                        WebkitAppearance: 'none',
+                        MozAppearance: 'none'
+                      }}
+                      onFocus={e => e.currentTarget.style.borderColor = 'var(--bardahl-yellow)'}
+                      onBlur={e => e.currentTarget.style.borderColor = 'rgba(255, 208, 0, 0.45)'}
+                    >
+                      <option value="Transport Bardahl" style={{ backgroundColor: '#181C24', color: '#FFFFFF', fontSize: '13px', fontWeight: 'bold' }}>
+                        🚚 Transport Bardahl (Livraison Interne)
+                      </option>
+                      <option value="Livraison Client" style={{ backgroundColor: '#181C24', color: '#FFFFFF', fontSize: '13px', fontWeight: 'bold' }}>
+                        🏢 Livraison Client directe
+                      </option>
+                      <option value="Enlèvement Magasin" style={{ backgroundColor: '#181C24', color: '#FFFFFF', fontSize: '13px', fontWeight: 'bold' }}>
+                        🏪 Enlèvement Magasin (Client Récupère)
+                      </option>
+                      <option value="Transporteur Externe" style={{ backgroundColor: '#181C24', color: '#FFFFFF', fontSize: '13px', fontWeight: 'bold' }}>
+                        📦 Transporteur Externe / Privé
+                      </option>
+                    </select>
+                    <ChevronDown style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
+                  </div>
+                  <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Mode sélectionné :</span>
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                      {modeExpedition}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1811,40 +1857,114 @@ export default function Orders({ openWizardTrigger }) {
                 </div>
 
                 {/* Batch Remise Quick Buttons Bar */}
+                {/* Batch Remise Quick Buttons Bar */}
                 {selectedProducts.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255, 208, 0, 0.05)', padding: '8px 14px', borderRadius: '10px', border: '1px dashed rgba(255, 208, 0, 0.25)', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255, 208, 0, 0.06)', padding: '10px 14px', borderRadius: '10px', border: '1px dashed rgba(255, 208, 0, 0.35)', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Percent style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
-                      <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                      <Percent style={{ width: '15px', height: '15px', color: 'var(--bardahl-yellow)' }} />
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
                         Application Rapide de la Remise sur Tout le Panier :
                       </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {[
-                        { pct: 0, label: '0% (Standard)' },
-                        { pct: 5, label: '5%' },
-                        { pct: 10, label: '10%' },
-                        { pct: 15, label: '15%' },
-                        { pct: 20, label: '20%' },
-                      ].map(b => (
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      {/* Saisie Libre Personnalisée (Custom Remise Input) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#0D0F12', padding: '4px 8px', borderRadius: '8px', border: '1px solid rgba(255, 208, 0, 0.45)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: '800', color: '#FFFFFF' }}>
+                          Remise au choix :
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            placeholder="Ex: 3"
+                            value={customBatchRemise}
+                            onChange={e => setCustomBatchRemise(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleApplyCustomBatchRemise(customBatchRemise)
+                              }
+                            }}
+                            style={{
+                              width: '65px',
+                              height: '28px',
+                              background: '#181C24',
+                              border: '1px solid var(--border-card)',
+                              borderRadius: '6px',
+                              color: 'var(--bardahl-yellow)',
+                              fontSize: '13px',
+                              fontWeight: '900',
+                              textAlign: 'center',
+                              padding: '0 4px',
+                              outline: 'none'
+                            }}
+                          />
+                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--bardahl-yellow)', marginLeft: '4px', marginRight: '4px' }}>%</span>
+                        </div>
                         <button
-                          key={b.pct}
                           type="button"
-                          onClick={() => handleApplyBatchRemise(b.pct)}
+                          onClick={() => handleApplyCustomBatchRemise(customBatchRemise)}
                           style={{
-                            padding: '3px 8px',
+                            padding: '4px 12px',
+                            height: '28px',
                             fontSize: '11px',
                             fontWeight: '800',
                             borderRadius: '6px',
-                            background: '#14171F',
-                            color: b.pct === 0 ? 'var(--text-secondary)' : '#007AFF',
-                            border: b.pct === 0 ? '1px solid var(--border-card)' : '1px solid rgba(0, 122, 255, 0.4)',
-                            cursor: 'pointer'
+                            background: 'linear-gradient(135deg, var(--bardahl-yellow), #E5B800)',
+                            color: '#0D0F12',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 2px 6px rgba(255, 208, 0, 0.25)'
                           }}
+                          title="Appliquer cette remise personnalisée sur tous les articles du panier"
                         >
-                          {b.label}
+                          Appliquer
                         </button>
-                      ))}
+                      </div>
+
+                      {/* Divider */}
+                      <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '14px' }}>|</span>
+
+                      {/* Quick Presets */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {[
+                          { pct: 0, label: '0% (Standard)' },
+                          { pct: 5, label: '5%' },
+                          { pct: 10, label: '10%' },
+                          { pct: 15, label: '15%' },
+                          { pct: 20, label: '20%' },
+                        ].map(b => (
+                          <button
+                            key={b.pct}
+                            type="button"
+                            onClick={() => {
+                              setCustomBatchRemise(b.pct === 0 ? '' : b.pct.toString())
+                              handleApplyBatchRemise(b.pct)
+                            }}
+                            style={{
+                              padding: '5px 10px',
+                              fontSize: '11px',
+                              fontWeight: '800',
+                              borderRadius: '6px',
+                              background: '#14171F',
+                              color: b.pct === 0 ? 'var(--text-secondary)' : '#007AFF',
+                              border: b.pct === 0 ? '1px solid var(--border-card)' : '1px solid rgba(0, 122, 255, 0.4)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--bardahl-yellow)'}
+                            onMouseLeave={e => e.currentTarget.style.borderColor = b.pct === 0 ? 'var(--border-card)' : 'rgba(0, 122, 255, 0.4)'}
+                          >
+                            {b.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2281,12 +2401,66 @@ export default function Orders({ openWizardTrigger }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Appliquer uniformément à tous les articles :</span>
+                  
+                  {/* Saisie Libre Personnalisée (Custom Remise Input) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#0D0F12', padding: '3px 6px', borderRadius: '8px', border: '1px solid rgba(255, 208, 0, 0.4)' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      placeholder="Autre %"
+                      value={customBatchRemise}
+                      onChange={e => setCustomBatchRemise(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleApplyCustomBatchRemise(customBatchRemise)
+                        }
+                      }}
+                      style={{
+                        width: '60px',
+                        height: '26px',
+                        background: '#181C24',
+                        border: '1px solid var(--border-card)',
+                        borderRadius: '5px',
+                        color: 'var(--bardahl-yellow)',
+                        fontSize: '12px',
+                        fontWeight: '900',
+                        textAlign: 'center',
+                        padding: '0 4px',
+                        outline: 'none'
+                      }}
+                    />
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--bardahl-yellow)' }}>%</span>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCustomBatchRemise(customBatchRemise)}
+                      style={{
+                        padding: '3px 9px',
+                        height: '26px',
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        borderRadius: '6px',
+                        background: 'var(--bardahl-yellow)',
+                        color: '#0D0F12',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Appliquer
+                    </button>
+                  </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {[0, 5, 10, 15, 20].map(pct => (
                       <button
                         key={pct}
                         type="button"
-                        onClick={() => handleApplyBatchRemise(pct)}
+                        onClick={() => {
+                          setCustomBatchRemise(pct === 0 ? '' : pct.toString())
+                          handleApplyBatchRemise(pct)
+                        }}
                         style={{
                           padding: '5px 10px',
                           borderRadius: '8px',
