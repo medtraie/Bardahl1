@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import {
   Search, FileSpreadsheet, Plus, FileText, Trash2, Edit3, CheckCircle2,
   CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag,
-  Sparkles, AlertCircle, Package, X, ShoppingBag, Layers
+  Sparkles, AlertCircle, Package, X, ShoppingBag, Layers,
+  Scale, Calculator, ArrowRight, Clock, History, AlertTriangle, RefreshCw, BadgePercent, Coins, CheckSquare, Square
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf } from '../utils/pdfGenerator'
@@ -19,13 +20,32 @@ const PRODUCT_CATEGORIES = [
 ]
 
 export default function Orders({ openWizardTrigger }) {
-  const { orders, clients, products, commercials, promotions, addOrder, updateOrder, deleteOrder, currentUser } = useApp()
+  const { 
+    orders, clients, products, commercials, promotions, 
+    addOrder, updateOrder, deleteOrder, currentUser,
+    clientCompensations = [], addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation
+  } = useApp()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [commercialFilter, setCommercialFilter] = useState('ALL')
   const [showOrderWizard, setShowOrderWizard] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
   
+  // Navigation tabs: 'ORDERS' (Bons de commande) | 'COMPENSATIONS' (Registre des Avoirs & Régularisations)
+  const [activeOrdersTab, setActiveOrdersTab] = useState('ORDERS')
+  const [compensationStatusFilter, setCompensationStatusFilter] = useState('ALL') // 'ALL' | 'PENDING' | 'CONSUMED'
+
+  // Smart Remise Adjustment / Compensation Modal State
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false)
+  const [adjustingOrder, setAdjustingOrder] = useState(null)
+  const [adjustmentLines, setAdjustmentLines] = useState([])
+  const [adjustmentChosenMode, setAdjustmentChosenMode] = useState('DH') // 'DH' | 'PERCENT'
+  const [adjustmentReason, setAdjustmentReason] = useState('')
+  const [updateOrderInHistory, setUpdateOrderInHistory] = useState(true)
+
+  // Applied Avoir / Compensation on Current Order in Wizard
+  const [appliedAvoirCompensation, setAppliedAvoirCompensation] = useState(null)
+
   // Order Wizard Form State
   const [customOrderNumber, setCustomOrderNumber] = useState('')
   const [selectedClient, setSelectedClient] = useState('')
@@ -176,6 +196,173 @@ export default function Orders({ openWizardTrigger }) {
   const handleApplyBatchRemise = (pct) => {
     setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: pct })))
   }
+
+  // ── Handlers for Smart Remise Adjustment / Compensation ─────────────────────
+  const handleOpenRemiseAdjustment = (order) => {
+    setAdjustingOrder(order)
+    setAdjustmentReason(`Correction remise commerciale sur bon ${order.orderNumber}`)
+    setAdjustmentChosenMode('DH')
+    setUpdateOrderInHistory(true)
+
+    // Build editable rows from order.items
+    const lines = (order.items || []).map((it, idx) => {
+      const q = parseInt(it.qty || it.quantity || 1, 10)
+      const pu = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
+      const currentRemise = (it.remisePercent !== undefined && it.remisePercent !== null)
+        ? parseFloat(it.remisePercent)
+        : (parseFloat(order.remisePercent) || 0)
+      return {
+        key: `line_${idx}`,
+        productId: it.productId || it.id || '',
+        reference: it.reference || it.ref || '',
+        name: it.productName || it.name || '',
+        category: it.category || 'Bardahl',
+        qty: q,
+        priceTtc: pu,
+        grossTotal: q * pu,
+        currentRemise: currentRemise,
+        newRemise: currentRemise,
+        diffPercent: 0,
+        diffAmountDh: 0
+      }
+    })
+    setAdjustmentLines(lines)
+    setShowAdjustmentModal(true)
+  }
+
+  const handleAdjustmentLineChange = (index, val) => {
+    const parsed = val === '' ? '' : Math.max(0, Math.min(100, parseFloat(val) || 0))
+    setAdjustmentLines(prev => prev.map((line, i) => {
+      if (i !== index) return line
+      const newRemise = parsed === '' ? 0 : parsed
+      const diffPct = Math.abs(line.currentRemise - newRemise)
+      const diffDh = line.grossTotal * (diffPct / 100)
+      return {
+        ...line,
+        newRemise: parsed,
+        diffPercent: parseFloat(diffPct.toFixed(2)),
+        diffAmountDh: parseFloat(diffDh.toFixed(2))
+      }
+    }))
+  }
+
+  const adjustmentTotals = useMemo(() => {
+    let totalGross = 0
+    let totalCompensationDh = 0
+    let linesWithDiff = 0
+
+    adjustmentLines.forEach(l => {
+      totalGross += l.grossTotal
+      if (l.diffPercent > 0) {
+        totalCompensationDh += l.diffAmountDh
+        linesWithDiff += 1
+      }
+    })
+
+    const averagePercent = totalGross > 0 ? (totalCompensationDh / totalGross) * 100 : 0
+
+    return {
+      totalGross,
+      totalCompensationDh: parseFloat(totalCompensationDh.toFixed(2)),
+      averagePercent: parseFloat(averagePercent.toFixed(2)),
+      linesWithDiff
+    }
+  }, [adjustmentLines])
+
+  const handleSaveAdjustment = async () => {
+    if (!adjustingOrder) return
+    if (adjustmentTotals.totalCompensationDh <= 0) {
+      alert("Aucune modification de remise n'a été détectée. Veuillez modifier la remise d'au moins un article pour générer une compensation.")
+      return
+    }
+
+    const clientObj = clients.find(c => c.companyName === adjustingOrder.clientName || c.id === adjustingOrder.clientDbId)
+
+    const payload = {
+      orderId: adjustingOrder.id,
+      orderNumber: adjustingOrder.orderNumber,
+      clientId: clientObj?.id || adjustingOrder.clientDbId || adjustingOrder.clientName,
+      clientName: adjustingOrder.clientName,
+      date: new Date().toISOString().slice(0, 10),
+      items: adjustmentLines.filter(l => l.diffPercent > 0).map(l => ({
+        reference: l.reference,
+        productName: l.name,
+        qty: l.qty,
+        priceTtc: l.priceTtc,
+        grossTotal: l.grossTotal,
+        oldRemisePercent: l.currentRemise,
+        newRemisePercent: typeof l.newRemise === 'number' ? l.newRemise : parseFloat(l.newRemise) || 0,
+        diffPercent: l.diffPercent,
+        amountDh: l.diffAmountDh
+      })),
+      totalAmountDh: adjustmentTotals.totalCompensationDh,
+      equivalentPercent: adjustmentTotals.averagePercent,
+      chosenMode: adjustmentChosenMode,
+      reason: adjustmentReason || 'Régularisation remise commerciale',
+      status: 'PENDING'
+    }
+
+    addClientCompensation(payload)
+
+    if (updateOrderInHistory) {
+      const updatedItems = (adjustingOrder.items || []).map((it, idx) => {
+        const adj = adjustmentLines[idx]
+        if (adj && adj.diffPercent > 0) {
+          const newPct = typeof adj.newRemise === 'number' ? adj.newRemise : parseFloat(adj.newRemise) || 0
+          return {
+            ...it,
+            remisePercent: newPct
+          }
+        }
+        return it
+      })
+
+      const newTotalDiscount = updatedItems.reduce((sum, it) => {
+        const q = parseInt(it.qty || it.quantity || 1, 10)
+        const p = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
+        const r = parseFloat(it.remisePercent) || 0
+        return sum + ((q * p) * (r / 100))
+      }, 0)
+
+      const gross = updatedItems.reduce((sum, it) => {
+        const q = parseInt(it.qty || it.quantity || 1, 10)
+        const p = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
+        return sum + (q * p)
+      }, 0)
+
+      const voucher = parseFloat(adjustingOrder.voucherDiscount) || 0
+      const avoir = parseFloat(adjustingOrder.avoirDeduction) || 0
+      const newTotalTtc = Math.max(0, gross - newTotalDiscount - voucher - avoir)
+
+      const updatedOrderObj = {
+        ...adjustingOrder,
+        items: updatedItems,
+        totalDiscount: newTotalDiscount,
+        totalHt: newTotalTtc / 1.20,
+        totalTva: newTotalTtc - (newTotalTtc / 1.20),
+        totalTtc: newTotalTtc,
+        hasCompensation: true,
+        compensationSummary: `${adjustmentTotals.totalCompensationDh.toFixed(2)} DH (${adjustmentChosenMode === 'DH' ? 'Avoir DH' : '+ ' + adjustmentTotals.averagePercent + '%'})`
+      }
+
+      await updateOrder(updatedOrderObj)
+    }
+
+    alert(`Régularisation enregistrée avec succès !\n\nUn avoir de ${adjustmentTotals.totalCompensationDh.toFixed(2)} DH TTC (ou +${adjustmentTotals.averagePercent}%) a été créé pour le client « ${adjustingOrder.clientName} ».\nIl sera proposé automatiquement lors de son prochain bon de commande.`)
+    setShowAdjustmentModal(false)
+    setAdjustingOrder(null)
+  }
+
+  // Look for any pending compensations for selectedClient in Wizard
+  const clientPendingCompensations = useMemo(() => {
+    if (!selectedClient) return []
+    const client = clients.find(c => c.id === selectedClient)
+    const clientName = (client?.companyName || '').toLowerCase()
+    return clientCompensations.filter(c => 
+      c.status === 'PENDING' && 
+      (c.clientId === selectedClient || (clientName && (c.clientName || '').toLowerCase() === clientName))
+    )
+  }, [selectedClient, clients, clientCompensations])
 
   const handleSelectPromotion = (promoId) => {
     setSelectedPromoId(promoId)
@@ -419,7 +606,12 @@ export default function Orders({ openWizardTrigger }) {
   const voucherDiscount = Math.max(promoAnalysis.voucherDiscount || 0, parseFloat(remiseMontant) || 0)
   const totalDiscountAmount = totalLineDiscountAmount
 
-  const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount - voucherDiscount)
+  // Avoir / Compensation deduction (if applied as fixed DH)
+  const avoirDeductionAmount = (appliedAvoirCompensation && !appliedAvoirCompensation.appliedAsPercent) 
+    ? (parseFloat(appliedAvoirCompensation.totalAmountDh) || 0) 
+    : (parseFloat(editingOrder?.avoirDeduction) || 0)
+
+  const netTotalTtc = Math.max(0, grossTotalTtc - totalDiscountAmount - voucherDiscount - avoirDeductionAmount)
   const totalHt = netTotalTtc / 1.20
   const totalTva = netTotalTtc - totalHt
 
@@ -470,6 +662,13 @@ export default function Orders({ openWizardTrigger }) {
       : ''
     const finalPromoNote = autoPromoSummary
 
+    const activeAvoirOrderNumber = appliedAvoirCompensation ? appliedAvoirCompensation.orderNumber : (editingOrder?.avoirOrderNumber || '')
+
+    // Consume pending compensation if applied on this order
+    if (appliedAvoirCompensation && appliedAvoirCompensation.id) {
+      consumeClientCompensation(appliedAvoirCompensation.id, activeOrderNumber)
+    }
+
     if (editingOrder) {
       const updatedOrder = {
         ...editingOrder,
@@ -480,6 +679,8 @@ export default function Orders({ openWizardTrigger }) {
         remarque: remarque,
         remisePercent: 0,
         remiseMontant: parseFloat(remiseMontant) || 0,
+        avoirDeduction: avoirDeductionAmount,
+        avoirOrderNumber: activeAvoirOrderNumber,
         promoNote: finalPromoNote,
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
@@ -494,6 +695,7 @@ export default function Orders({ openWizardTrigger }) {
       generateOrderPdf(updatedOrder)
       setShowOrderWizard(false)
       setEditingOrder(null)
+      setAppliedAvoirCompensation(null)
       alert(`Bon de commande ${updatedOrder.orderNumber} modifié avec succès !`)
     } else {
       const newOrder = {
@@ -508,6 +710,8 @@ export default function Orders({ openWizardTrigger }) {
         remarque: remarque,
         remisePercent: 0,
         remiseMontant: parseFloat(remiseMontant) || 0,
+        avoirDeduction: avoirDeductionAmount,
+        avoirOrderNumber: activeAvoirOrderNumber,
         promoNote: finalPromoNote,
         status: "VALIDATED",
         totalHt: totalHt,
@@ -522,6 +726,7 @@ export default function Orders({ openWizardTrigger }) {
       addOrder(newOrder)
       generateOrderPdf(newOrder)
       setShowOrderWizard(false)
+      setAppliedAvoirCompensation(null)
       alert(`Bon de commande ${newOrder.orderNumber} créé avec succès !`)
     }
 
@@ -535,7 +740,31 @@ export default function Orders({ openWizardTrigger }) {
     setPromoNote('')
     setSelectedProducts([])
     setCommercialPromoChoices({})
+    setAppliedAvoirCompensation(null)
   }
+
+  const filteredCompensations = useMemo(() => {
+    return (clientCompensations || []).filter(c => {
+      if (compensationStatusFilter !== 'ALL' && c.status !== compensationStatusFilter) return false
+      if (!search) return true
+      const q = search.toLowerCase()
+      return (c.orderNumber || '').toLowerCase().includes(q) ||
+             (c.clientName || '').toLowerCase().includes(q) ||
+             (c.reason || '').toLowerCase().includes(q)
+    })
+  }, [clientCompensations, compensationStatusFilter, search])
+
+  const pendingCompensationsTotalDh = useMemo(() => {
+    return (clientCompensations || [])
+      .filter(c => c.status === 'PENDING')
+      .reduce((sum, c) => sum + (parseFloat(c.totalAmountDh) || 0), 0)
+  }, [clientCompensations])
+
+  const consumedCompensationsTotalDh = useMemo(() => {
+    return (clientCompensations || [])
+      .filter(c => c.status === 'CONSUMED')
+      .reduce((sum, c) => sum + (parseFloat(c.totalAmountDh) || 0), 0)
+  }, [clientCompensations])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -545,7 +774,7 @@ export default function Orders({ openWizardTrigger }) {
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#FFFFFF' }}>Gestion des Bons de Commande</h1>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {filteredOrders.length} bons enregistrés au total
+            {filteredOrders.length} bons enregistrés au total • {clientCompensations.filter(c => c.status === 'PENDING').length} compensation(s) en attente
           </p>
         </div>
 
@@ -564,132 +793,441 @@ export default function Orders({ openWizardTrigger }) {
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="glass-card" style={{ padding: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'center' }}>
-          
-          <div style={{ position: 'relative' }}>
-            <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              placeholder="Rechercher par N° Bon ou Client..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input-field"
-              style={{ paddingLeft: '40px' }}
-            />
-          </div>
+      {/* Segmented Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid var(--border-card)', paddingBottom: '12px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setActiveOrdersTab('ORDERS')}
+          style={{
+            padding: '10px 20px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: '800',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: activeOrdersTab === 'ORDERS' ? 'rgba(255, 208, 0, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+            color: activeOrdersTab === 'ORDERS' ? 'var(--bardahl-yellow)' : 'var(--text-secondary)',
+            border: activeOrdersTab === 'ORDERS' ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)',
+            transition: 'all 0.2s'
+          }}
+        >
+          <FileText size={16} />
+          Bons de Commande
+          <span style={{
+            fontSize: '11px',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            background: activeOrdersTab === 'ORDERS' ? 'var(--bardahl-yellow)' : 'rgba(255,255,255,0.1)',
+            color: activeOrdersTab === 'ORDERS' ? '#000000' : '#FFFFFF',
+            fontWeight: '900'
+          }}>
+            {orders.length}
+          </span>
+        </button>
 
-          <div>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="input-field"
-              style={{ padding: '10px' }}
-            >
-              <option value="ALL">Tous les Statuts</option>
-              <option value="VALIDATED">Validés</option>
-              <option value="DRAFT">Brouillons</option>
-              <option value="DELIVERED">Livrés</option>
-              <option value="CANCELLED">Annulés</option>
-            </select>
-          </div>
-
-          <div>
-            <select
-              value={commercialFilter}
-              onChange={e => setCommercialFilter(e.target.value)}
-              className="input-field"
-              style={{ padding: '10px' }}
-            >
-              <option value="ALL">Tous les Représentants</option>
-              {commercials.map(c => (
-                <option key={c.id} value={c.name}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveOrdersTab('COMPENSATIONS')}
+          style={{
+            padding: '10px 20px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: '800',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: activeOrdersTab === 'COMPENSATIONS' ? 'rgba(0, 122, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+            color: activeOrdersTab === 'COMPENSATIONS' ? '#007AFF' : 'var(--text-secondary)',
+            border: activeOrdersTab === 'COMPENSATIONS' ? '1px solid #007AFF' : '1px solid var(--border-card)',
+            transition: 'all 0.2s'
+          }}
+        >
+          <Scale size={16} />
+          Registre des Avoirs & Compensations
+          {clientCompensations.filter(c => c.status === 'PENDING').length > 0 ? (
+            <span style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              background: '#FF9500',
+              color: '#000000',
+              fontWeight: '900'
+            }}>
+              {clientCompensations.filter(c => c.status === 'PENDING').length} en attente
+            </span>
+          ) : (
+            <span style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              background: 'rgba(255,255,255,0.1)',
+              color: 'var(--text-secondary)',
+              fontWeight: '700'
+            }}>
+              {clientCompensations.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Orders Table */}
-      <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>N° Bon</th>
-                <th>Date</th>
-                <th>Client</th>
-                <th>Commercial</th>
-                <th>Paiement</th>
-                <th>Total TTC</th>
-                <th>Statut</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                    Aucun bon de commande trouvé pour ces critères.
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map(o => (
-                  <tr key={o.id}>
-                    <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
-                    <td style={{ fontSize: '12px' }}>{o.date}</td>
-                    <td>
-                      <div>
-                        <strong style={{ color: '#FFFFFF' }}>{o.clientName}</strong>
-                        {o.totalFreeItems > 0 && (
-                          <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
-                            +{o.totalFreeItems} Offert(s)
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{o.commercialName}</td>
-                    <td><span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: '#FFFFFF' }}>{o.paymentMethod || 'Chèque'}</span></td>
-                    <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '14px' }}>
-                      {(parseFloat(o.totalTtc) || 0).toFixed(2)} DH
-                    </td>
-                    <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <button
-                          onClick={() => generateOrderPdf(o)}
-                          className="btn-secondary"
-                          style={{ padding: '6px 10px', fontSize: '11px' }}
-                          title="Télécharger PDF"
-                        >
-                          <FileText style={{ width: '14px', height: '14px' }} /> PDF
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditWizard(o)}
-                          className="btn-secondary"
-                          style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--bardahl-yellow)', borderColor: 'var(--bardahl-yellow)' }}
-                          title="Modifier"
-                        >
-                          <Edit3 style={{ width: '14px', height: '14px' }} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteOrder(o)}
-                          style={{ padding: '6px 10px', fontSize: '11px', color: '#FF453A', background: 'rgba(255, 69, 58, 0.1)', border: '1px solid rgba(255, 69, 58, 0.3)', borderRadius: '8px', cursor: 'pointer' }}
-                          title="Supprimer"
-                        >
-                          <Trash2 style={{ width: '14px', height: '14px' }} />
-                        </button>
-                      </div>
-                    </td>
+      {activeOrdersTab === 'ORDERS' ? (
+        <>
+          {/* Filter & Search Bar */}
+          <div className="glass-card" style={{ padding: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'center' }}>
+              
+              <div style={{ position: 'relative' }}>
+                <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Rechercher par N° Bon ou Client..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="input-field"
+                  style={{ paddingLeft: '40px' }}
+                />
+              </div>
+
+              <div>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="input-field"
+                  style={{ padding: '10px' }}
+                >
+                  <option value="ALL">Tous les Statuts</option>
+                  <option value="VALIDATED">Validés</option>
+                  <option value="DRAFT">Brouillons</option>
+                  <option value="DELIVERED">Livrés</option>
+                  <option value="CANCELLED">Annulés</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={commercialFilter}
+                  onChange={e => setCommercialFilter(e.target.value)}
+                  className="input-field"
+                  style={{ padding: '10px' }}
+                >
+                  <option value="ALL">Tous les Représentants</option>
+                  {commercials.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Orders Table */}
+          <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <th>N° Bon</th>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Commercial</th>
+                    <th>Paiement</th>
+                    <th>Total TTC</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                        Aucun bon de commande trouvé pour ces critères.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOrders.map(o => (
+                      <tr key={o.id}>
+                        <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
+                        <td style={{ fontSize: '12px' }}>{o.date}</td>
+                        <td>
+                          <div>
+                            <strong style={{ color: '#FFFFFF' }}>{o.clientName}</strong>
+                            {o.totalFreeItems > 0 && (
+                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
+                                +{o.totalFreeItems} Offert(s)
+                              </span>
+                            )}
+                            {o.hasCompensation && (
+                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(0, 122, 255, 0.2)', color: '#007AFF', fontWeight: 'bold' }}>
+                                ⚖️ {o.compensationSummary || 'Régularisé'}
+                              </span>
+                            )}
+                            {o.avoirDeduction > 0 && (
+                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
+                                💰 Avoir déduit -{parseFloat(o.avoirDeduction).toFixed(2)} DH
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{o.commercialName}</td>
+                        <td><span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: '#FFFFFF' }}>{o.paymentMethod || 'Chèque'}</span></td>
+                        <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '14px' }}>
+                          {(parseFloat(o.totalTtc) || 0).toFixed(2)} DH
+                        </td>
+                        <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => generateOrderPdf(o)}
+                              className="btn-secondary"
+                              style={{ padding: '6px 10px', fontSize: '11px' }}
+                              title="Télécharger PDF"
+                            >
+                              <FileText style={{ width: '14px', height: '14px' }} /> PDF
+                            </button>
+                            <button
+                              onClick={() => handleOpenRemiseAdjustment(o)}
+                              className="btn-secondary"
+                              style={{ padding: '6px 10px', fontSize: '11px', color: '#007AFF', borderColor: 'rgba(0, 122, 255, 0.4)', background: 'rgba(0, 122, 255, 0.08)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              title="Régularisation & Compensation Remise Produit"
+                            >
+                              <Scale style={{ width: '13px', height: '13px' }} /> Régulariser
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditWizard(o)}
+                              className="btn-secondary"
+                              style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--bardahl-yellow)', borderColor: 'var(--bardahl-yellow)' }}
+                              title="Modifier"
+                            >
+                              <Edit3 style={{ width: '14px', height: '14px' }} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOrder(o)}
+                              style={{ padding: '6px 10px', fontSize: '11px', color: '#FF453A', background: 'rgba(255, 69, 58, 0.1)', border: '1px solid rgba(255, 69, 58, 0.3)', borderRadius: '8px', cursor: 'pointer' }}
+                              title="Supprimer"
+                            >
+                              <Trash2 style={{ width: '14px', height: '14px' }} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* COMPENSATIONS REGISTER TAB */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Summary Stats Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div className="glass-card" style={{ padding: '18px', borderLeft: '4px solid #FF9500' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>Avoirs en Attente</span>
+                <Clock size={18} color="#FF9500" />
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: '900', color: '#FF9500', marginTop: '8px' }}>
+                {pendingCompensationsTotalDh.toFixed(2)} DH TTC
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                {clientCompensations.filter(c => c.status === 'PENDING').length} compensation(s) à déduire sur prochain bon
+              </div>
+            </div>
+
+            <div className="glass-card" style={{ padding: '18px', borderLeft: '4px solid #34C759' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>Avoirs Déjà Consommés</span>
+                <CheckCircle2 size={18} color="#34C759" />
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: '900', color: '#34C759', marginTop: '8px' }}>
+                {consumedCompensationsTotalDh.toFixed(2)} DH TTC
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                {clientCompensations.filter(c => c.status === 'CONSUMED').length} avoir(s) déduits avec succès
+              </div>
+            </div>
+
+            <div className="glass-card" style={{ padding: '18px', borderLeft: '4px solid #007AFF' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>Total Dossiers Régularisés</span>
+                <Scale size={18} color="#007AFF" />
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: '900', color: '#007AFF', marginTop: '8px' }}>
+                {clientCompensations.length} Dossiers
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Traçabilité intégrale des rectifications de remise
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="glass-card" style={{ padding: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <Search style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)', position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Rechercher par Bon, Client ou motif..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="input-field"
+                  style={{ paddingLeft: '40px' }}
+                />
+              </div>
+
+              <div>
+                <select
+                  value={compensationStatusFilter}
+                  onChange={e => setCompensationStatusFilter(e.target.value)}
+                  className="input-field"
+                  style={{ padding: '10px' }}
+                >
+                  <option value="ALL">Tous les Dossiers ({clientCompensations.length})</option>
+                  <option value="PENDING">En Attente de compensation ({clientCompensations.filter(c => c.status === 'PENDING').length})</option>
+                  <option value="CONSUMED">Consommés / Déduits ({clientCompensations.filter(c => c.status === 'CONSUMED').length})</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Compensations Table */}
+          <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <th>Bon Origine</th>
+                    <th>Date Rectif.</th>
+                    <th>Client</th>
+                    <th>Produit(s) & Rectification</th>
+                    <th>Avoir (DH TTC)</th>
+                    <th>Équivalent Remise</th>
+                    <th>Mode Choisi</th>
+                    <th>Statut</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCompensations.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                        Aucune compensation enregistrée dans ce registre.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCompensations.map(c => (
+                      <tr key={c.id}>
+                        <td>
+                          <strong style={{ color: 'var(--bardahl-yellow)' }}>{c.orderNumber}</strong>
+                        </td>
+                        <td style={{ fontSize: '12px' }}>{c.date}</td>
+                        <td>
+                          <strong style={{ color: '#FFFFFF' }}>{c.clientName}</strong>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            {(c.items || []).map((it, idx) => (
+                              <div key={idx} style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ color: '#FFFFFF', fontWeight: '600' }}>{it.productName || it.reference}</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>({it.qty}x) :</span>
+                                <span style={{ color: '#FF453A', textDecoration: 'line-through' }}>{it.oldRemisePercent}%</span>
+                                <ArrowRight size={10} color="var(--bardahl-yellow)" />
+                                <span style={{ color: '#34C759', fontWeight: '800' }}>{it.newRemisePercent}%</span>
+                                <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 208, 0, 0.1)', color: 'var(--bardahl-yellow)' }}>
+                                  Δ {it.diffPercent}% = {parseFloat(it.amountDh || 0).toFixed(2)} DH
+                                </span>
+                              </div>
+                            ))}
+                            {c.reason && (
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '2px' }}>
+                                💡 {c.reason}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '14px', fontWeight: '900', color: '#34C759' }}>
+                            {parseFloat(c.totalAmountDh || 0).toFixed(2)} DH
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '13px', fontWeight: '800', color: '#007AFF' }}>
+                            +{parseFloat(c.equivalentPercent || 0).toFixed(2)}%
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{
+                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: c.chosenMode === 'DH' ? 'rgba(52, 199, 89, 0.15)' : 'rgba(0, 122, 255, 0.15)',
+                            color: c.chosenMode === 'DH' ? '#34C759' : '#007AFF',
+                            fontWeight: '700'
+                          }}>
+                            {c.chosenMode === 'DH' ? 'Avoir Déduction DH' : 'Remise % Prochain Bon'}
+                          </span>
+                        </td>
+                        <td>
+                          {c.status === 'PENDING' ? (
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(255, 149, 0, 0.2)',
+                              color: '#FF9500',
+                              fontWeight: '800',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <Clock size={11} /> En Attente
+                            </span>
+                          ) : (
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(52, 199, 89, 0.2)',
+                              color: '#34C759',
+                              fontWeight: '800',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <CheckCircle2 size={11} /> Consommé {c.consumedOnOrderNumber ? `(${c.consumedOnOrderNumber})` : ''}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {c.status === 'PENDING' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Supprimer cette compensation de ${c.totalAmountDh} DH pour le client ${c.clientName} ?`)) {
+                                  deleteClientCompensation(c.id)
+                                }
+                              }}
+                              style={{ padding: '6px 10px', fontSize: '11px', color: '#FF453A', background: 'rgba(255, 69, 58, 0.1)', border: '1px solid rgba(255, 69, 58, 0.3)', borderRadius: '8px', cursor: 'pointer' }}
+                              title="Annuler cette compensation"
+                            >
+                              <Trash2 style={{ width: '13px', height: '13px' }} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Order Creation / Edit Wizard Dialog */}
       {showOrderWizard && (
@@ -823,6 +1361,153 @@ export default function Orders({ openWizardTrigger }) {
                   </div>
                 </div>
               </div>
+
+              {/* Alert: Pending Compensations / Avoirs for this Client */}
+              {clientPendingCompensations.length > 0 && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(255, 149, 0, 0.12), rgba(255, 208, 0, 0.08))',
+                  border: '1px solid rgba(255, 149, 0, 0.5)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  boxShadow: '0 4px 20px rgba(255, 149, 0, 0.1)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255, 149, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Scale size={18} color="#FF9500" />
+                      </div>
+                      <div>
+                        <strong style={{ color: '#FF9500', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Régularisation de Remise Détectée ({clientPendingCompensations.length} dossier en attente)
+                        </strong>
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>
+                          Ce client dispose d'un avoir/compensation suite à une rectification de remise sur une commande antérieure.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {clientPendingCompensations.map(comp => {
+                    const isApplied = appliedAvoirCompensation?.id === comp.id
+                    return (
+                      <div key={comp.id} style={{
+                        background: 'rgba(0,0,0,0.35)',
+                        border: isApplied ? '1px solid #34C759' : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '14px'
+                      }}>
+                        <div style={{ flex: 1, minWidth: '220px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>Bon Origine :</span>
+                            <span style={{ color: 'var(--bardahl-yellow)', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255, 208, 0, 0.12)' }}>{comp.orderNumber}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>du {comp.date}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                            Articles rectifiés : <strong style={{ color: '#FFFFFF' }}>{comp.items?.map(it => `${it.productName || it.reference} (${it.oldRemisePercent}% ➔ ${it.newRemisePercent}%)`).join(', ') || 'Régularisation remise'}</strong>
+                          </div>
+                          {comp.reason && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '2px' }}>
+                              Motif : {comp.reason}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '15px', fontWeight: '900', color: '#34C759' }}>
+                              {parseFloat(comp.totalAmountDh).toFixed(2)} DH TTC
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#007AFF', fontWeight: '700' }}>
+                              ou équivalent +{parseFloat(comp.equivalentPercent).toFixed(2)}%
+                            </div>
+                          </div>
+
+                          {isApplied ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                background: 'rgba(52, 199, 89, 0.2)',
+                                border: '1px solid #34C759',
+                                color: '#34C759',
+                                fontSize: '12px',
+                                fontWeight: '800',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}>
+                                <CheckCircle2 size={14} /> {appliedAvoirCompensation.appliedAsPercent ? `Remise +${comp.equivalentPercent}% Appliquée` : `Avoir -${parseFloat(comp.totalAmountDh).toFixed(2)} DH Déduit`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setAppliedAvoirCompensation(null)}
+                                className="btn-secondary"
+                                style={{ padding: '6px 10px', fontSize: '11px' }}
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => setAppliedAvoirCompensation({ ...comp, appliedAsPercent: false })}
+                                className="btn-bardahl"
+                                style={{
+                                  padding: '7px 12px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  gap: '6px',
+                                  background: 'linear-gradient(135deg, #34C759, #28A745)',
+                                  color: '#FFFFFF',
+                                  borderColor: '#34C759'
+                                }}
+                                title="Déduire ce montant directement en Dirhams sur le total à payer de ce bon"
+                              >
+                                <Coins size={14} /> Option 1 : Déduire {parseFloat(comp.totalAmountDh).toFixed(2)} DH
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAppliedAvoirCompensation({ ...comp, appliedAsPercent: true })
+                                  const boostPct = parseFloat(comp.equivalentPercent) || 0
+                                  if (selectedProducts.length > 0) {
+                                    setSelectedProducts(prev => prev.map(p => ({
+                                      ...p,
+                                      remisePercent: Math.min(100, (parseFloat(p.remisePercent) || 0) + boostPct)
+                                    })))
+                                  }
+                                }}
+                                className="btn-secondary"
+                                style={{
+                                  padding: '7px 12px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  gap: '6px',
+                                  color: '#007AFF',
+                                  borderColor: '#007AFF',
+                                  background: 'rgba(0, 122, 255, 0.1)'
+                                }}
+                                title="Appliquer un pourcentage additionnel sur les produits"
+                              >
+                                <BadgePercent size={14} /> Option 2 : +{parseFloat(comp.equivalentPercent).toFixed(2)}%
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Step 2: Mode de Paiement & Expédition */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
@@ -1677,6 +2362,13 @@ export default function Orders({ openWizardTrigger }) {
                   </div>
                 )}
 
+                {avoirDeductionAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#34C759', fontWeight: '800' }}>
+                    <span>⚖️ Déduction Avoir / Régularisation {activeAvoirOrderNumber ? `(Bon N° ${activeAvoirOrderNumber})` : ''} :</span>
+                    <span>-{avoirDeductionAmount.toFixed(2)} DH</span>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                   <span>Total HT Net :</span>
                   <span>{totalHt.toFixed(2)} DH</span>
@@ -1701,6 +2393,329 @@ export default function Orders({ openWizardTrigger }) {
               </div>
 
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Remise Adjustment / Compensation Modal */}
+      {showAdjustmentModal && adjustingOrder && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1100 }}>
+          <div className="glass-card" style={{ width: '96vw', maxWidth: '1100px', maxHeight: '92vh', overflowY: 'auto', borderColor: '#007AFF', padding: '26px' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '14px', borderBottom: '1px solid var(--border-card)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #007AFF, #0056B3)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 15px rgba(0, 122, 255, 0.3)'
+                }}>
+                  <Scale style={{ width: '22px', height: '22px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#FFFFFF' }}>
+                    Régularisation & Compensation de Remise Commerciale
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Bon N° <strong style={{ color: 'var(--bardahl-yellow)' }}>{adjustingOrder.orderNumber}</strong> • Client : <strong style={{ color: '#FFFFFF' }}>{adjustingOrder.clientName}</strong> • Date : {adjustingOrder.date}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setShowAdjustmentModal(false); setAdjustingOrder(null); }}
+                style={{ color: 'var(--text-secondary)', fontSize: '24px', cursor: 'pointer', background: 'none', border: 'none', padding: '4px' }}
+                title="Fermer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Smart Notice */}
+            <div style={{
+              background: 'rgba(0, 122, 255, 0.08)',
+              border: '1px solid rgba(0, 122, 255, 0.25)',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <AlertCircle size={20} color="#007AFF" style={{ flexShrink: 0 }} />
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                <strong style={{ color: '#FFFFFF' }}>Système Intelligent de Rectification :</strong> Modifiez ci-dessous le pourcentage de remise erroné sur la ou les lignes d'articles standard (ex : corriger <strong>5%</strong> en <strong>3%</strong>). Le système calcule immédiatement le montant en <strong style={{ color: '#34C759' }}>Dirhams (DH TTC)</strong> ainsi que le <strong style={{ color: '#007AFF' }}>Pourcentage moyen (%)</strong> à compenser sur la prochaine commande du client.
+              </p>
+            </div>
+
+            {/* Table of Order Lines */}
+            <div style={{ overflowX: 'auto', marginBottom: '20px', borderRadius: '10px', border: '1px solid var(--border-card)' }}>
+              <table className="custom-table" style={{ margin: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Référence & Désignation</th>
+                    <th>Qté</th>
+                    <th>PU TTC</th>
+                    <th>Total Brut TTC</th>
+                    <th>Remise Initiale</th>
+                    <th style={{ color: 'var(--bardahl-yellow)' }}>Nouvelle Remise Rectifiée (%)</th>
+                    <th>Écart (Δ%)</th>
+                    <th>Valeur Compensation (DH TTC)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustmentLines.map((line, idx) => (
+                    <tr key={line.key} style={{ background: line.diffPercent > 0 ? 'rgba(255, 208, 0, 0.04)' : 'transparent' }}>
+                      <td>
+                        <div style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>{line.reference}</div>
+                        <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>{line.name}</strong>
+                      </td>
+                      <td style={{ fontWeight: '700' }}>{line.qty}</td>
+                      <td>{line.priceTtc.toFixed(2)} DH</td>
+                      <td style={{ fontWeight: '700' }}>{line.grossTotal.toFixed(2)} DH</td>
+                      <td>
+                        <span style={{ padding: '3px 8px', borderRadius: '6px', background: 'rgba(255, 255, 255, 0.08)', fontWeight: '800' }}>
+                          {line.currentRemise}%
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            value={line.newRemise}
+                            onChange={e => handleAdjustmentLineChange(idx, e.target.value)}
+                            className="input-field"
+                            style={{
+                              width: '80px',
+                              textAlign: 'center',
+                              fontWeight: '900',
+                              fontSize: '13px',
+                              color: line.diffPercent > 0 ? 'var(--bardahl-yellow)' : '#FFFFFF',
+                              borderColor: line.diffPercent > 0 ? 'var(--bardahl-yellow)' : 'var(--border-card)'
+                            }}
+                          />
+                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>%</span>
+                        </div>
+                      </td>
+                      <td>
+                        {line.diffPercent > 0 ? (
+                          <span style={{
+                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(255, 208, 0, 0.15)',
+                            color: 'var(--bardahl-yellow)',
+                            fontWeight: '900'
+                          }}>
+                            Δ {line.diffPercent}%
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>0.00%</span>
+                        )}
+                      </td>
+                      <td>
+                        {line.diffAmountDh > 0 ? (
+                          <strong style={{ color: '#34C759', fontSize: '14px' }}>
+                            +{line.diffAmountDh.toFixed(2)} DH
+                          </strong>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>0.00 DH</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Calculations KPI Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+              <div style={{ background: '#14171F', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
+                  Lignes d'Articles Concernées
+                </span>
+                <div style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF', marginTop: '6px' }}>
+                  {adjustmentTotals.linesWithDiff} article(s) modifié(s)
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Total Brut : {adjustmentTotals.totalGross.toFixed(2)} DH TTC
+                </div>
+              </div>
+
+              <div style={{ background: '#14171F', padding: '16px', borderRadius: '12px', border: '1px solid rgba(52, 199, 89, 0.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '800', textTransform: 'uppercase' }}>
+                    Valeur Compensation en Dirhams (Option 1)
+                  </span>
+                  <Coins size={16} color="#34C759" />
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: '900', color: '#34C759', marginTop: '6px' }}>
+                  {adjustmentTotals.totalCompensationDh.toFixed(2)} DH TTC
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Montant monétaire exact à déduire en avoir
+                </div>
+              </div>
+
+              <div style={{ background: '#14171F', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0, 122, 255, 0.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '11px', color: '#007AFF', fontWeight: '800', textTransform: 'uppercase' }}>
+                    Équivalent Pourcentage Moyen (Option 2)
+                  </span>
+                  <BadgePercent size={16} color="#007AFF" />
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: '900', color: '#007AFF', marginTop: '6px' }}>
+                  +{adjustmentTotals.averagePercent}%
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Pourcentage compensatoire sur prochain bon
+                </div>
+              </div>
+            </div>
+
+            {/* Compensation Preference & Options */}
+            <div style={{ background: '#14171F', padding: '18px', borderRadius: '12px', border: '1px solid var(--border-card)', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase' }}>
+                Mode de Compensation Préféré pour le Client :
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
+                <div
+                  onClick={() => setAdjustmentChosenMode('DH')}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    border: adjustmentChosenMode === 'DH' ? '2px solid #34C759' : '1px solid var(--border-card)',
+                    background: adjustmentChosenMode === 'DH' ? 'rgba(52, 199, 89, 0.1)' : 'rgba(255,255,255,0.02)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    border: '2px solid #34C759',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: '2px',
+                    flexShrink: 0
+                  }}>
+                    {adjustmentChosenMode === 'DH' && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34C759' }} />}
+                  </div>
+                  <div>
+                    <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>Option 1 : Avoir Monétaire Fixe ({adjustmentTotals.totalCompensationDh.toFixed(2)} DH)</strong>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                      Déduire directement le montant de {adjustmentTotals.totalCompensationDh.toFixed(2)} DH TTC du total à payer de son prochain bon de commande.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setAdjustmentChosenMode('PERCENT')}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    border: adjustmentChosenMode === 'PERCENT' ? '2px solid #007AFF' : '1px solid var(--border-card)',
+                    background: adjustmentChosenMode === 'PERCENT' ? 'rgba(0, 122, 255, 0.1)' : 'rgba(255,255,255,0.02)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    border: '2px solid #007AFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: '2px',
+                    flexShrink: 0
+                  }}>
+                    {adjustmentChosenMode === 'PERCENT' && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#007AFF' }} />}
+                  </div>
+                  <div>
+                    <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>Option 2 : Remise en Pourcentage (+{adjustmentTotals.averagePercent}%)</strong>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                      Ajouter une remise supplémentaire de {adjustmentTotals.averagePercent}% sur les articles de sa prochaine commande.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Checkbox update bon history */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '12px', color: '#FFFFFF' }}>
+                <input
+                  type="checkbox"
+                  checked={updateOrderInHistory}
+                  onChange={e => setUpdateOrderInHistory(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)', cursor: 'pointer' }}
+                />
+                Mettre à jour l'historique et le total du Bon de Commande N° <strong>{adjustingOrder.orderNumber}</strong> avec ces nouvelles remises
+              </label>
+
+              {/* Reason input */}
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
+                  Motif ou Note Explicative :
+                </label>
+                <input
+                  type="text"
+                  value={adjustmentReason}
+                  onChange={e => setAdjustmentReason(e.target.value)}
+                  placeholder="Ex: Rectification saisie remise 5% au lieu de 3% sur TOP DIESEL +1L"
+                  className="input-field"
+                  style={{ fontSize: '12px', padding: '10px 14px' }}
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => { setShowAdjustmentModal(false); setAdjustingOrder(null); }}
+                className="btn-secondary"
+                style={{ padding: '9px 18px', fontSize: '13px' }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAdjustment}
+                className="btn-bardahl"
+                style={{
+                  padding: '9px 20px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  background: 'linear-gradient(135deg, #007AFF, #0056B3)',
+                  borderColor: '#007AFF',
+                  color: '#FFFFFF',
+                  boxShadow: '0 4px 15px rgba(0, 122, 255, 0.3)'
+                }}
+              >
+                <CheckCircle2 size={16} /> Enregistrer et Valider la Compensation
+              </button>
+            </div>
+
           </div>
         </div>
       )}

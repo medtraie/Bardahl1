@@ -169,7 +169,8 @@ export function generateOrderPdf(order) {
   // Totals Box Right
   const totalFreeUnits = itemsList.reduce((sum, it) => sum + (parseInt(it.qtyGratuit || it.freeQuantity || it.freeQty || 0, 10)), 0)
   const hasVoucher = (parseFloat(order.voucherDiscount) || 0) > 0
-  const totalsBoxHeight = (totalFreeUnits > 0 ? 46 : 38) + (order.totalDiscount > 0 ? 8 : 0) + (hasVoucher ? 8 : 0)
+  const hasAvoir = (parseFloat(order.avoirDeduction) || 0) > 0
+  const totalsBoxHeight = (totalFreeUnits > 0 ? 46 : 38) + (order.totalDiscount > 0 ? 8 : 0) + (hasVoucher ? 8 : 0) + (hasAvoir ? 8 : 0)
 
   doc.setFillColor(248, 249, 250)
   doc.setDrawColor(203, 213, 224)
@@ -208,6 +209,16 @@ export function generateOrderPdf(order) {
     doc.setFont('helvetica', 'bold')
     doc.text("Bon d'Achat Immédiat :", 123, tY)
     doc.text("-" + parseFloat(order.voucherDiscount).toFixed(2) + " DH", 191, tY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(45, 55, 72)
+  }
+
+  if (hasAvoir) {
+    tY += 6
+    doc.setTextColor(0, 150, 136)
+    doc.setFont('helvetica', 'bold')
+    doc.text("Avoir / Régularisation :", 123, tY)
+    doc.text("-" + parseFloat(order.avoirDeduction).toFixed(2) + " DH", 191, tY, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(45, 55, 72)
   }

@@ -216,6 +216,24 @@ export function AppProvider({ children }) {
     localStorage.setItem('bardahl_order_extras', JSON.stringify(orderExtras))
   }, [orderExtras])
 
+  // Local storage for Client Compensations / Avoirs de Régularisation Remise
+  const [clientCompensations, setClientCompensations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bardahl_client_compensations')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bardahl_client_compensations', JSON.stringify(clientCompensations))
+    } catch (e) {
+      console.error('Compensations storage error:', e)
+    }
+  }, [clientCompensations])
+
   // Theme State: 'dark' (default) or 'light'
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('bardahl_theme') || 'dark' }
@@ -556,6 +574,51 @@ export function AppProvider({ children }) {
     setProductFamilies(prev => prev.map(f => f.id === id ? { ...f, isActive: !f.isActive } : f))
   }, [])
 
+  // ── CLIENT COMPENSATIONS & AVOIRS DE RÉGULARISATION ─────────────────────────
+  const addClientCompensation = useCallback((comp) => {
+    const newComp = {
+      id: comp.id || `comp_${Date.now()}`,
+      orderId: comp.orderId || null,
+      orderNumber: comp.orderNumber || '',
+      clientId: comp.clientId || '',
+      clientName: comp.clientName || 'Client Bardahl',
+      date: comp.date || new Date().toISOString().slice(0, 10),
+      items: comp.items || [],
+      totalAmountDh: parseFloat(comp.totalAmountDh) || 0,
+      equivalentPercent: parseFloat(comp.equivalentPercent) || 0,
+      chosenMode: comp.chosenMode || 'DH', // 'DH' | 'PERCENT'
+      reason: comp.reason || 'Régularisation remise commerciale',
+      status: comp.status || 'PENDING', // 'PENDING' | 'CONSUMED' | 'CANCELLED'
+      consumedOnOrderNumber: comp.consumedOnOrderNumber || null,
+      consumedDate: comp.consumedDate || null,
+      createdAt: new Date().toISOString()
+    }
+    setClientCompensations(prev => [newComp, ...prev.filter(c => c.id !== newComp.id)])
+    return newComp
+  }, [])
+
+  const updateClientCompensation = useCallback((comp) => {
+    setClientCompensations(prev => prev.map(c => c.id === comp.id ? { ...c, ...comp } : c))
+  }, [])
+
+  const consumeClientCompensation = useCallback((id, nextOrderNumber) => {
+    setClientCompensations(prev => prev.map(c => {
+      if (c.id === id) {
+        return {
+          ...c,
+          status: 'CONSUMED',
+          consumedOnOrderNumber: nextOrderNumber,
+          consumedDate: new Date().toISOString().slice(0, 10)
+        }
+      }
+      return c
+    }))
+  }, [])
+
+  const deleteClientCompensation = useCallback((id) => {
+    setClientCompensations(prev => prev.filter(c => c.id !== id))
+  }, [])
+
   // ── Role-based visibility ────────────────────────────────────────────────────
   const isAdmin = currentUser?.role === 'ADMIN'
 
@@ -583,6 +646,7 @@ export function AppProvider({ children }) {
       productFamilies, addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily,
       orders: visibleOrders, allOrders: orders,
       addOrder, updateOrder, deleteOrder,
+      clientCompensations, addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
       commercials, addCommercial, updateCommercial, deleteCommercial,
       promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion,
       refreshAll,
