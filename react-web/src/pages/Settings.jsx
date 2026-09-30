@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
-import { User, Bell, Sliders, Database, RefreshCw, Trash2, CheckCircle2, ShieldCheck, Globe, Lock, Save, Moon, Sun } from 'lucide-react'
+import { User, Bell, Sliders, Database, RefreshCw, Trash2, CheckCircle2, ShieldCheck, Globe, Lock, Save, Moon, Sun, Layers, Plus, Edit3, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Settings() {
-  const { currentUser, logout, theme, setTheme } = useApp()
+  const { 
+    currentUser, logout, theme, setTheme,
+    productFamilies = [], addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily 
+  } = useApp()
   
   // Interactive User Profile State
   const [profileName, setProfileName] = useState(currentUser?.name || "Direction Bardahl")
@@ -23,6 +26,67 @@ export default function Settings() {
   
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [syncStatus, setSyncStatus] = useState("Connecté au Cloud (En direct)")
+
+  // Product Families Administration State
+  const [showFamilyModal, setShowFamilyModal] = useState(false)
+  const [editingFamily, setEditingFamily] = useState(null)
+  const [famLabel, setFamLabel] = useState('')
+  const [famCode, setFamCode] = useState('')
+  const [famIcon, setFamIcon] = useState('🏷️')
+  const [famColor, setFamColor] = useState('#FFD000')
+  const [famDesc, setFamDesc] = useState('')
+
+  const handleOpenAddFamily = () => {
+    setEditingFamily(null)
+    setFamLabel('')
+    setFamCode('')
+    setFamIcon('🏷️')
+    setFamColor('#FFD000')
+    setFamDesc('')
+    setShowFamilyModal(true)
+  }
+
+  const handleOpenEditFamily = (fam) => {
+    setEditingFamily(fam)
+    setFamLabel(fam.label)
+    setFamCode(fam.code)
+    setFamIcon(fam.icon || '🏷️')
+    setFamColor(fam.color || '#FFD000')
+    setFamDesc(fam.description || '')
+    setShowFamilyModal(true)
+  }
+
+  const handleSaveFamily = (e) => {
+    e.preventDefault()
+    if (!famLabel.trim()) return
+    const code = famCode.trim() || famLabel.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    if (editingFamily) {
+      updateProductFamily({
+        ...editingFamily,
+        label: famLabel.trim(),
+        code,
+        icon: famIcon,
+        color: famColor,
+        description: famDesc
+      })
+    } else {
+      addProductFamily({
+        label: famLabel.trim(),
+        code,
+        icon: famIcon,
+        color: famColor,
+        description: famDesc,
+        isActive: true
+      })
+    }
+    setShowFamilyModal(false)
+  }
+
+  const handleDeleteFamily = (fam) => {
+    if (window.confirm(`Supprimer définitivement la famille « ${fam.label} » ?`)) {
+      deleteProductFamily(fam.id)
+    }
+  }
 
   const handleSaveProfile = (e) => {
     e.preventDefault()
@@ -382,7 +446,208 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Card 5: Administration des Familles de Produits Bardahl (Évolution n°1) */}
+        <div className="glass-card" style={{ gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers style={{ width: '22px', height: '22px', color: 'var(--bardahl-yellow)' }} />
+                Familles de Produits Bardahl (Classification & Moteur Promo)
+              </h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Configuration dynamique des gammes officielles pour le catalogue, les règles promotionnelles et le moteur de calcul.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddFamily}
+              className="btn-bardahl"
+              style={{ padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Plus size={16} /> Nouvelle Famille
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+            {productFamilies.map(fam => {
+              const isActive = fam.isActive !== false
+              return (
+                <div
+                  key={fam.id}
+                  style={{
+                    background: 'var(--bg-obsidian)',
+                    border: `1px solid ${isActive ? (fam.color || '#FFD000') + '55' : 'var(--border-card)'}`,
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    borderLeft: `4px solid ${fam.color || 'var(--bardahl-yellow)'}`,
+                    opacity: isActive ? 1 : 0.6
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '24px' }}>{fam.icon || '🏷️'}</span>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#FFFFFF' }}>{fam.label}</div>
+                        <div style={{ fontSize: '10px', color: fam.color || 'var(--bardahl-yellow)', fontWeight: '700', letterSpacing: '0.5px' }}>CODE: {fam.code}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleProductFamily(fam.id)}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '20px',
+                        fontSize: '9px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        border: 'none',
+                        background: isActive ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 69, 58, 0.2)',
+                        color: isActive ? '#34C759' : '#FF453A'
+                      }}
+                      title="Activer / Désactiver la famille"
+                    >
+                      {isActive ? '● ACTIVE' : '○ INACTIVE'}
+                    </button>
+                  </div>
+
+                  {fam.description && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4', margin: 0 }}>
+                      {fam.description}
+                    </p>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditFamily(fam)}
+                      className="btn-secondary"
+                      style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Edit3 size={12} /> Modifier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFamily(fam)}
+                      className="btn-secondary"
+                      style={{ padding: '4px 8px', fontSize: '11px', color: '#FF453A', borderColor: 'rgba(255,69,58,0.3)' }}
+                      title="Supprimer la famille"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
       </div>
+
+      {/* Modal Add / Edit Product Family */}
+      {showFamilyModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 3000 }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '480px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '1px solid var(--border-card)' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers style={{ color: famColor }} /> {editingFamily ? 'Modifier la Famille' : 'Nouvelle Famille de Produits'}
+              </h3>
+              <button onClick={() => setShowFamilyModal(false)} style={{ background: 'none', border: 'none', color: '#FFF', fontSize: '22px', cursor: 'pointer' }}>&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveFamily} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  NOM DE LA FAMILLE *
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={famLabel}
+                  onChange={e => setFamLabel(e.target.value)}
+                  placeholder="Ex: Produits Hygiène & Lavage"
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    CODE TECHNIQUE
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={famCode}
+                    onChange={e => setFamCode(e.target.value.toUpperCase())}
+                    placeholder="Ex: HYGIENE"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    ICÔNE (ÉMOJI)
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={famIcon}
+                    onChange={e => setFamIcon(e.target.value)}
+                    placeholder="🧪, 🛢️, 💧..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  COULEUR D'AFFICHAGE
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={famColor}
+                    onChange={e => setFamColor(e.target.value)}
+                    style={{ width: '40px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: 'transparent' }}
+                  />
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={famColor}
+                    onChange={e => setFamColor(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  DESCRIPTION
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={2}
+                  value={famDesc}
+                  onChange={e => setFamDesc(e.target.value)}
+                  placeholder="Courte description des produits appartenant à cette famille..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-card)' }}>
+                <button type="button" onClick={() => setShowFamilyModal(false)} className="btn-secondary" style={{ padding: '8px 14px' }}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn-bardahl" style={{ padding: '8px 18px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Save size={14} /> Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   )

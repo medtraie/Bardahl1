@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { allProductsData } from '../data/productsData'
 import { defaultPromotions } from '../data/promotionsData'
+import { DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
 import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
@@ -185,6 +186,24 @@ export function AppProvider({ children }) {
       console.error('Error saving promotions to localStorage:', e)
     }
   }, [promotions])
+
+  // Administrable Product Families State
+  const [productFamilies, setProductFamilies] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bardahl_product_families')
+      return saved ? JSON.parse(saved) : DEFAULT_BARDAHL_FAMILIES
+    } catch {
+      return DEFAULT_BARDAHL_FAMILIES
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bardahl_product_families', JSON.stringify(productFamilies))
+    } catch (e) {
+      console.error('Error saving product families to localStorage:', e)
+    }
+  }, [productFamilies])
 
   // Local storage for extra order data (items, paymentMethod, modeExpedition)
   // These fields don't exist in Supabase orders table
@@ -510,6 +529,33 @@ export function AppProvider({ children }) {
     })
   }, [])
 
+  // ── FAMILLES DE PRODUITS ADMINISTRABLES ──────────────────────────────────────
+  const addProductFamily = useCallback((fam) => {
+    const newFam = {
+      id: `fam_${Date.now()}`,
+      code: (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
+      label: fam.label || 'Nouvelle Famille',
+      icon: fam.icon || '🏷️',
+      color: fam.color || '#FFD000',
+      description: fam.description || '',
+      isActive: fam.isActive !== false
+    }
+    setProductFamilies(prev => [...prev, newFam])
+    return newFam
+  }, [])
+
+  const updateProductFamily = useCallback((fam) => {
+    setProductFamilies(prev => prev.map(f => f.id === fam.id ? { ...f, ...fam } : f))
+  }, [])
+
+  const deleteProductFamily = useCallback((id) => {
+    setProductFamilies(prev => prev.filter(f => f.id !== id))
+  }, [])
+
+  const toggleProductFamily = useCallback((id) => {
+    setProductFamilies(prev => prev.map(f => f.id === id ? { ...f, isActive: !f.isActive } : f))
+  }, [])
+
   // ── Role-based visibility ────────────────────────────────────────────────────
   const isAdmin = currentUser?.role === 'ADMIN'
 
@@ -534,6 +580,7 @@ export function AppProvider({ children }) {
       clients: visibleClients, allClients: clients,
       addClient, updateClient, deleteClient,
       products: localProducts, addProduct, updateProduct, deleteProduct,
+      productFamilies, addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily,
       orders: visibleOrders, allOrders: orders,
       addOrder, updateOrder, deleteOrder,
       commercials, addCommercial, updateCommercial, deleteCommercial,

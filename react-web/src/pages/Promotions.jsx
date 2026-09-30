@@ -2,31 +2,20 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { 
   Gift, Tag, Plus, Edit3, Trash2, CheckCircle2, XCircle, 
   Layers, ShoppingBag, DollarSign, Calendar, Sparkles, AlertCircle, Percent,
-  Search, Check, X, LayoutGrid, List, BarChart2, TrendingUp, Users, Package, Award, ArrowUpRight, FileText
+  Search, Check, X, LayoutGrid, List, BarChart2, TrendingUp, Users, Package, Award, ArrowUpRight, FileText,
+  Zap, AlertTriangle
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
 
-export const BARDAHL_FAMILIES = [
-  { id: 'ADDITIFS', label: 'Additifs & Traitements', icon: '🧪', color: '#007AFF' },
-  { id: 'FLUIDES_LR', label: 'Fluides & LR', icon: '💧', color: '#00C7BE' },
-  { id: 'LUB_AUTO', label: 'Lubrifiants Auto', icon: '🛢️', color: '#FFD000' },
-  { id: 'IND_AEROSOLS', label: 'Aérosols & Nettoyants', icon: '💨', color: '#AF52DE' },
-  { id: 'IND_GRAISSES', label: 'Industrie & Graisses', icon: '⚙️', color: '#FF9500' }
-]
-
-export const getFamilyInfo = (categoryOrFamily) => {
-  if (!categoryOrFamily) return BARDAHL_FAMILIES[0]
-  const c = categoryOrFamily.toUpperCase().trim()
-  if (c.includes('ADDITIF')) return BARDAHL_FAMILIES[0]
-  if (c.includes('FLUIDE') || c.includes('LR')) return BARDAHL_FAMILIES[1]
-  if (c.includes('LUB') || c.includes('HUILE') || c.includes('AUTO') || c.includes('MOTO')) return BARDAHL_FAMILIES[2]
-  if (c.includes('AEROSOL') || c.includes('NETTOYANT')) return BARDAHL_FAMILIES[3]
-  if (c.includes('GRAISSE') || c.includes('IND') || c.includes('ALIM')) return BARDAHL_FAMILIES[4]
-  return { id: c, label: categoryOrFamily, icon: '🏷️', color: '#8E8E93' }
-}
+export const BARDAHL_FAMILIES = DEFAULT_BARDAHL_FAMILIES
+export { getFamilyInfo }
 
 export default function Promotions({ openNewPromoTrigger } = {}) {
-  const { orders = [], promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion, products, currentUser } = useApp()
+  const { 
+    orders = [], promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion, 
+    products, currentUser, productFamilies = [] 
+  } = useApp()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -37,12 +26,22 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
 
   const isAdmin = currentUser?.role === 'ADMIN'
 
+  // Dynamic active product families
+  const activeFamilies = useMemo(() => {
+    return (productFamilies && productFamilies.length > 0)
+      ? productFamilies.filter(f => f.isActive !== false)
+      : DEFAULT_BARDAHL_FAMILIES
+  }, [productFamilies])
+
   // Form State
   const [formName, setFormName] = useState('')
   const [formDesc, setFormDesc] = useState('')
   const [formType, setFormType] = useState('TYPE_1')
   const [formTargetType, setFormTargetType] = useState('PRODUCT')
-  const [formTargetFamily, setFormTargetFamily] = useState(BARDAHL_FAMILIES[0].label)
+  const [formTargetFamily, setFormTargetFamily] = useState(DEFAULT_BARDAHL_FAMILIES[0].label)
+  
+  // Évolution n°2 : Multi-références produit
+  const [formTargetProductRefs, setFormTargetProductRefs] = useState([])
   const [formTargetProductRef, setFormTargetProductRef] = useState('')
   const [targetSearchQuery, setTargetSearchQuery] = useState('')
   const [showTargetDropdown, setShowTargetDropdown] = useState(false)
@@ -60,16 +59,57 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const [formStartDate, setFormStartDate] = useState('2026-01-01')
   const [formEndDate, setFormEndDate] = useState('2026-12-31')
   
-  // Tiers (Paliers)
-  const [hasTiers, setHasTiers] = useState(false)
+  // Évolution n°3, 4 & 5 : Paliers dynamiques (Tranches progressives)
+  const [hasTiers, setHasTiers] = useState(true)
   const [tiers, setTiers] = useState([
-    { threshold: 10, discountPercent: 5, freeQuantity: 1 },
-    { threshold: 20, discountPercent: 7, freeQuantity: 2 },
-    { threshold: 30, discountPercent: 10, freeQuantity: 3 }
+    { id: 't1', min: 1, max: 9, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
+    { id: 't2', min: 10, max: 29, discountPercent: 10, freeQuantity: 1, voucherAmount: 0 },
+    { id: 't3', min: 30, max: '', discountPercent: 15, freeQuantity: 2, voucherAmount: 0 }
   ])
 
+  // Validation en temps réel des paliers dynamiques (Règles métier du rapport)
+  const tierValidation = useMemo(() => {
+    if (!hasTiers) return { isValid: true, error: null }
+    if (!tiers || tiers.length === 0) {
+      return { isValid: false, error: "Veuillez configurer au moins un palier pour la promotion." }
+    }
+
+    for (let i = 0; i < tiers.length; i++) {
+      const t = tiers[i]
+      const minVal = parseFloat(t.min)
+      if (isNaN(minVal) || minVal < 0) {
+        return { isValid: false, error: `Palier ${i + 1} : la valeur de début doit être un nombre positif ou nul.` }
+      }
+      
+      const maxVal = (t.max !== null && t.max !== '' && t.max !== undefined && !isNaN(t.max)) ? parseFloat(t.max) : null
+      if (maxVal !== null && maxVal < minVal) {
+        return { isValid: false, error: `Palier ${i + 1} : la valeur de fin (${maxVal}) doit être supérieure ou égale au début (${minVal}).` }
+      }
+
+      const disc = parseFloat(t.discountPercent || 0)
+      if (isNaN(disc) || disc < 0 || disc > 100) {
+        return { isValid: false, error: `Palier ${i + 1} : le taux de remise doit être compris entre 0% et 100%.` }
+      }
+
+      // Contrôle anti-chevauchement avec la tranche précédente
+      if (i > 0) {
+        const prev = tiers[i - 1]
+        const prevMax = (prev.max !== null && prev.max !== '' && prev.max !== undefined && !isNaN(prev.max)) ? parseFloat(prev.max) : null
+        
+        if (prevMax === null) {
+          return { isValid: false, error: `Le palier ${i} est ouvert (« et plus »). Impossible d'ajouter un palier après une tranche ouverte.` }
+        }
+        if (minVal <= prevMax) {
+          return { isValid: false, error: `Chevauchement détecté : le palier ${i + 1} (début: ${minVal}) doit commencer après la fin du palier ${i} (fin: ${prevMax}).` }
+        }
+      }
+    }
+
+    return { isValid: true, error: null }
+  }, [hasTiers, tiers])
+
   // Extract unique categories from products mapped to clean families
-  const families = BARDAHL_FAMILIES.map(f => f.label)
+  const families = activeFamilies.map(f => f.label)
 
   // Selected product lookups
   const selectedTargetProduct = products.find(p => p.reference === formTargetProductRef) || products[0]
@@ -229,6 +269,60 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     return matchesSearch && matchesType && matchesStatus
   })
 
+  const handleAddTargetProduct = (prod) => {
+    if (!prod || !prod.reference) return
+    if (!formTargetProductRefs.includes(prod.reference)) {
+      setFormTargetProductRefs(prev => [...prev, prod.reference])
+    }
+    setTargetSearchQuery('')
+    setShowTargetDropdown(false)
+  }
+
+  const handleRemoveTargetProduct = (refToRemove) => {
+    setFormTargetProductRefs(prev => prev.filter(r => r !== refToRemove))
+  }
+
+  const handleClearAllTargetProducts = () => {
+    setFormTargetProductRefs([])
+  }
+
+  const handleAddTier = () => {
+    setTiers(prev => {
+      const last = prev[prev.length - 1]
+      let nextMin = 1
+      if (last) {
+        if (last.max !== null && last.max !== '' && !isNaN(last.max)) {
+          nextMin = parseFloat(last.max) + (formType === 'TYPE_4' ? 1 : 1)
+        } else {
+          nextMin = parseFloat(last.min || 0) + 10
+        }
+      }
+      return [
+        ...prev,
+        {
+          id: `t_${Date.now()}`,
+          min: nextMin,
+          max: '',
+          discountPercent: Math.min(100, (last ? parseFloat(last.discountPercent || 0) : 0) + 5),
+          freeQuantity: (last ? parseInt(last.freeQuantity || 0, 10) : 0) + 1,
+          voucherAmount: (last ? parseFloat(last.voucherAmount || 0) : 0)
+        }
+      ]
+    })
+  }
+
+  const handleRemoveTier = (idx) => {
+    if (tiers.length <= 1) {
+      alert("Une promotion par paliers doit contenir au moins une tranche.")
+      return
+    }
+    setTiers(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleUpdateTier = (idx, field, value) => {
+    setTiers(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t))
+  }
+
   const handleOpenAdd = () => {
     if (!isAdmin) return
     setEditingPromo(null)
@@ -237,8 +331,9 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormType('TYPE_1')
     setFormTargetType('PRODUCT')
     const initialProduct = products[0]
+    setFormTargetProductRefs(initialProduct ? [initialProduct.reference] : ['34131'])
     setFormTargetProductRef(initialProduct?.reference || '34131')
-    const detectedFam = initialProduct ? getFamilyInfo(initialProduct.category).label : BARDAHL_FAMILIES[0].label
+    const detectedFam = initialProduct ? getFamilyInfo(initialProduct.category, activeFamilies).label : (activeFamilies[0]?.label || 'Additifs & Traitements')
     setFormTargetFamily(detectedFam)
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
@@ -255,11 +350,11 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormIsActive(true)
     setFormStartDate('2026-01-01')
     setFormEndDate('2026-12-31')
-    setHasTiers(false)
+    setHasTiers(true)
     setTiers([
-      { threshold: 10, discountPercent: 5, freeQuantity: 1 },
-      { threshold: 20, discountPercent: 7, freeQuantity: 2 },
-      { threshold: 30, discountPercent: 10, freeQuantity: 3 }
+      { id: 't1', min: 1, max: 9, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
+      { id: 't2', min: 10, max: 29, discountPercent: 10, freeQuantity: 1, voucherAmount: 0 },
+      { id: 't3', min: 30, max: '', discountPercent: 15, freeQuantity: 2, voucherAmount: 0 }
     ])
     setShowModal(true)
   }
@@ -275,11 +370,18 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormName(promo.name || '')
     setFormDesc(promo.description || '')
     setFormType(promo.type || 'TYPE_1')
-    setFormTargetType(promo.targetType || (promo.targetProductRef ? 'PRODUCT' : 'FAMILY'))
-    const prod = products.find(p => p.reference === promo.targetProductRef)
-    const detectedFam = prod ? getFamilyInfo(prod.category).label : (promo.targetFamily || BARDAHL_FAMILIES[0].label)
-    setFormTargetFamily(detectedFam)
-    setFormTargetProductRef(promo.targetProductRef || products[0]?.reference || '')
+    setFormTargetType(promo.targetType || (promo.targetProductRef || promo.targetProductRefs ? 'PRODUCT' : 'FAMILY'))
+    
+    // Multi-références
+    const refs = (promo.targetProductRefs && Array.isArray(promo.targetProductRefs) && promo.targetProductRefs.length > 0)
+      ? promo.targetProductRefs
+      : (promo.targetProductRef ? [promo.targetProductRef] : (products[0] ? [products[0].reference] : []))
+    setFormTargetProductRefs(refs)
+    setFormTargetProductRef(refs[0] || '')
+
+    const firstProd = products.find(p => p.reference === refs[0])
+    const detectedFam = firstProd ? getFamilyInfo(firstProd.category, activeFamilies).label : (promo.targetFamily || activeFamilies[0]?.label || 'Additifs & Traitements')
+    setFormTargetFamily(promo.targetFamily || detectedFam)
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
 
@@ -295,15 +397,23 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormIsActive(promo.isActive !== false)
     setFormStartDate(promo.startDate || '2026-01-01')
     setFormEndDate(promo.endDate || '2026-12-31')
-    if (promo.tiers && promo.tiers.length > 0) {
+
+    if (promo.tiers && Array.isArray(promo.tiers) && promo.tiers.length > 0) {
       setHasTiers(true)
-      setTiers(promo.tiers)
+      setTiers(promo.tiers.map((t, idx) => ({
+        id: t.id || `t_${idx + 1}`,
+        min: t.min !== undefined && t.min !== null ? t.min : (t.threshold || 0),
+        max: (t.max !== null && t.max !== undefined && t.max !== '') ? t.max : '',
+        discountPercent: t.discountPercent !== undefined ? t.discountPercent : 0,
+        freeQuantity: t.freeQuantity !== undefined ? t.freeQuantity : 0,
+        voucherAmount: t.voucherAmount !== undefined ? t.voucherAmount : 0
+      })))
     } else {
       setHasTiers(false)
       setTiers([
-        { threshold: 10, discountPercent: 5, freeQuantity: 1 },
-        { threshold: 20, discountPercent: 7, freeQuantity: 2 },
-        { threshold: 30, discountPercent: 10, freeQuantity: 3 }
+        { id: 't1', min: 1, max: 9, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
+        { id: 't2', min: 10, max: 29, discountPercent: promo.discountPercent || 10, freeQuantity: promo.freeQuantity || 1, voucherAmount: promo.voucherAmount || 0 },
+        { id: 't3', min: 30, max: '', discountPercent: (promo.discountPercent || 10) + 5, freeQuantity: (promo.freeQuantity || 1) + 1, voucherAmount: promo.voucherAmount || 0 }
       ])
     }
     setShowModal(true)
@@ -316,8 +426,42 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       return
     }
 
+    if (formTargetType === 'PRODUCT' && formTargetProductRefs.length === 0) {
+      alert("Veuillez sélectionner au moins une référence produit pour la promotion.")
+      return
+    }
+
+    if (hasTiers && !tierValidation.isValid) {
+      alert(tierValidation.error || "Les tranches de paliers configurées sont invalides.")
+      return
+    }
+
     const freeProductObj = products.find(p => p.reference === formFreeProductRef)
-    const targetProductObj = products.find(p => p.reference === formTargetProductRef)
+    const firstTargetProductObj = products.find(p => p.reference === formTargetProductRefs[0])
+
+    // Cleaned tiers data
+    const cleanTiers = hasTiers ? tiers.map((t, idx) => ({
+      id: t.id || `tier_${idx + 1}`,
+      min: parseFloat(t.min) || 0,
+      max: (t.max !== null && t.max !== '' && t.max !== undefined && !isNaN(t.max)) ? parseFloat(t.max) : null,
+      discountPercent: parseFloat(t.discountPercent) || 0,
+      freeQuantity: parseInt(t.freeQuantity, 10) || 0,
+      voucherAmount: parseFloat(t.voucherAmount) || 0
+    })) : undefined
+
+    // Determine fallback threshold from first non-zero advantage tier or formThreshold
+    let fallbackThreshold = parseFloat(formThreshold) || 1
+    let fallbackDiscount = parseFloat(formDiscountPercent) || 0
+    let fallbackFreeQty = parseInt(formFreeQuantity, 10) || 0
+    let fallbackVoucher = parseFloat(formVoucherAmount) || 0
+
+    if (cleanTiers && cleanTiers.length > 0) {
+      const activeTier = cleanTiers.find(t => t.discountPercent > 0 || t.freeQuantity > 0 || t.voucherAmount > 0) || cleanTiers[0]
+      fallbackThreshold = activeTier.min
+      fallbackDiscount = activeTier.discountPercent
+      fallbackFreeQty = activeTier.freeQuantity
+      fallbackVoucher = activeTier.voucherAmount
+    }
 
     const payload = {
       name: formName.trim(),
@@ -325,18 +469,22 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       type: formType,
       targetType: formTargetType,
       targetFamily: formTargetType === 'FAMILY' ? formTargetFamily : undefined,
-      targetProductRef: formTargetType === 'PRODUCT' ? (formTargetProductRef || products[0]?.reference) : undefined,
-      targetProductName: formTargetType === 'PRODUCT' ? (targetProductObj?.name || formTargetProductRef || products[0]?.name) : undefined,
-      targetProductId: formTargetType === 'PRODUCT' ? (targetProductObj?.id || formTargetProductRef || products[0]?.id) : undefined,
-      threshold: parseFloat(formThreshold) || 1,
-      discountPercent: parseFloat(formDiscountPercent) || 0,
+      targetProductRefs: formTargetType === 'PRODUCT' ? formTargetProductRefs : undefined,
+      targetProductRef: formTargetType === 'PRODUCT' ? formTargetProductRefs[0] : undefined,
+      targetProductName: formTargetType === 'PRODUCT' 
+        ? (formTargetProductRefs.length > 1 ? `${formTargetProductRefs.length} références Bardahl` : (firstTargetProductObj?.name || formTargetProductRefs[0]))
+        : undefined,
+      targetProductId: formTargetType === 'PRODUCT' ? (firstTargetProductObj?.id || formTargetProductRefs[0]) : undefined,
+      threshold: fallbackThreshold,
+      discountPercent: fallbackDiscount,
+      hasTiers: hasTiers,
+      tiers: cleanTiers,
       freeItemType: formType === 'TYPE_2' ? formFreeItemType : undefined,
       freeProductRef: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (formFreeProductRef || products[0]?.reference) : undefined,
       freeProductName: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.name || formFreeProductRef || products[0]?.name) : undefined,
       freeProductId: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.id || formFreeProductRef || products[0]?.id) : undefined,
-      freeQuantity: formType === 'TYPE_2' ? (parseInt(formFreeQuantity, 10) || 1) : 0,
-      tiers: (formType === 'TYPE_2' && hasTiers) ? tiers : undefined,
-      voucherAmount: formType === 'TYPE_3' ? (parseFloat(formVoucherAmount) || 0) : 0,
+      freeQuantity: formType === 'TYPE_2' ? fallbackFreeQty : 0,
+      voucherAmount: formType === 'TYPE_3' ? fallbackVoucher : 0,
       isActive: formIsActive,
       startDate: formStartDate,
       endDate: formEndDate
@@ -577,47 +725,76 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                     {promo.description}
                   </p>
 
-                  <div style={{ background: '#0D0F12', borderRadius: '10px', padding: '12px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ background: '#0D0F12', borderRadius: '10px', padding: '12px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Cible :</span>
-                      <strong style={{ color: 'var(--bardahl-yellow)' }}>
-                        {promo.targetType === 'FAMILY' ? `Famille ${promo.targetFamily}` : (promo.targetProductName || promo.targetProductRef)}
-                      </strong>
+                      {promo.targetType === 'FAMILY' ? (
+                        <strong style={{ color: 'var(--bardahl-yellow)' }}>Famille {promo.targetFamily}</strong>
+                      ) : (
+                        <div style={{ textAlign: 'right' }}>
+                          {promo.targetProductRefs && promo.targetProductRefs.length > 1 ? (
+                            <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
+                              🏷️ {promo.targetProductRefs.length} réf. Bardahl ({promo.targetProductRefs.slice(0, 3).join(', ')}{promo.targetProductRefs.length > 3 ? '...' : ''})
+                            </span>
+                          ) : (
+                            <strong style={{ color: 'var(--bardahl-yellow)' }}>
+                              {promo.targetProductName || promo.targetProductRef || 'Produit Spécifique'}
+                            </strong>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Condition :</span>
-                      <strong>
-                        {promo.type === 'TYPE_4' ? `Dès ${promo.threshold.toFixed(2)} DH` : `Dès ${promo.threshold} cartons`}
-                      </strong>
-                    </div>
-
-                    {promo.discountPercent > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Remise :</span>
-                        <strong style={{ color: '#007AFF' }}>{promo.discountPercent}%</strong>
-                      </div>
-                    )}
-
-                    {promo.type === 'TYPE_2' && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Cadeau :</span>
-                        <span style={{ color: '#34C759', fontWeight: 'bold' }}>
-                          +{promo.freeQuantity} carton(s) {promo.freeItemType === 'SAME_PRODUCT' ? '(Même réf.)' : `(${promo.freeProductName || promo.freeProductRef})`}
+                    {promo.tiers && promo.tiers.length > 0 ? (
+                      <div style={{ marginTop: '4px', paddingTop: '6px', borderTop: '1px dashed #2B313E' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '11px', fontWeight: '700', display: 'block', marginBottom: '4px' }}>
+                          ⚡ Paliers progressifs ({promo.tiers.length} tranches) :
                         </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {promo.tiers.map((t, i) => {
+                            const minVal = t.min !== undefined ? t.min : t.threshold
+                            const maxVal = (t.max !== null && t.max !== undefined && t.max !== '') ? t.max : '∞'
+                            const unit = promo.type === 'TYPE_4' ? 'DH' : 'cartons'
+                            return (
+                              <div key={i} style={{ fontSize: '11px', color: '#DDD', display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '3px 6px', borderRadius: '4px' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>
+                                  Tranche {i + 1} ({minVal} à {maxVal} {unit}) :
+                                </span>
+                                <strong>
+                                  <span style={{ color: '#007AFF' }}>{t.discountPercent}%</span>
+                                  {t.freeQuantity > 0 && <span style={{ color: '#34C759', marginLeft: '6px' }}>+{t.freeQuantity} gratuit</span>}
+                                  {t.voucherAmount > 0 && <span style={{ color: '#FF9500', marginLeft: '6px' }}>-{t.voucherAmount} DH</span>}
+                                </strong>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
-                    )}
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Condition :</span>
+                          <strong>
+                            {promo.type === 'TYPE_4' ? `Dès ${promo.threshold.toFixed(2)} DH` : `Dès ${promo.threshold} cartons`}
+                          </strong>
+                        </div>
 
-                    {promo.tiers && promo.tiers.length > 0 && (
-                      <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #2B313E' }}>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '11px', display: 'block', marginBottom: '2px' }}>Paliers exclusifs :</span>
-                        {promo.tiers.map((t, i) => (
-                          <div key={i} style={{ fontSize: '11px', color: '#DDD', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>• {t.threshold} cartons :</span>
-                            <strong>{t.discountPercent}% + {t.freeQuantity} offert</strong>
+                        {promo.discountPercent > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Remise :</span>
+                            <strong style={{ color: '#007AFF' }}>{promo.discountPercent}%</strong>
                           </div>
-                        ))}
-                      </div>
+                        )}
+
+                        {promo.type === 'TYPE_2' && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Cadeau :</span>
+                            <span style={{ color: '#34C759', fontWeight: 'bold' }}>
+                              +{promo.freeQuantity} carton(s) {promo.freeItemType === 'SAME_PRODUCT' ? '(Même réf.)' : `(${promo.freeProductName || promo.freeProductRef})`}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {promo.type === 'TYPE_3' && promo.voucherAmount > 0 && (
@@ -753,39 +930,77 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       <td>
                         <strong style={{ color: '#FFFFFF', display: 'block', fontSize: '13px' }}>{promo.name}</strong>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
-                            {promo.targetType === 'FAMILY' ? `Famille ${promo.targetFamily}` : (promo.targetProductName || promo.targetProductRef)}
+                          {promo.targetType === 'FAMILY' ? (
+                            <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
+                              🏷️ Famille {promo.targetFamily}
+                            </span>
+                          ) : (
+                            <div>
+                              {promo.targetProductRefs && promo.targetProductRefs.length > 1 ? (
+                                <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold', background: 'rgba(255, 208, 0, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  🏷️ {promo.targetProductRefs.length} réf. Bardahl ({promo.targetProductRefs.slice(0, 3).join(', ')}{promo.targetProductRefs.length > 3 ? '...' : ''})
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
+                                  📦 {promo.targetProductName || promo.targetProductRef || 'Produit Spécifique'}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        {promo.tiers && promo.tiers.length > 0 ? (
+                          <div>
+                            <span style={{ fontWeight: '800', color: '#AF52DE', fontSize: '12px', display: 'block' }}>
+                              ⚡ Paliers ({promo.tiers.length} tranches)
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                              {promo.tiers[0].min || 0} à {promo.tiers[promo.tiers.length - 1].max || '∞'} {promo.type === 'TYPE_4' ? 'DH' : 'ctns'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontWeight: '800', color: '#FFF', fontSize: '12px' }}>
+                            {promo.type === 'TYPE_4' ? `Dès ${promo.threshold.toFixed(2)} DH` : `Dès ${promo.threshold} cartons`}
                           </span>
-                        </div>
+                        )}
                       </td>
                       <td>
-                        <span style={{ fontWeight: '800', color: '#FFF', fontSize: '12px' }}>
-                          {promo.type === 'TYPE_4' ? `Dès ${promo.threshold.toFixed(2)} DH` : `Dès ${promo.threshold} cartons`}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px' }}>
-                          {promo.discountPercent > 0 && (
-                            <span style={{ color: '#007AFF', fontWeight: 'bold' }}>
-                              Remise : {promo.discountPercent}%
-                            </span>
-                          )}
-                          {promo.freeQuantity > 0 && promo.type === 'TYPE_2' && (
-                            <span style={{ color: '#34C759', fontWeight: 'bold' }}>
-                              🎁 +{promo.freeQuantity} carton(s) gratuit(s)
-                            </span>
-                          )}
-                          {promo.voucherAmount > 0 && promo.type === 'TYPE_3' && (
-                            <span style={{ color: '#FF9500', fontWeight: 'bold' }}>
-                              Bon : -{promo.voucherAmount.toFixed(2)} DH
-                            </span>
-                          )}
-                          {promo.tiers && promo.tiers.length > 0 && (
-                            <span style={{ color: '#AF52DE', fontSize: '10px' }}>
-                              ({promo.tiers.length} paliers configurés)
-                            </span>
-                          )}
-                        </div>
+                        {promo.tiers && promo.tiers.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
+                            {promo.tiers.map((t, idx) => {
+                              const minVal = t.min !== undefined ? t.min : t.threshold
+                              const maxVal = (t.max !== null && t.max !== undefined && t.max !== '') ? t.max : '∞'
+                              const unit = promo.type === 'TYPE_4' ? 'DH' : 'ctns'
+                              return (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>[{minVal}-{maxVal} {unit}]:</span>
+                                  <strong style={{ color: '#007AFF' }}>{t.discountPercent}%</strong>
+                                  {t.freeQuantity > 0 && <span style={{ color: '#34C759', fontWeight: 'bold' }}>+{t.freeQuantity} gratuit</span>}
+                                  {t.voucherAmount > 0 && <span style={{ color: '#FF9500', fontWeight: 'bold' }}>-{t.voucherAmount} DH</span>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px' }}>
+                            {promo.discountPercent > 0 && (
+                              <span style={{ color: '#007AFF', fontWeight: 'bold' }}>
+                                Remise : {promo.discountPercent}%
+                              </span>
+                            )}
+                            {promo.freeQuantity > 0 && promo.type === 'TYPE_2' && (
+                              <span style={{ color: '#34C759', fontWeight: 'bold' }}>
+                                🎁 +{promo.freeQuantity} carton(s) gratuit(s)
+                              </span>
+                            )}
+                            {promo.voucherAmount > 0 && promo.type === 'TYPE_3' && (
+                              <span style={{ color: '#FF9500', fontWeight: 'bold' }}>
+                                Bon : -{promo.voucherAmount.toFixed(2)} DH
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
@@ -957,7 +1172,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       🏷️ FAMILLE DE PRODUITS ENTIÈRE (Sélectionnez la famille Bardahl ciblée)
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
-                      {BARDAHL_FAMILIES.map(fam => {
+                      {activeFamilies.map(fam => {
                         const isSelected = formTargetFamily === fam.label
                         return (
                           <div
@@ -989,112 +1204,102 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                   </div>
                 ) : (
                   <div className="target-product-picker-container" style={{ position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                        RECHERCHER ET SÉLECTIONNER LE PRODUIT ({products.length} références)
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                        RÉFÉRENCES PRODUITS CIBLÉES ({formTargetProductRefs.length} article{formTargetProductRefs.length > 1 ? 's' : ''} sélectionné{formTargetProductRefs.length > 1 ? 's' : ''})
                       </label>
-                      {selectedTargetProduct && (
-                        <span style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
-                          Réf : {selectedTargetProduct.reference}
-                        </span>
+                      {formTargetProductRefs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAllTargetProducts}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#FF453A',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            padding: '2px 6px'
+                          }}
+                        >
+                          Tout effacer
+                        </button>
                       )}
                     </div>
 
-                    {/* Selected Product Card Banner with Automatic Family Detection */}
-                    {selectedTargetProduct && (() => {
-                      const famInfo = getFamilyInfo(selectedTargetProduct.category)
-                      return (
-                        <div style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '8px',
-                          padding: '12px 14px',
-                          background: 'rgba(255, 208, 0, 0.08)',
-                          border: '1px solid rgba(255, 208, 0, 0.3)',
-                          borderRadius: '10px',
-                          marginBottom: '10px'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ background: 'var(--bardahl-yellow)', color: '#000', fontWeight: '900', padding: '3px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                                {selectedTargetProduct.reference}
+                    {/* Selected Multi-Reference Chips Container */}
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      minHeight: formTargetProductRefs.length === 0 ? 'auto' : '44px',
+                      padding: formTargetProductRefs.length === 0 ? '12px' : '8px',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}>
+                      {formTargetProductRefs.length === 0 ? (
+                        <span style={{ fontSize: '12px', color: '#FF9500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <AlertCircle size={14} /> Aucune référence sélectionnée. Recherchez et ajoutez un ou plusieurs articles ci-dessous.
+                        </span>
+                      ) : (
+                        formTargetProductRefs.map(ref => {
+                          const prod = products.find(p => p.reference === ref) || { reference: ref, name: ref, category: 'Bardahl' }
+                          const famInfo = getFamilyInfo(prod.category, activeFamilies)
+                          return (
+                            <span
+                              key={ref}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: 'rgba(255, 208, 0, 0.12)',
+                                border: '1px solid rgba(255, 208, 0, 0.35)',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '11px',
+                                color: '#FFFFFF'
+                              }}
+                            >
+                              <span style={{ background: 'var(--bardahl-yellow)', color: '#000', fontWeight: '900', padding: '1px 5px', borderRadius: '3px', fontSize: '10px' }}>
+                                {ref}
                               </span>
-                              <div>
-                                <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '13px' }}>
-                                  {selectedTargetProduct.name}
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                  Prix : <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>{(parseFloat(selectedTargetProduct.priceTtc) || 0).toFixed(2)} DH TTC</span>
-                                </div>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={14} /> Produit sélectionné
+                              <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {prod.name}
+                              </span>
+                              <span style={{ color: famInfo.color, fontSize: '10px', fontWeight: 'bold' }}>
+                                ({famInfo.label.split(' ')[0]})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTargetProduct(ref)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#FF453A',
+                                  fontWeight: '900',
+                                  fontSize: '14px',
+                                  cursor: 'pointer',
+                                  marginLeft: '2px',
+                                  lineHeight: 1
+                                }}
+                                title="Retirer cette référence"
+                              >
+                                &times;
+                              </button>
                             </span>
-                          </div>
-
-                          {/* Auto-detected Family Tag Banner */}
-                          <div style={{
-                            padding: '8px 12px',
-                            background: 'rgba(0, 0, 0, 0.4)',
-                            borderRadius: '8px',
-                            border: `1px solid ${famInfo.color}40`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '8px'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '18px' }}>{famInfo.icon}</span>
-                              <div>
-                                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.5px' }}>
-                                  🏷️ Famille de Produits Entière (Détection Automatique)
-                                </div>
-                                <div style={{ color: famInfo.color, fontWeight: '800', fontSize: '13px' }}>
-                                  {famInfo.label}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* The 5 Bardahl Official Families Mini Badges */}
-                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                              {BARDAHL_FAMILIES.map(fam => {
-                                const isCurrent = fam.label === famInfo.label
-                                return (
-                                  <span
-                                    key={fam.id}
-                                    style={{
-                                      fontSize: '10px',
-                                      fontWeight: isCurrent ? '800' : '500',
-                                      padding: '3px 7px',
-                                      borderRadius: '6px',
-                                      background: isCurrent ? fam.color : 'rgba(255,255,255,0.06)',
-                                      color: isCurrent ? '#000000' : 'var(--text-secondary)',
-                                      border: isCurrent ? `1px solid ${fam.color}` : '1px solid transparent',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '3px'
-                                    }}
-                                  >
-                                    <span>{fam.icon}</span>
-                                    <span>{fam.label.split(' ')[0]}</span>
-                                    {isCurrent && <Check size={11} />}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })()}
+                          )
+                        })
+                      )}
+                    </div>
 
                     {/* Search Input Field */}
                     <div style={{ position: 'relative' }}>
                       <input
                         type="text"
                         className="input-field"
-                        placeholder="🔎 Taper une référence ou nom (ex: 34131, 10W40, Additif...)"
+                        placeholder="🔎 Taper une référence ou un nom pour ajouter un produit..."
                         value={targetSearchQuery}
                         onChange={e => {
                           setTargetSearchQuery(e.target.value)
@@ -1149,22 +1354,22 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                           </div>
                         ) : (
                           filteredTargetProducts.slice(0, 100).map(p => {
-                            const isSelected = p.reference === formTargetProductRef
+                            const isSelected = formTargetProductRefs.includes(p.reference)
                             return (
                               <div
                                 key={p.id}
                                 onClick={() => {
-                                  setFormTargetProductRef(p.reference)
-                                  const detected = getFamilyInfo(p.category)
-                                  setFormTargetFamily(detected.label)
-                                  setTargetSearchQuery('')
-                                  setShowTargetDropdown(false)
+                                  if (isSelected) {
+                                    handleRemoveTargetProduct(p.reference)
+                                  } else {
+                                    handleAddTargetProduct(p)
+                                  }
                                 }}
                                 style={{
-                                  padding: '10px 14px',
+                                  padding: '8px 12px',
                                   cursor: 'pointer',
                                   borderBottom: '1px solid rgba(255,255,255,0.06)',
-                                  background: isSelected ? 'rgba(255, 208, 0, 0.15)' : 'transparent',
+                                  background: isSelected ? 'rgba(52, 199, 89, 0.15)' : 'transparent',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
@@ -1176,7 +1381,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <span style={{
-                                    background: isSelected ? 'var(--bardahl-yellow)' : 'rgba(255,255,255,0.1)',
+                                    background: isSelected ? '#34C759' : 'rgba(255,255,255,0.1)',
                                     color: isSelected ? '#000' : '#FFF',
                                     fontWeight: '800',
                                     fontSize: '11px',
@@ -1185,15 +1390,22 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                   }}>
                                     {p.reference}
                                   </span>
-                                  <span style={{ color: '#FFFFFF', fontSize: '13px', fontWeight: '600' }}>
+                                  <span style={{ color: '#FFFFFF', fontSize: '12px', fontWeight: '600' }}>
                                     {p.name}
                                   </span>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 5px', borderRadius: '4px' }}>
                                     {p.category}
                                   </span>
                                 </div>
-                                <div style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                                  {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px' }}>
+                                    {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
+                                  </span>
+                                  {isSelected ? (
+                                    <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>✓ Ajouté</span>
+                                  ) : (
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+ Ajouter</span>
+                                  )}
                                 </div>
                               </div>
                             )
@@ -1210,76 +1422,252 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                 )}
               </div>
 
-              {/* Threshold & Discount */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    {formType === 'TYPE_4' ? 'SEUIL MONTANT (DH TTC) *' : 'SEUIL CARTONS ACHETÉS *'}
+              {/* Conditions & Paliers Dynamiques */}
+              <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Zap size={16} /> CONDITIONS D'ÉLIGIBILITÉ & PALIERS *
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="input-field"
-                    value={formThreshold}
-                    onChange={e => setFormThreshold(e.target.value)}
-                    required
-                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: '#FFF' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasTiers}
+                      onChange={e => setHasTiers(e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)' }}
+                    />
+                    <strong style={{ color: hasTiers ? 'var(--bardahl-yellow)' : 'var(--text-secondary)' }}>
+                      ⚡ Activer les tranches / paliers dynamiques (Évolutions 3, 4, 5)
+                    </strong>
+                  </label>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    TAUX DE REMISE (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    className="input-field"
-                    value={formDiscountPercent}
-                    onChange={e => setFormDiscountPercent(e.target.value)}
-                  />
-                </div>
-              </div>
+                {hasTiers ? (
+                  <div>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                      Configurez des tranches progressives ({formType === 'TYPE_4' ? 'en montant DH TTC' : 'en nombre de cartons'}). Pour la dernière tranche, laissez la case <strong>Fin (Max)</strong> vide pour signifier « et plus » (tranche ouverte sans limite).
+                    </p>
 
-              {/* Specific Options for Type 2 (Carton gratuit) */}
-              {formType === 'TYPE_2' && (
-                <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <h4 style={{ fontSize: '13px', fontWeight: '800', color: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Gift size={16} /> CONFIGURATION DU CARTON GRATUIT
-                  </h4>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        CHOIX DE RÉFÉRENCE
-                      </label>
-                      <select value={formFreeItemType} onChange={e => setFormFreeItemType(e.target.value)} className="input-field" style={{ width: '100%', fontSize: '12px' }}>
-                        <option value="SAME_PRODUCT">Option A : Même référence</option>
-                        <option value="DIFFERENT_PRODUCT">Option B : Autre référence offerte</option>
-                      </select>
+                    <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid var(--border-card)', textAlign: 'left', color: 'var(--text-secondary)' }}>
+                            <th style={{ padding: '8px 10px', width: '65px' }}>Tranche</th>
+                            <th style={{ padding: '8px 10px', minWidth: '100px' }}>
+                              Début ({formType === 'TYPE_4' ? 'DH' : 'Ctns'}) *
+                            </th>
+                            <th style={{ padding: '8px 10px', minWidth: '110px' }}>
+                              Fin ({formType === 'TYPE_4' ? 'DH' : 'Ctns'})
+                            </th>
+                            <th style={{ padding: '8px 10px', minWidth: '95px' }}>
+                              Remise (%)
+                            </th>
+                            {formType === 'TYPE_2' && (
+                              <th style={{ padding: '8px 10px', minWidth: '100px' }}>
+                                🎁 Cartons offerts
+                              </th>
+                            )}
+                            {formType === 'TYPE_3' && (
+                              <th style={{ padding: '8px 10px', minWidth: '100px' }}>
+                                Bon d'achat (DH)
+                              </th>
+                            )}
+                            <th style={{ padding: '8px 10px', width: '45px', textAlign: 'center' }}>Suppr.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tiers.map((tier, idx) => (
+                            <tr key={tier.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                              <td style={{ padding: '6px 10px', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                                N°{idx + 1}
+                              </td>
+                              <td style={{ padding: '6px 10px' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step={formType === 'TYPE_4' ? '1' : '1'}
+                                  value={tier.min}
+                                  onChange={e => handleUpdateTier(idx, 'min', e.target.value)}
+                                  className="input-field"
+                                  style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px 10px' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step={formType === 'TYPE_4' ? '1' : '1'}
+                                  placeholder="et plus (∞)"
+                                  value={tier.max === null || tier.max === undefined ? '' : tier.max}
+                                  onChange={e => handleUpdateTier(idx, 'max', e.target.value === '' ? '' : e.target.value)}
+                                  className="input-field"
+                                  style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+                                />
+                              </td>
+                              <td style={{ padding: '6px 10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    value={tier.discountPercent}
+                                    onChange={e => handleUpdateTier(idx, 'discountPercent', e.target.value)}
+                                    className="input-field"
+                                    style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+                                  />
+                                  <span style={{ color: 'var(--text-secondary)' }}>%</span>
+                                </div>
+                              </td>
+                              {formType === 'TYPE_2' && (
+                                <td style={{ padding: '6px 10px' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={tier.freeQuantity}
+                                    onChange={e => handleUpdateTier(idx, 'freeQuantity', e.target.value)}
+                                    className="input-field"
+                                    style={{ width: '100%', fontSize: '12px', padding: '6px 8px', color: '#34C759', fontWeight: 'bold' }}
+                                  />
+                                </td>
+                              )}
+                              {formType === 'TYPE_3' && (
+                                <td style={{ padding: '6px 10px' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="10"
+                                    value={tier.voucherAmount}
+                                    onChange={e => handleUpdateTier(idx, 'voucherAmount', e.target.value)}
+                                    className="input-field"
+                                    style={{ width: '100%', fontSize: '12px', padding: '6px 8px', color: '#FF9500', fontWeight: 'bold' }}
+                                  />
+                                </td>
+                              )}
+                              <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveTier(idx)}
+                                  disabled={tiers.length <= 1}
+                                  style={{
+                                    background: 'rgba(255, 69, 58, 0.15)',
+                                    border: '1px solid rgba(255, 69, 58, 0.3)',
+                                    color: '#FF453A',
+                                    borderRadius: '6px',
+                                    padding: '4px 6px',
+                                    cursor: tiers.length <= 1 ? 'not-allowed' : 'pointer',
+                                    opacity: tiers.length <= 1 ? 0.4 : 1
+                                  }}
+                                  title="Supprimer ce palier"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
 
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={handleAddTier}
+                        className="btn-secondary"
+                        style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--bardahl-yellow)', borderColor: 'rgba(255, 208, 0, 0.4)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Plus size={14} /> Ajouter une tranche / palier
+                      </button>
+
+                      {!tierValidation.isValid ? (
+                        <div style={{ padding: '6px 12px', borderRadius: '6px', background: 'rgba(255, 69, 58, 0.15)', border: '1px solid #FF453A', color: '#FF453A', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <AlertTriangle size={14} />
+                          <span>{tierValidation.error}</span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '11px', color: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <CheckCircle2 size={13} />
+                          <span>Paliers cohérents et ordonnés.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Mode Seuil Unique */
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        QUANTITÉ GRATUITE (CARTONS)
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {formType === 'TYPE_4' ? 'SEUIL MONTANT MINIMAL (DH TTC) *' : 'SEUIL MINIMAL CARTONS ACHETÉS *'}
                       </label>
                       <input
                         type="number"
                         min="1"
                         className="input-field"
-                        value={formFreeQuantity}
-                        onChange={e => setFormFreeQuantity(e.target.value)}
-                        style={{ fontSize: '12px' }}
+                        value={formThreshold}
+                        onChange={e => setFormThreshold(e.target.value)}
+                        required
                       />
                     </div>
+
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        TAUX DE REMISE COMMERCIALE (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        className="input-field"
+                        value={formDiscountPercent}
+                        onChange={e => setFormDiscountPercent(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Specific Options for Type 2 (Carton gratuit) */}
+              {formType === 'TYPE_2' && (
+                <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: '800', color: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Gift size={16} /> CONFIGURATION DE L'ARTICLE GRATUIT OFFERT (VALEUR 0.00 DH TTC)
+                  </h4>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: hasTiers ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        MODALITÉ DU CADEAU
+                      </label>
+                      <select value={formFreeItemType} onChange={e => setFormFreeItemType(e.target.value)} className="input-field" style={{ width: '100%', fontSize: '12px' }}>
+                        <option value="SAME_PRODUCT">Option A : Même référence que le produit commandé</option>
+                        <option value="DIFFERENT_PRODUCT">Option B : Autre référence offerte en cadeau</option>
+                      </select>
+                    </div>
+
+                    {!hasTiers && (
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          QUANTITÉ OFFERTE (CARTONS)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="input-field"
+                          value={formFreeQuantity}
+                          onChange={e => setFormFreeQuantity(e.target.value)}
+                          style={{ fontSize: '12px' }}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {formFreeItemType === 'DIFFERENT_PRODUCT' && (
                     <div className="free-product-picker-container" style={{ position: 'relative' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                          RÉFÉRENCE OFFERTE EN CADEAU (RECHERCHE AUTOCOMPLETE)
+                          SÉLECTIONNER LE PRODUIT CADEAU (RECHERCHE AUTOCOMPLETE)
                         </label>
                         {selectedFreeProduct && (
                           <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
@@ -1288,7 +1676,6 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                         )}
                       </div>
 
-                      {/* Selected Gift Card Banner */}
                       {selectedFreeProduct && (
                         <div style={{
                           display: 'flex',
@@ -1309,12 +1696,11 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                             </span>
                           </div>
                           <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
-                            🎁 Offert
+                            🎁 Offert à 0.00 DH TTC
                           </span>
                         </div>
                       )}
 
-                      {/* Search Input Field */}
                       <div style={{ position: 'relative' }}>
                         <input
                           type="text"
@@ -1352,7 +1738,6 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                         )}
                       </div>
 
-                      {/* Dropdown Options List */}
                       {showFreeDropdown && (
                         <div style={{
                           position: 'absolute',
@@ -1422,70 +1807,14 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       )}
                     </div>
                   )}
-
-                  {/* Section 5 : Paliers exclusifs */}
-                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-card)' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: '#FFF' }}>
-                      <input type="checkbox" checked={hasTiers} onChange={e => setHasTiers(e.target.checked)} />
-                      <strong>Activer plusieurs paliers pour cette promotion (Section 5)</strong>
-                    </label>
-                    {hasTiers && (
-                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          Paliers exclusifs : le système applique le palier le plus élevé atteint.
-                        </span>
-                        {tiers.map((tier, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', width: '60px' }}>Palier {idx + 1} :</span>
-                            <input
-                              type="number"
-                              placeholder="Seuil cartons"
-                              value={tier.threshold}
-                              onChange={e => {
-                                const val = parseInt(e.target.value, 10) || 0
-                                setTiers(prev => prev.map((t, i) => i === idx ? { ...t, threshold: val } : t))
-                              }}
-                              className="input-field"
-                              style={{ width: '90px', fontSize: '12px', padding: '4px 6px' }}
-                            />
-                            <span style={{ fontSize: '11px' }}>cartons →</span>
-                            <input
-                              type="number"
-                              placeholder="Remise %"
-                              value={tier.discountPercent}
-                              onChange={e => {
-                                const val = parseFloat(e.target.value) || 0
-                                setTiers(prev => prev.map((t, i) => i === idx ? { ...t, discountPercent: val } : t))
-                              }}
-                              className="input-field"
-                              style={{ width: '70px', fontSize: '12px', padding: '4px 6px' }}
-                            />
-                            <span style={{ fontSize: '11px' }}>% +</span>
-                            <input
-                              type="number"
-                              placeholder="Qté gratuite"
-                              value={tier.freeQuantity}
-                              onChange={e => {
-                                const val = parseInt(e.target.value, 10) || 0
-                                setTiers(prev => prev.map((t, i) => i === idx ? { ...t, freeQuantity: val } : t))
-                              }}
-                              className="input-field"
-                              style={{ width: '70px', fontSize: '12px', padding: '4px 6px' }}
-                            />
-                            <span style={{ fontSize: '11px' }}>gratuit</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
               {/* Specific Options for Type 3 (Bon d'achat) */}
-              {formType === 'TYPE_3' && (
+              {formType === 'TYPE_3' && !hasTiers && (
                 <div style={{ background: '#0D0F12', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-card)' }}>
                   <h4 style={{ fontSize: '13px', fontWeight: '800', color: '#FF9500', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                    <DollarSign size={16} /> MONTANT DU BON D'ACHAT (SECTION 6 & 7)
+                    <DollarSign size={16} /> MONTANT DU BON D'ACHAT
                   </h4>
                   <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                     Ce bon d'achat est à montant fixe et est <strong>déduit immédiatement sur la commande actuelle</strong>.

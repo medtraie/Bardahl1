@@ -153,9 +153,12 @@ enum class FreeItemType {
 }
 
 data class PromotionTier(
-    val threshold: Int,
-    val discountPercent: Double,
-    val freeQuantity: Int
+    val threshold: Int = 0,
+    val min: Double = threshold.toDouble(),
+    val max: Double? = null,
+    val discountPercent: Double = 0.0,
+    val freeQuantity: Int = 0,
+    val voucherAmount: Double = 0.0
 )
 
 data class Promotion(
@@ -167,9 +170,11 @@ data class Promotion(
     val targetFamily: String? = null,
     val targetProductId: String? = null,
     val targetProductRef: String? = null,
+    val targetProductRefs: List<String> = emptyList(),
     val targetProductName: String? = null,
     val threshold: Double = 10.0,
     val discountPercent: Double = 0.0,
+    val hasTiers: Boolean = false,
     val freeItemType: FreeItemType = FreeItemType.SAME_PRODUCT,
     val freeProductId: String? = null,
     val freeProductRef: String? = null,
