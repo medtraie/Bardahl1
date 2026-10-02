@@ -260,6 +260,9 @@ export async function dbAddOrder(o) {
     remisePercent: o.remisePercent || 0,
     remiseMontant: o.remiseMontant || 0,
     voucherDiscount: o.voucherDiscount || 0,
+    avoirDeduction: parseFloat(o.avoirDeduction) || 0,
+    avoirOrderNumber: o.avoirOrderNumber || '',
+    totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
     appliedPromotions: o.appliedPromotions || [],
     commercialName: o.commercialName || '',
     commercialEmail: o.commercialEmail || '',
@@ -299,6 +302,9 @@ export async function dbUpdateOrder(o) {
     remisePercent: o.remisePercent || 0,
     remiseMontant: o.remiseMontant || 0,
     voucherDiscount: o.voucherDiscount || 0,
+    avoirDeduction: parseFloat(o.avoirDeduction) || 0,
+    avoirOrderNumber: o.avoirOrderNumber || '',
+    totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
     appliedPromotions: o.appliedPromotions || [],
     commercialName: o.commercialName || '',
     commercialEmail: o.commercialEmail || '',
@@ -341,29 +347,36 @@ export async function dbGetPromotions() {
       console.warn('dbGetPromotions notice:', error.message)
       return null
     }
-    return (data || []).map(row => ({
-      id: row.id,
-      name: row.name,
-      description: row.description || '',
-      type: row.type,
-      targetType: row.target_type || 'FAMILY',
-      targetFamily: row.target_family,
-      targetProductId: row.target_product_id,
-      targetProductRef: row.target_product_ref,
-      targetProductName: row.target_product_name,
-      threshold: parseFloat(row.threshold) || 10,
-      discountPercent: parseFloat(row.discount_percent) || 0,
-      freeItemType: row.free_item_type || 'SAME_PRODUCT',
-      freeProductId: row.free_product_id,
-      freeProductRef: row.free_product_ref,
-      freeProductName: row.free_product_name,
-      freeQuantity: parseInt(row.free_quantity, 10) || 0,
-      tiers: row.tiers || [],
-      voucherAmount: parseFloat(row.voucher_amount) || 0,
-      isActive: row.is_active !== false,
-      startDate: row.start_date || '2026-01-01',
-      endDate: row.end_date || '2026-12-31'
-    }))
+    return (data || []).map(row => {
+      let targetProductRefs = []
+      if (row.target_product_ref) {
+        targetProductRefs = String(row.target_product_ref).split(',').map(s => s.trim()).filter(Boolean)
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description || '',
+        type: row.type,
+        targetType: row.target_type || 'FAMILY',
+        targetFamily: row.target_family,
+        targetProductId: row.target_product_id,
+        targetProductRef: targetProductRefs[0] || row.target_product_ref || '',
+        targetProductRefs: targetProductRefs.length > 0 ? targetProductRefs : (row.target_product_ref ? [row.target_product_ref] : []),
+        targetProductName: row.target_product_name,
+        threshold: parseFloat(row.threshold) || 10,
+        discountPercent: parseFloat(row.discount_percent) || 0,
+        freeItemType: row.free_item_type || 'SAME_PRODUCT',
+        freeProductId: row.free_product_id,
+        freeProductRef: row.free_product_ref,
+        freeProductName: row.free_product_name,
+        freeQuantity: parseInt(row.free_quantity, 10) || 0,
+        tiers: row.tiers || [],
+        voucherAmount: parseFloat(row.voucher_amount) || 0,
+        isActive: row.is_active !== false,
+        startDate: row.start_date || '2026-01-01',
+        endDate: row.end_date || null
+      }
+    })
   } catch (e) {
     console.error('dbGetPromotions exception:', e)
     return null
@@ -372,6 +385,10 @@ export async function dbGetPromotions() {
 
 export async function dbAddPromotion(p) {
   try {
+    const refsString = (p.targetProductRefs && Array.isArray(p.targetProductRefs) && p.targetProductRefs.length > 0)
+      ? p.targetProductRefs.join(',')
+      : (p.targetProductRef || null)
+
     const payload = {
       id: p.id || `promo_${Date.now()}`,
       name: p.name,
@@ -380,7 +397,7 @@ export async function dbAddPromotion(p) {
       target_type: p.targetType || 'FAMILY',
       target_family: p.targetFamily || null,
       target_product_id: p.targetProductId || null,
-      target_product_ref: p.targetProductRef || null,
+      target_product_ref: refsString,
       target_product_name: p.targetProductName || null,
       threshold: parseFloat(p.threshold) || 10,
       discount_percent: parseFloat(p.discountPercent) || 0,
@@ -406,6 +423,10 @@ export async function dbAddPromotion(p) {
 
 export async function dbUpdatePromotion(p) {
   try {
+    const refsString = (p.targetProductRefs && Array.isArray(p.targetProductRefs) && p.targetProductRefs.length > 0)
+      ? p.targetProductRefs.join(',')
+      : (p.targetProductRef || null)
+
     const payload = {
       name: p.name,
       description: p.description || '',
@@ -413,7 +434,7 @@ export async function dbUpdatePromotion(p) {
       target_type: p.targetType || 'FAMILY',
       target_family: p.targetFamily || null,
       target_product_id: p.targetProductId || null,
-      target_product_ref: p.targetProductRef || null,
+      target_product_ref: refsString,
       target_product_name: p.targetProductName || null,
       threshold: parseFloat(p.threshold) || 10,
       discount_percent: parseFloat(p.discountPercent) || 0,
@@ -444,6 +465,151 @@ export async function dbDeletePromotion(id) {
     return true
   } catch (e) {
     console.error('dbDeletePromotion exception:', e)
+    return false
+  }
+}
+
+// ─── PRODUCTS ────────────────────────────────────────────────────────────────
+
+export function rowToProduct(row) {
+  let specs = {}
+  if (row.technical_specs) {
+    try {
+      specs = typeof row.technical_specs === 'string' ? JSON.parse(row.technical_specs) : row.technical_specs
+    } catch {}
+  }
+  const unitsPerBox = parseInt(specs.unitsPerBox || row.units_per_box || 1, 10) || 1
+  const category = specs.category || specs.family || (row.category ? row.category.code : null) || 'ADDITIFS'
+
+  return {
+    id: row.id,
+    dbId: row.id,
+    code: row.code || row.reference || '',
+    reference: row.reference || '',
+    name: row.name || 'Produit Bardahl',
+    description: row.description || '',
+    viscosity: row.viscosity || '',
+    volume: row.volume || '',
+    packaging: row.packaging || `Carton de ${unitsPerBox}`,
+    unitsPerBox: unitsPerBox,
+    priceTtc: parseFloat(row.unit_price_ttc || 0),
+    stock: parseInt(row.stock_quantity || 100, 10),
+    category: category,
+    isActive: row.is_active !== false,
+  }
+}
+
+export async function dbGetProducts() {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name', { ascending: true })
+
+    if (error) {
+      console.warn('dbGetProducts notice:', error.message)
+      return null
+    }
+    return (data || []).map(rowToProduct)
+  } catch (e) {
+    console.error('dbGetProducts exception:', e)
+    return null
+  }
+}
+
+export async function dbAddProduct(p) {
+  try {
+    const unitsPerBox = parseInt(p.unitsPerBox || 1, 10) || 1
+    const category = p.category || 'ADDITIFS'
+    const specs = {
+      unitsPerBox,
+      category,
+      family: category
+    }
+
+    const payload = {
+      code: p.code || p.reference || `REF-${Date.now()}`,
+      reference: p.reference || '',
+      name: p.name || 'Nouveau Produit Bardahl',
+      description: p.description || '',
+      packaging: p.packaging || `Carton de ${unitsPerBox}`,
+      unit_price_ttc: parseFloat(p.priceTtc) || 0,
+      tva_rate: 20,
+      stock_quantity: parseInt(p.stock, 10) || 100,
+      unit: p.unit || 'Bidon',
+      is_active: p.isActive !== false,
+      technical_specs: JSON.stringify(specs)
+    }
+
+    const { data, error } = await supabase.from('products').insert([payload]).select().single()
+    if (error) {
+      console.error('dbAddProduct error:', error.message)
+      return null
+    }
+    return rowToProduct(data)
+  } catch (e) {
+    console.error('dbAddProduct exception:', e)
+    return null
+  }
+}
+
+export async function dbUpdateProduct(p) {
+  try {
+    const unitsPerBox = parseInt(p.unitsPerBox || 1, 10) || 1
+    const category = p.category || 'ADDITIFS'
+    const specs = {
+      unitsPerBox,
+      category,
+      family: category
+    }
+
+    const payload = {
+      code: p.code || p.reference,
+      reference: p.reference,
+      name: p.name,
+      description: p.description || '',
+      packaging: p.packaging || `Carton de ${unitsPerBox}`,
+      unit_price_ttc: parseFloat(p.priceTtc) || 0,
+      tva_rate: 20,
+      stock_quantity: parseInt(p.stock, 10) || 100,
+      is_active: p.isActive !== false,
+      technical_specs: JSON.stringify(specs)
+    }
+
+    let target = p.dbId || p.id
+    let res = null
+    if (target && String(target).includes('-')) {
+      const { data, error } = await supabase.from('products').update(payload).eq('id', target).select().single()
+      if (!error && data) res = data
+    }
+
+    if (!res && p.reference) {
+      const { data, error } = await supabase.from('products').update(payload).eq('reference', p.reference).select().single()
+      if (!error && data) res = data
+    }
+
+    if (!res) {
+      const { data: inserted, error: insertErr } = await supabase.from('products').insert([payload]).select().single()
+      if (!insertErr && inserted) res = inserted
+    }
+
+    return res ? rowToProduct(res) : p
+  } catch (e) {
+    console.error('dbUpdateProduct exception:', e)
+    return p
+  }
+}
+
+export async function dbDeleteProduct(id, reference) {
+  try {
+    if (id && String(id).includes('-')) {
+      await supabase.from('products').delete().eq('id', id)
+    } else if (reference) {
+      await supabase.from('products').delete().eq('reference', reference)
+    }
+    return true
+  } catch (e) {
+    console.error('dbDeleteProduct exception:', e)
     return false
   }
 }

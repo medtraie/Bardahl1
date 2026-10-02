@@ -7,6 +7,7 @@ import {
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
   dbGetOrders,      dbAddOrder,       dbUpdateOrder,       dbDeleteOrder,
   dbGetPromotions,  dbAddPromotion,   dbUpdatePromotion,   dbDeletePromotion,
+  dbGetProducts,    dbAddProduct,     dbUpdateProduct,     dbDeleteProduct,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
@@ -119,7 +120,6 @@ function rowToOrder(row, extras = {}) {
     totalDiscount: row.total_discount || 0,
     totalTva: row.total_tva || (totalTtc - (totalTtc / 1.20)),
     totalTtc: totalTtc,
-    totalFreeItems: totalFreeItems,
     observations: obsRaw,
     remarque: remarque,
     promoNote: promoNote,
@@ -137,7 +137,10 @@ function rowToOrder(row, extras = {}) {
     modeExpedition: modeExpedition,
     remisePercent: extras.remisePercent || parsedObs.remisePercent || 0,
     remiseMontant: extras.remiseMontant || parsedObs.remiseMontant || 0,
-    voucherDiscount: extras.voucherDiscount || parsedObs.voucherDiscount || 0,
+    voucherDiscount: parseFloat(extras.voucherDiscount || parsedObs.voucherDiscount || 0),
+    avoirDeduction: parseFloat(extras.avoirDeduction || parsedObs.avoirDeduction || 0),
+    avoirOrderNumber: extras.avoirOrderNumber || parsedObs.avoirOrderNumber || '',
+    totalFreeItems: parseInt(extras.totalFreeItems || parsedObs.totalFreeItems || totalFreeItems, 10),
     appliedPromotions: extras.appliedPromotions || parsedObs.appliedPromotions || [],
     items: items,
   }
@@ -156,7 +159,24 @@ export function AppProvider({ children }) {
   const [commercials, setCommercials] = useState([])
   const [clients, setClients] = useState([])
   const [orders, setOrders] = useState([])
-  const [localProducts, setLocalProducts] = useState(allProductsData)
+  const [localProducts, setLocalProducts] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bardahl_custom_products')
+      if (saved) {
+        const custom = JSON.parse(saved)
+        const map = new Map()
+        allProductsData.forEach(p => map.set(p.reference || p.id, p))
+        custom.forEach(p => {
+          const key = p.reference || p.id
+          map.set(key, { ...(map.get(key) || {}), ...p })
+        })
+        return Array.from(map.values())
+      }
+    } catch (e) {
+      console.warn('Error loading custom products cache:', e)
+    }
+    return allProductsData
+  })
 
   // Commercial Promotions State
   const [promotions, setPromotions] = useState(() => {
@@ -259,10 +279,11 @@ export function AppProvider({ children }) {
   const refreshAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [commsRows, clientsRows, ordersRows] = await Promise.all([
+      const [commsRows, clientsRows, ordersRows, productsRows] = await Promise.all([
         dbGetCommercials(),
         dbGetClients(),
         dbGetOrders(),
+        dbGetProducts().catch(() => null),
       ])
 
       const appComms = commsRows.map(rowToCommercial)
@@ -292,6 +313,19 @@ export function AppProvider({ children }) {
       setCommercials(appComms)
       setClients(appClients)
       setOrders(appOrders)
+
+      if (productsRows && productsRows.length > 0) {
+        setLocalProducts(prev => {
+          const map = new Map()
+          prev.forEach(p => map.set(p.reference || p.id, p))
+          productsRows.forEach(p => {
+            const key = p.reference || p.id
+            const existing = map.get(p.reference) || map.get(p.id)
+            map.set(key, { ...(existing || {}), ...p })
+          })
+          return Array.from(map.values())
+        })
+      }
     } catch (err) {
       console.error('refreshAll error:', err)
     } finally {
@@ -418,11 +452,6 @@ export function AppProvider({ children }) {
     if (ok) setClients(prev => prev.filter(x => x.id !== id))
   }, [])
 
-  // ── PRODUCTS CRUD (local only) ───────────────────────────────────────────────
-  const addProduct    = useCallback((p) => setLocalProducts(prev => [{ ...p, id: `p_${Date.now()}` }, ...prev]), [])
-  const updateProduct = useCallback((p) => setLocalProducts(prev => prev.map(x => x.id === p.id ? p : x)), [])
-  const deleteProduct = useCallback((id) => setLocalProducts(prev => prev.filter(x => x.id !== id)), [])
-
   // ── ORDERS CRUD ──────────────────────────────────────────────────────────────
   const addOrder = useCallback(async (o) => {
     let commDbId = o.commercialDbId || currentUser?.commercialDbId
@@ -467,6 +496,11 @@ export function AppProvider({ children }) {
       promoNote: o.promoNote || '',
       remisePercent: o.remisePercent || 0,
       remiseMontant: o.remiseMontant || 0,
+      voucherDiscount: parseFloat(o.voucherDiscount) || 0,
+      avoirDeduction: parseFloat(o.avoirDeduction) || 0,
+      avoirOrderNumber: o.avoirOrderNumber || '',
+      totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
+      appliedPromotions: o.appliedPromotions || [],
       commercialName: orderPayload.commercialName,
       commercialEmail: orderPayload.commercialEmail,
       clientName: orderPayload.clientName,
@@ -493,6 +527,11 @@ export function AppProvider({ children }) {
       promoNote: o.promoNote || '',
       remisePercent: o.remisePercent || 0,
       remiseMontant: o.remiseMontant || 0,
+      voucherDiscount: parseFloat(o.voucherDiscount) || 0,
+      avoirDeduction: parseFloat(o.avoirDeduction) || 0,
+      avoirOrderNumber: o.avoirOrderNumber || '',
+      totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
+      appliedPromotions: o.appliedPromotions || [],
       commercialName: o.commercialName || '',
       commercialEmail: o.commercialEmail || '',
       clientName: o.clientName || '',
@@ -513,6 +552,64 @@ export function AppProvider({ children }) {
     setOrderExtras(prev => { const n = { ...prev }; delete n[id]; return n })
     setOrders(prev => prev.filter(x => x.id !== id))
   }, [])
+
+  // ── PRODUCTS CRUD ────────────────────────────────────────────────────────────
+  const addProduct = useCallback(async (p) => {
+    const newProd = {
+      ...p,
+      id: p.id || `prod_${Date.now()}`,
+      unitsPerBox: parseInt(p.unitsPerBox, 10) || 1,
+      priceTtc: parseFloat(p.priceTtc) || 0,
+      stock: parseInt(p.stock, 10) || 100,
+      isCustom: true
+    }
+    setLocalProducts(prev => {
+      const updated = [newProd, ...prev.filter(x => x.id !== newProd.id && x.reference !== newProd.reference)]
+      try {
+        const customOnly = updated.filter(x => x.isCustom || String(x.id).startsWith('prod_'))
+        localStorage.setItem('bardahl_custom_products', JSON.stringify(customOnly))
+      } catch (e) {
+        console.warn('Error caching custom product:', e)
+      }
+      return updated
+    })
+    const remote = await dbAddProduct(newProd).catch(e => console.warn('Supabase product add error:', e))
+    return remote || newProd
+  }, [])
+
+  const updateProduct = useCallback(async (p) => {
+    const updatedProd = {
+      ...p,
+      unitsPerBox: parseInt(p.unitsPerBox, 10) || 1,
+      priceTtc: parseFloat(p.priceTtc) || 0,
+      stock: parseInt(p.stock, 10) || 100
+    }
+    setLocalProducts(prev => {
+      const updated = prev.map(x => (x.id === p.id || (p.reference && x.reference === p.reference)) ? { ...x, ...updatedProd } : x)
+      try {
+        const customOnly = updated.filter(x => x.isCustom || String(x.id).startsWith('prod_') || x.id === p.id || (p.reference && x.reference === p.reference))
+        localStorage.setItem('bardahl_custom_products', JSON.stringify(customOnly))
+      } catch (e) {
+        console.warn('Error caching updated product:', e)
+      }
+      return updated
+    })
+    const remote = await dbUpdateProduct(updatedProd).catch(e => console.warn('Supabase product update error:', e))
+    return remote || updatedProd
+  }, [])
+
+  const deleteProduct = useCallback(async (id) => {
+    const targetProd = localProducts.find(p => p.id === id)
+    setLocalProducts(prev => {
+      const updated = prev.filter(x => x.id !== id)
+      try {
+        const customOnly = updated.filter(x => x.isCustom || String(x.id).startsWith('prod_'))
+        localStorage.setItem('bardahl_custom_products', JSON.stringify(customOnly))
+      } catch (e) {}
+      return updated
+    })
+    await dbDeleteProduct(id, targetProd?.reference).catch(e => console.warn('Supabase product delete error:', e))
+  }, [localProducts])
 
   // ── PROMOTIONS CRUD ──────────────────────────────────────────────────────────
   const addPromotion = useCallback((p) => {

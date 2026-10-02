@@ -1,3 +1,5 @@
+import { getFamilyInfo } from '../data/familiesData.js'
+
 /**
  * Moteur Promotionnel Bardahl Maroc (Version Évoluée Paliers Dynamiques & Multi-Références)
  * 
@@ -94,16 +96,23 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     const unitsPerBox = parseInt(item.unitsPerBox || meta.unitsPerBox || meta.unitsPerCarton || 1, 10) || 1
     // Règle fonctionnelle § 4 & 18.1 : Conversion des unités saisies en cartons éligibles complets
     const eligibleCartons = Math.floor(qty / unitsPerBox)
-    const family = String(meta.category || item.category || 'AUTRES').toUpperCase().trim()
+    const rawCategory = String(meta.category || item.category || 'AUTRES').trim()
+    const famInfo = getFamilyInfo(rawCategory)
+    const canonicalCode = (famInfo.code || 'AUTRES').toUpperCase()
+    const famLabelUpper = (famInfo.label || 'AUTRES').toUpperCase()
+    const rawUpper = rawCategory.toUpperCase()
 
-    // Par famille
-    if (!familyStats[family]) {
-      familyStats[family] = { totalCartons: 0, totalUnits: 0, totalAmountTtc: 0, items: [] }
-    }
-    familyStats[family].totalCartons += eligibleCartons
-    familyStats[family].totalUnits += qty
-    familyStats[family].totalAmountTtc += lineTotal
-    familyStats[family].items.push({ item, idx, eligibleCartons, unitsPerBox })
+    // Par famille (indexé sous tous les alias canoniques pour garantir la liaison fiche produit 100% effective)
+    const familyKeys = Array.from(new Set([canonicalCode, famLabelUpper, rawUpper]))
+    familyKeys.forEach(fKey => {
+      if (!familyStats[fKey]) {
+        familyStats[fKey] = { totalCartons: 0, totalUnits: 0, totalAmountTtc: 0, items: [] }
+      }
+      familyStats[fKey].totalCartons += eligibleCartons
+      familyStats[fKey].totalUnits += qty
+      familyStats[fKey].totalAmountTtc += lineTotal
+      familyStats[fKey].items.push({ item, idx, eligibleCartons, unitsPerBox })
+    })
 
     // Par produit individuel (par référence et ID)
     const prodKey = String(item.reference || item.productId || 'UNKNOWN').trim()
@@ -123,8 +132,9 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     if (chosenPromo) {
       let currentVal = 0
       if (chosenPromo.targetType === 'FAMILY') {
-        const famKey = (chosenPromo.targetFamily || '').toUpperCase().trim()
-        const st = familyStats[famKey]
+        const rawTargetFam = String(chosenPromo.targetFamily || '').trim()
+        const targetFamInfo = getFamilyInfo(rawTargetFam)
+        const st = familyStats[targetFamInfo.code.toUpperCase()] || familyStats[targetFamInfo.label.toUpperCase()] || familyStats[rawTargetFam.toUpperCase()]
         currentVal = chosenPromo.type === 'TYPE_4' ? (st?.totalAmountTtc || 0) : (st?.totalCartons || 0)
       } else {
         // Multi-références ou mono-référence
@@ -205,11 +215,12 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     let targetDisplay = ''
 
     if (promo.targetType === 'FAMILY') {
-      const targetFam = String(promo.targetFamily || '').toUpperCase().trim()
-      targetKey = `FAM_${targetFam}`
-      targetDisplay = `Famille « ${promo.targetFamily} »`
+      const rawTargetFam = String(promo.targetFamily || '').trim()
+      const targetFamInfo = getFamilyInfo(rawTargetFam)
+      targetKey = `FAM_${targetFamInfo.code}`
+      targetDisplay = `Famille « ${targetFamInfo.label} »`
 
-      const stats = familyStats[targetFam]
+      const stats = familyStats[targetFamInfo.code.toUpperCase()] || familyStats[targetFamInfo.label.toUpperCase()] || familyStats[rawTargetFam.toUpperCase()]
       if (stats && stats.items.length > 0) {
         currentConditionValue = promo.type === 'TYPE_4' ? stats.totalAmountTtc : stats.totalCartons
         applicableItems = stats.items

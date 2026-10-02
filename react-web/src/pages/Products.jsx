@@ -53,9 +53,9 @@ export default function Products() {
     })
   }
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault()
-    addProduct({
+    await addProduct({
       ...formData,
       unitsPerBox: parseInt(formData.unitsPerBox, 10) || 1,
       priceTtc: parseFloat(formData.priceTtc) || 0,
@@ -63,24 +63,28 @@ export default function Products() {
     })
     setShowAddModal(false)
     setFormData({ code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
+    alert(`Produit « ${formData.name} » ajouté avec succès et synchronisé dans Supabase !`)
   }
 
-  const handleEditSubmit = (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault()
     if (!editingProduct) return
-    updateProduct({
+    await updateProduct({
       ...editingProduct,
       ...formData,
       unitsPerBox: parseInt(formData.unitsPerBox, 10) || 1,
       priceTtc: parseFloat(formData.priceTtc) || 0,
       stock: parseInt(formData.stock, 10) || 100
     })
+    const fam = getFamilyInfo(formData.category)
     setEditingProduct(null)
+    alert(`Fiche produit « ${formData.name} » modifiée avec succès !\nFamille associée : ${fam.icon} ${fam.label}\nConditionnement : ${formData.unitsPerBox} unités par carton.\nEnregistré dans la base de données.`)
   }
 
-  const handleDelete = (p) => {
+  const handleDelete = async (p) => {
     if (window.confirm(`Voulez-vous vraiment supprimer le produit "${p.name}" ?`)) {
-      deleteProduct(p.id)
+      await deleteProduct(p.id)
+      alert(`Produit « ${p.name} » supprimé.`)
     }
   }
 
@@ -184,8 +188,23 @@ export default function Products() {
               </div>
 
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div>Code Article : <strong style={{ color: '#FFFFFF' }}>{p.code}</strong></div>
-                <div>Famille : <strong style={{ color: 'var(--bardahl-yellow)' }}>{getFamilyInfo(p.category).label}</strong></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '2px 0' }}>
+                  <span>Famille :</span>
+                  <span style={{
+                    background: 'rgba(255, 208, 0, 0.12)',
+                    color: 'var(--bardahl-yellow)',
+                    fontWeight: '800',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 208, 0, 0.3)',
+                    fontSize: '11px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {getFamilyInfo(p.category).icon} {getFamilyInfo(p.category).label}
+                  </span>
+                </div>
                 <div>Conditionnement : <strong style={{ color: '#FFFFFF' }}>{p.packaging}</strong> <span style={{ color: '#A1A1AA', fontSize: '11px' }}>({p.unitsPerBox || getProductUnitsPerCarton(p)} un./carton)</span></div>
               </div>
             </div>
