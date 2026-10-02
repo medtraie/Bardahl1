@@ -1,4 +1,19 @@
-export const allProductsData = [
+export function getProductUnitsPerCarton(product) {
+  if (product && product.unitsPerBox && !isNaN(parseInt(product.unitsPerBox, 10)) && parseInt(product.unitsPerBox, 10) > 0) {
+    return parseInt(product.unitsPerBox, 10)
+  }
+  if (product && product.unitsPerCarton && !isNaN(parseInt(product.unitsPerCarton, 10)) && parseInt(product.unitsPerCarton, 10) > 0) {
+    return parseInt(product.unitsPerCarton, 10)
+  }
+  const pkg = String(product?.packaging || '').trim()
+  const match = pkg.match(/^(\d+)\s*[xX]/)
+  if (match && match[1]) {
+    return parseInt(match[1], 10)
+  }
+  return 1
+}
+
+const rawProductsData = [
   // ==========================================
   // 1. ADDITIFS 062026 (57 ARTICLES)
   // ==========================================
@@ -266,3 +281,8 @@ export const allProductsData = [
   { id: "alim22", category: "IND_ALIM", code: "2618", reference: "2618", name: "REDUCTALIM 220 Huile Réducteurs 20L", viscosity: "N/A", packaging: "1 X 20l", priceTtc: 3722.0, stock: 20 },
   { id: "alim23", category: "IND_ALIM", code: "2568", reference: "2568", name: "REDUCTALIM 460 Huile Réducteurs 20L", viscosity: "N/A", packaging: "1 X 20l", priceTtc: 3874.0, stock: 20 }
 ]
+
+export const allProductsData = rawProductsData.map(p => ({
+  ...p,
+  unitsPerBox: getProductUnitsPerCarton(p)
+}))

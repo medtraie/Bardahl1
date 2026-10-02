@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
-import { Search, Package, Tag, Filter, Plus, Edit3, Trash2, Box } from 'lucide-react'
+import { Search, Package, Tag, Filter, Plus, Edit3, Trash2, Box, Layers } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
+import { getProductUnitsPerCarton } from '../data/productsData'
 
 export default function Products() {
   const { products, addProduct, updateProduct, deleteProduct } = useApp()
@@ -10,16 +12,12 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState(null)
 
   const [formData, setFormData] = useState({
-    code: '', reference: '', name: '', category: 'Additifs', packaging: 'Bidon 1L', priceTtc: '', stock: '100'
+    code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100'
   })
 
   const categories = [
-    { id: 'ALL', label: 'Tous les Produits' },
-    { id: 'ADDITIFS', label: 'Additifs & Traitements' },
-    { id: 'FLUIDES', label: 'Fluides & LR' },
-    { id: 'LUBRIFIANTS', label: 'Lubrifiants Auto' },
-    { id: 'AEROSOLS', label: 'Aérosols & Nettoyants' },
-    { id: 'INDUSTRIE', label: 'Industrie & Graisses' },
+    { id: 'ALL', label: 'Toutes les Familles' },
+    ...DEFAULT_BARDAHL_FAMILIES.map(f => ({ id: f.code, label: f.label }))
   ]
 
   const filteredProducts = products.filter(p => {
@@ -32,29 +30,12 @@ export default function Products() {
     if (!matchesSearch) return false
     if (selectedCategory === 'ALL') return true
 
-    const pCat = (p.category || '').toUpperCase()
-    const pName = (p.name || '').toUpperCase()
-
-    if (selectedCategory === 'ADDITIFS') {
-      return pCat.includes('ADDITIF') || pName.includes('ADDITIF') || pName.includes('TRAITEMENT') || pName.includes('CLEANER') || pName.includes('STOP FUITE') || pName.includes('INJECTEUR')
-    }
-    if (selectedCategory === 'FLUIDES') {
-      return pCat.includes('FLUIDE') || pCat.includes('LR') || pName.includes('XCL') || pName.includes('REFROIDISSEMENT') || pName.includes('DOT') || pName.includes('RAD')
-    }
-    if (selectedCategory === 'LUBRIFIANTS') {
-      return pCat.includes('LUBRIFIANT') || pCat.includes('HUILE') || pName.includes('10W') || pName.includes('5W') || pName.includes('XTRA') || pName.includes('PLASMA') || pName.includes('HUILE')
-    }
-    if (selectedCategory === 'AEROSOLS') {
-      return pCat.includes('AEROSOL') || pName.includes('SPRAY') || pName.includes('AEROSOL') || pName.includes('BRAKE') || pName.includes('DEGRIPPANT') || pName.includes('NETTOYANT')
-    }
-    if (selectedCategory === 'INDUSTRIE') {
-      return pCat.includes('INDUSTRIE') || pCat.includes('GRAISSE') || pName.includes('GRAISSE') || pName.includes('LITHIUM') || pName.includes('HYDRAULIQUE') || pName.includes('PONT')
-    }
-    return pCat.includes(selectedCategory)
+    const fam = getFamilyInfo(p.category)
+    return fam.code === selectedCategory || (p.category || '').toUpperCase().includes(selectedCategory)
   })
 
   const handleOpenAddModal = () => {
-    setFormData({ code: '', reference: '', name: '', category: 'Additifs', packaging: 'Bidon 1L', priceTtc: '', stock: '100' })
+    setFormData({ code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
     setShowAddModal(true)
   }
 
@@ -64,8 +45,9 @@ export default function Products() {
       code: p.code || '',
       reference: p.reference || '',
       name: p.name || '',
-      category: p.category || 'Additifs',
-      packaging: p.packaging || 'Bidon 1L',
+      category: p.category || 'ADDITIFS',
+      packaging: p.packaging || 'Carton de 12',
+      unitsPerBox: String(p.unitsPerBox || getProductUnitsPerCarton(p) || '1'),
       priceTtc: p.priceTtc ? p.priceTtc.toString() : '',
       stock: p.stock ? p.stock.toString() : '100'
     })
@@ -73,9 +55,14 @@ export default function Products() {
 
   const handleAddSubmit = (e) => {
     e.preventDefault()
-    addProduct(formData)
+    addProduct({
+      ...formData,
+      unitsPerBox: parseInt(formData.unitsPerBox, 10) || 1,
+      priceTtc: parseFloat(formData.priceTtc) || 0,
+      stock: parseInt(formData.stock, 10) || 100
+    })
     setShowAddModal(false)
-    setFormData({ code: '', reference: '', name: '', category: 'Additifs', packaging: 'Bidon 1L', priceTtc: '', stock: '100' })
+    setFormData({ code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
   }
 
   const handleEditSubmit = (e) => {
@@ -84,8 +71,9 @@ export default function Products() {
     updateProduct({
       ...editingProduct,
       ...formData,
+      unitsPerBox: parseInt(formData.unitsPerBox, 10) || 1,
       priceTtc: parseFloat(formData.priceTtc) || 0,
-      stock: parseInt(formData.stock) || 100
+      stock: parseInt(formData.stock, 10) || 100
     })
     setEditingProduct(null)
   }
@@ -197,7 +185,8 @@ export default function Products() {
 
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div>Code Article : <strong style={{ color: '#FFFFFF' }}>{p.code}</strong></div>
-                <div>Conditionnement : <strong style={{ color: '#FFFFFF' }}>{p.packaging}</strong></div>
+                <div>Famille : <strong style={{ color: 'var(--bardahl-yellow)' }}>{getFamilyInfo(p.category).label}</strong></div>
+                <div>Conditionnement : <strong style={{ color: '#FFFFFF' }}>{p.packaging}</strong> <span style={{ color: '#A1A1AA', fontSize: '11px' }}>({p.unitsPerBox || getProductUnitsPerCarton(p)} un./carton)</span></div>
               </div>
             </div>
 
@@ -232,7 +221,7 @@ export default function Products() {
       {/* Modal: Ajouter / Modifier Produit */}
       {(showAddModal || editingProduct) && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '480px' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '520px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Box style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} />
               {editingProduct ? 'Modifier Produit Bardahl' : 'Ajouter un Produit au Catalogue'}
@@ -289,41 +278,55 @@ export default function Products() {
                   />
                 </div>
                 <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Famille de produits *</label>
+                  <select
+                    value={formData.category}
+                    onChange={e => setFormData({...formData, category: e.target.value})}
+                    className="input-field"
+                  >
+                    {DEFAULT_BARDAHL_FAMILIES.map(fam => (
+                      <option key={fam.code} value={fam.code}>
+                        {fam.icon} {fam.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Unités par carton *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={formData.unitsPerBox}
+                    onChange={e => setFormData({...formData, unitsPerBox: e.target.value})}
+                    className="input-field"
+                    placeholder="Ex: 6, 12, 24"
+                  />
+                </div>
+                <div>
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Conditionnement</label>
                   <input
                     type="text"
                     value={formData.packaging}
                     onChange={e => setFormData({...formData, packaging: e.target.value})}
                     className="input-field"
-                    placeholder="Flacon 300ml"
+                    placeholder="Carton de 12"
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Catégorie</label>
-                  <select
-                    value={formData.category}
-                    onChange={e => setFormData({...formData, category: e.target.value})}
-                    className="input-field"
-                  >
-                    <option value="Additifs">Additifs</option>
-                    <option value="Fluides">Fluides & LR</option>
-                    <option value="Lubrifiants">Lubrifiants Auto</option>
-                    <option value="Industrie">Industrie & Specs</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Stock Disponible</label>
-                  <input
-                    type="number"
-                    value={formData.stock}
-                    onChange={e => setFormData({...formData, stock: e.target.value})}
-                    className="input-field"
-                    placeholder="100"
-                  />
-                </div>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Stock Disponible</label>
+                <input
+                  type="number"
+                  value={formData.stock}
+                  onChange={e => setFormData({...formData, stock: e.target.value})}
+                  className="input-field"
+                  placeholder="100"
+                />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-card)' }}>

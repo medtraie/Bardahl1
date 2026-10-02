@@ -58,6 +58,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const [formIsActive, setFormIsActive] = useState(true)
   const [formStartDate, setFormStartDate] = useState('2026-01-01')
   const [formEndDate, setFormEndDate] = useState('2026-12-31')
+  const [formNoEndDate, setFormNoEndDate] = useState(false)
   
   // Évolution n°3, 4 & 5 : Paliers dynamiques (Tranches progressives)
   const [hasTiers, setHasTiers] = useState(true)
@@ -350,6 +351,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormIsActive(true)
     setFormStartDate('2026-01-01')
     setFormEndDate('2026-12-31')
+    setFormNoEndDate(false)
     setHasTiers(true)
     setTiers([
       { id: 't1', min: 1, max: 9, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
@@ -396,7 +398,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormVoucherAmount(promo.voucherAmount || 0)
     setFormIsActive(promo.isActive !== false)
     setFormStartDate(promo.startDate || '2026-01-01')
-    setFormEndDate(promo.endDate || '2026-12-31')
+    setFormEndDate(promo.endDate || '')
+    setFormNoEndDate(!promo.endDate)
 
     if (promo.tiers && Array.isArray(promo.tiers) && promo.tiers.length > 0) {
       setHasTiers(true)
@@ -439,14 +442,14 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     const freeProductObj = products.find(p => p.reference === formFreeProductRef)
     const firstTargetProductObj = products.find(p => p.reference === formTargetProductRefs[0])
 
-    // Cleaned tiers data
+    // Cleaned tiers data with strict type isolation (§ 12, § 13, § 14, § 18.8)
     const cleanTiers = hasTiers ? tiers.map((t, idx) => ({
       id: t.id || `tier_${idx + 1}`,
       min: parseFloat(t.min) || 0,
       max: (t.max !== null && t.max !== '' && t.max !== undefined && !isNaN(t.max)) ? parseFloat(t.max) : null,
-      discountPercent: parseFloat(t.discountPercent) || 0,
-      freeQuantity: parseInt(t.freeQuantity, 10) || 0,
-      voucherAmount: parseFloat(t.voucherAmount) || 0
+      discountPercent: (formType === 'TYPE_1' || formType === 'TYPE_2' || formType === 'TYPE_4') ? (parseFloat(t.discountPercent) || 0) : 0,
+      freeQuantity: formType === 'TYPE_2' ? (parseInt(t.freeQuantity, 10) || 0) : 0,
+      voucherAmount: formType === 'TYPE_3' ? (parseFloat(t.voucherAmount) || 0) : 0
     })) : undefined
 
     // Determine fallback threshold from first non-zero advantage tier or formThreshold
@@ -486,8 +489,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       freeQuantity: formType === 'TYPE_2' ? fallbackFreeQty : 0,
       voucherAmount: formType === 'TYPE_3' ? fallbackVoucher : 0,
       isActive: formIsActive,
-      startDate: formStartDate,
-      endDate: formEndDate
+      startDate: formStartDate || null,
+      endDate: formNoEndDate ? null : (formEndDate || null)
     }
 
     if (editingPromo) {
@@ -535,6 +538,12 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
             Définition et calcul automatique des remises, cartons gratuits (Options A & B, Paliers) et bons d'achat
           </p>
         </div>
+
+        {isAdmin && (
+          <button onClick={handleOpenAdd} className="btn-bardahl" style={{ padding: '10px 20px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Plus size={16} /> Nouvelle Promotion
+          </button>
+        )}
       </div>
 
       {/* Summary KPI Cards with Real Sales Impact */}
@@ -718,9 +727,12 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                     )}
                   </div>
 
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF', marginBottom: '4px' }}>
                     {promo.name}
                   </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    <span>📅 {promo.endDate ? `Du ${promo.startDate || '...'} au ${promo.endDate}` : 'Permanente (Sans limite de date)'}</span>
+                  </div>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.4' }}>
                     {promo.description}
                   </p>
@@ -762,8 +774,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                 </span>
                                 <strong>
                                   <span style={{ color: '#007AFF' }}>{t.discountPercent}%</span>
-                                  {t.freeQuantity > 0 && <span style={{ color: '#34C759', marginLeft: '6px' }}>+{t.freeQuantity} gratuit</span>}
-                                  {t.voucherAmount > 0 && <span style={{ color: '#FF9500', marginLeft: '6px' }}>-{t.voucherAmount} DH</span>}
+                                  {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', marginLeft: '6px' }}>+{t.freeQuantity} gratuit</span>}
+                                  {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', marginLeft: '6px' }}>-{t.voucherAmount} DH</span>}
                                 </strong>
                               </div>
                             )
@@ -976,8 +988,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                   <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>[{minVal}-{maxVal} {unit}]:</span>
                                   <strong style={{ color: '#007AFF' }}>{t.discountPercent}%</strong>
-                                  {t.freeQuantity > 0 && <span style={{ color: '#34C759', fontWeight: 'bold' }}>+{t.freeQuantity} gratuit</span>}
-                                  {t.voucherAmount > 0 && <span style={{ color: '#FF9500', fontWeight: 'bold' }}>-{t.voucherAmount} DH</span>}
+                                  {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', fontWeight: 'bold' }}>+{t.freeQuantity} gratuit</span>}
+                                  {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', fontWeight: 'bold' }}>-{t.voucherAmount} DH</span>}
                                 </div>
                               )
                             })}
@@ -1013,7 +1025,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                         </div>
                       </td>
                       <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        {promo.startDate ? `${promo.startDate.slice(5)} au ${promo.endDate ? promo.endDate.slice(5) : '31-12'}` : 'Permanente'}
+                        {promo.endDate ? `${promo.startDate || '...'} au ${promo.endDate}` : 'Permanente (Sans limite de date)'}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -1850,15 +1862,29 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                    DATE FIN
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      DATE FIN
+                    </label>
+                    <label style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formNoEndDate}
+                        onChange={e => {
+                          setFormNoEndDate(e.target.checked)
+                          if (e.target.checked) setFormEndDate('')
+                        }}
+                      />
+                      Sans date de fin
+                    </label>
+                  </div>
                   <input
                     type="date"
                     className="input-field"
-                    value={formEndDate}
+                    value={formNoEndDate ? '' : formEndDate}
+                    disabled={formNoEndDate}
                     onChange={e => setFormEndDate(e.target.value)}
-                    style={{ fontSize: '12px' }}
+                    style={{ fontSize: '12px', opacity: formNoEndDate ? 0.4 : 1, cursor: formNoEndDate ? 'not-allowed' : 'auto' }}
                   />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '16px' }}>

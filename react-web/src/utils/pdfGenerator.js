@@ -2,9 +2,10 @@ import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { BARDAHL_LOGO_BASE64 } from './logoBase64'
 
-export function generateOrderPdf(order) {
-  const doc = new jsPDF()
-
+/**
+ * Renders a single order page into the provided jsPDF document instance.
+ */
+export function renderOrderPage(doc, order) {
   // 1. Top Header Bar & Official Bardahl Logo
   doc.setFillColor(255, 208, 0)
   doc.rect(0, 0, 210, 5, 'F')
@@ -255,8 +256,29 @@ export function generateOrderPdf(order) {
   doc.setFontSize(7)
   doc.setTextColor(113, 128, 150)
   doc.text("BARDAHL MAGHREB S.A - 107, Rue Amir Abdelkader, Casablanca - ICE: 000084015000037 - RC: 44907 Casa", 105, 285, { align: 'center' })
+}
 
+export function generateOrderPdf(order) {
+  const doc = new jsPDF()
+  renderOrderPage(doc, order)
   doc.save(`${order.orderNumber || 'Bon_de_Commande'}.pdf`)
+}
+
+/**
+ * § 17 & § 18.13-14 : Génération groupée d'un seul fichier PDF contenant plusieurs bons de commande.
+ * Chaque bon est rendu sur une page distincte sans chevauchement.
+ */
+export function generateMultipleOrdersPdf(ordersList = []) {
+  if (!ordersList || ordersList.length === 0) return
+  const doc = new jsPDF()
+  ordersList.forEach((order, idx) => {
+    if (idx > 0) {
+      doc.addPage()
+    }
+    renderOrderPage(doc, order)
+  })
+  const dateStr = new Date().toISOString().substring(0, 10)
+  doc.save(`Bons_de_Commande_Groupes_${ordersList.length}_Bardahl_${dateStr}.pdf`)
 }
 
 /**

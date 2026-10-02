@@ -7,9 +7,10 @@ import {
   ChevronDown
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { generateOrderPdf } from '../utils/pdfGenerator'
+import { generateOrderPdf, generateMultipleOrdersPdf } from '../utils/pdfGenerator'
 import { exportOrdersToExcel } from '../utils/excelExporter'
 import { evaluatePromotions } from '../utils/promotionEngine'
+import { getProductUnitsPerCarton } from '../data/productsData'
 
 const PRODUCT_CATEGORIES = [
   { id: 'ALL', label: 'Toutes les Gammes' },
@@ -31,6 +32,7 @@ export default function Orders({ openWizardTrigger }) {
   const [commercialFilter, setCommercialFilter] = useState('ALL')
   const [showOrderWizard, setShowOrderWizard] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
+  const [selectedOrderIds, setSelectedOrderIds] = useState([])
   
   // Navigation tabs: 'ORDERS' (Bons de commande) | 'COMPENSATIONS' (Registre des Avoirs & Régularisations)
   const [activeOrdersTab, setActiveOrdersTab] = useState('ORDERS')
@@ -163,6 +165,37 @@ export default function Orders({ openWizardTrigger }) {
     setShowOrderWizard(true)
   }
 
+  const parsePercent = (val) => {
+    if (val === undefined || val === null || val === '') return null
+    const str = String(val).replace(',', '.')
+    const parsed = parseFloat(str)
+    return isNaN(parsed) ? 0 : Math.max(0, Math.min(100, parsed))
+  }
+
+  // § 17 & § 18.13-14 : Handlers de Sélection Multiple et Génération PDF Groupé
+  const handleToggleSelectOrder = (orderId) => {
+    setSelectedOrderIds(prev =>
+      prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
+    )
+  }
+
+  const handleSelectAllOrders = () => {
+    if (selectedOrderIds.length === filteredOrders.length) {
+      setSelectedOrderIds([])
+    } else {
+      setSelectedOrderIds(filteredOrders.map(o => o.id))
+    }
+  }
+
+  const handleGenerateBatchPdf = () => {
+    const selected = orders.filter(o => selectedOrderIds.includes(o.id))
+    if (selected.length === 0) {
+      alert("Veuillez sélectionner au moins un bon de commande.")
+      return
+    }
+    generateMultipleOrdersPdf(selected)
+  }
+
   const handleDeleteOrder = (order) => {
     if (window.confirm(`Voulez-vous vraiment supprimer le bon de commande ${order.orderNumber} ?`)) {
       deleteOrder(order.id)
@@ -173,6 +206,7 @@ export default function Orders({ openWizardTrigger }) {
     if (!productId) return
     const prod = products.find(p => p.id === productId)
     if (prod) {
+      const upb = parseInt(prod.unitsPerBox || getProductUnitsPerCarton(prod) || 1, 10) || 1
       const existing = selectedProducts.find(p => p.productId === productId)
       if (existing) {
         setSelectedProducts(prev => prev.map(p => p.productId === productId ? { ...p, qty: p.qty + 1 } : p))
@@ -182,19 +216,21 @@ export default function Orders({ openWizardTrigger }) {
           productName: prod.name,
           reference: prod.reference,
           category: prod.category || '',
+          packaging: prod.packaging || '',
+          unitsPerBox: upb,
           priceTtc: parseFloat(prod.priceTtc) || 0,
           qty: 1,
           qtyGratuit: 0,
           promoTag: '',
-          remisePercent: 0
+          remisePercent: ''
         }])
       }
     }
   }
 
   const handleLineRemiseChange = (index, newPercent) => {
-    const val = newPercent === '' ? '' : Math.max(0, Math.min(100, parseFloat(newPercent) || 0))
-    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, remisePercent: val } : p))
+    // § 8 & § 18.4 : Accepter virgule et point (ex: "7,5" ou "7.5") sans blocage
+    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, remisePercent: newPercent } : p))
   }
 
   const handleApplyBatchRemise = (pct) => {
@@ -203,7 +239,8 @@ export default function Orders({ openWizardTrigger }) {
 
   const handleApplyCustomBatchRemise = (val) => {
     if (val === '' || val === null || val === undefined) return
-    const parsed = Math.max(0, Math.min(100, parseFloat(val) || 0))
+    const normalized = String(val).replace(',', '.')
+    const parsed = Math.max(0, Math.min(100, parseFloat(normalized) || 0))
     handleApplyBatchRemise(parsed)
   }
 
@@ -379,7 +416,7 @@ export default function Orders({ openWizardTrigger }) {
     setCommercialPromoChoices({})
 
     if (promoId === 'NONE') {
-      setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: 0 })))
+      setSelectedProducts(prev => prev.map(p => ({ ...p, remisePercent: '' })))
       setRemiseMontant(0)
       return
     }
@@ -417,102 +454,54 @@ export default function Orders({ openWizardTrigger }) {
       )
     }
 
-    // 2. Required quantity
-    let requiredQty = 10
+    // 2. Required quantity in UNITS
+    let requiredCartons = 10
     if (promo.tiers && promo.tiers.length > 0) {
-      requiredQty = promo.tiers[0].threshold || 10
+      requiredCartons = promo.tiers[0].min !== undefined ? promo.tiers[0].min : (promo.tiers[0].threshold || 10)
     } else if (promo.threshold > 0) {
       if (promo.type === 'TYPE_4' && targetProduct) {
         const price = parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 100)
-        requiredQty = Math.max(1, Math.ceil(promo.threshold / price))
+        requiredCartons = Math.max(1, Math.ceil(promo.threshold / price))
       } else {
-        requiredQty = promo.threshold
+        requiredCartons = promo.threshold
       }
     }
 
-    // 3. Free quantity (TYPE_2)
-    let freeQty = 0
-    if (promo.type === 'TYPE_2') {
-      freeQty = promo.freeQuantity || (promo.tiers && promo.tiers[0]?.freeQuantity) || 1
-    }
-
-    // 4. Discount & Voucher
-    let discountPct = 0
-    if (promo.tiers && promo.tiers.length > 0) {
-      discountPct = promo.tiers[0].discountPercent || 0
-    } else {
-      discountPct = promo.discountPercent || 0
-    }
-    const voucherAmt = promo.voucherAmount || 0
-
-    // 5. Add or update target product in selectedProducts with per-product remise
+    // 3. Add or update target product in selectedProducts with required units without manual gift duplication
     if (targetProduct) {
+      const upb = parseInt(targetProduct.unitsPerBox || getProductUnitsPerCarton(targetProduct) || 1, 10) || 1
+      const requiredUnits = promo.type === 'TYPE_4' ? requiredCartons : (requiredCartons * upb)
+
       setSelectedProducts(prev => {
         const existingIdx = prev.findIndex(item => item.productId === targetProduct.id || item.reference === targetProduct.reference)
         if (existingIdx >= 0) {
           return prev.map((item, idx) => {
             if (idx === existingIdx) {
-              const newQty = Math.max(item.qty || 0, requiredQty)
-              const newFree = (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT')
-                ? Math.max(item.qtyGratuit || 0, freeQty)
-                : (item.qtyGratuit || 0)
               return {
                 ...item,
-                qty: newQty,
-                qtyGratuit: newFree,
-                remisePercent: discountPct > 0 ? discountPct : (item.remisePercent || 0),
-                promoTag: promo.name
-              }
-            }
-            // If family promo, update other items of the same family
-            if (promo.targetType === 'FAMILY' && promo.targetFamily && (item.category || '').toUpperCase().includes(promo.targetFamily.toUpperCase())) {
-              return {
-                ...item,
-                remisePercent: discountPct > 0 ? discountPct : (item.remisePercent || 0),
+                qty: Math.max(item.qty || 0, requiredUnits),
+                unitsPerBox: upb,
                 promoTag: promo.name
               }
             }
             return item
           })
         } else {
-          const newItem = {
+          return [...prev, {
             productId: targetProduct.id,
             reference: targetProduct.reference || 'REF',
             productName: targetProduct.name,
             category: targetProduct.category || targetProduct.categoryId || 'PROMO',
+            packaging: targetProduct.packaging || '',
+            unitsPerBox: upb,
             priceTtc: parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 0),
-            qty: requiredQty,
-            qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? freeQty : 0,
-            remisePercent: discountPct,
+            qty: requiredUnits,
+            qtyGratuit: 0,
+            remisePercent: '',
             promoTag: promo.name
-          }
-
-          const newItems = [...prev, newItem]
-
-          if (promo.type === 'TYPE_2' && promo.freeItemType === 'DIFFERENT_PRODUCT' && freeQty > 0) {
-            const freeProd = products.find(p => p.id === promo.freeProductId || p.reference === promo.freeProductRef)
-            if (freeProd) {
-              newItems.push({
-                productId: freeProd.id,
-                reference: freeProd.reference || 'CADEAU',
-                productName: freeProd.name,
-                category: freeProd.category || freeProd.categoryId || 'CADEAU',
-                priceTtc: parseFloat(freeProd.unitPriceTtc || freeProd.priceTtc || 0),
-                qty: 0,
-                qtyGratuit: freeQty,
-                remisePercent: 0,
-                promoTag: `🎁 Offert : ${promo.name}`
-              })
-            }
-          }
-
-          return newItems
+          }]
         }
       })
-    }
-
-    if (voucherAmt > 0) {
-      setRemiseMontant(voucherAmt)
     }
   }
 
@@ -521,45 +510,8 @@ export default function Orders({ openWizardTrigger }) {
     if (isNaN(val) || val <= 0) {
       setSelectedProducts(prev => prev.filter((_, i) => i !== index))
     } else {
+      // Les promotions et gratuités se recalculent automatiquement via le hook promoAnalysis
       setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: val } : p))
-
-      // If a specific promotion is active, dynamically update remise per product and gratuit based on quantity/tiers
-      if (selectedPromoId && selectedPromoId !== 'AUTO' && selectedPromoId !== 'NONE') {
-        const promo = promotions.find(p => p.id === selectedPromoId)
-        if (promo) {
-          if (promo.tiers && promo.tiers.length > 0) {
-            const sortedTiers = [...promo.tiers].sort((a, b) => b.threshold - a.threshold)
-            const matchedTier = sortedTiers.find(t => val >= t.threshold)
-            if (matchedTier) {
-              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
-                ...p,
-                remisePercent: matchedTier.discountPercent || 0,
-                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? (matchedTier.freeQuantity || 0) : p.qtyGratuit
-              } : p))
-            } else {
-              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
-                ...p,
-                remisePercent: 0,
-                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? 0 : p.qtyGratuit
-              } : p))
-            }
-          } else if (promo.threshold > 0) {
-            if (val >= promo.threshold) {
-              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
-                ...p,
-                remisePercent: promo.discountPercent || 0,
-                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? (promo.freeQuantity || 1) : p.qtyGratuit
-              } : p))
-            } else {
-              setSelectedProducts(prev => prev.map((p, i) => i === index ? {
-                ...p,
-                remisePercent: 0,
-                qtyGratuit: (promo.type === 'TYPE_2' && promo.freeItemType === 'SAME_PRODUCT') ? 0 : p.qtyGratuit
-              } : p))
-            }
-          }
-        }
-      }
     }
   }
 
@@ -603,12 +555,11 @@ export default function Orders({ openWizardTrigger }) {
   // Financial Calculations per Product Line (Remise Commerciale par produit)
   const grossTotalTtc = selectedProducts.reduce((sum, item) => sum + (item.priceTtc * item.qty), 0)
 
-  // Total discounts from individual product lines
+  // Total discounts from individual product lines with decimal comma/dot support (§ 8)
   const totalLineDiscountAmount = selectedProducts.reduce((sum, item, idx) => {
     const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
-    const finalPct = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '')
-      ? parseFloat(item.remisePercent) || 0
-      : promoDiscount
+    const parsedRemise = parsePercent(item.remisePercent)
+    const finalPct = parsedRemise !== null ? parsedRemise : promoDiscount
     return sum + ((item.priceTtc * item.qty) * (finalPct / 100))
   }, 0)
 
@@ -645,9 +596,8 @@ export default function Orders({ openWizardTrigger }) {
     const combinedItems = [
       ...selectedProducts.map((sp, idx) => {
         const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
-        const finalPct = (sp.remisePercent !== undefined && sp.remisePercent !== null && sp.remisePercent !== '')
-          ? parseFloat(sp.remisePercent) || 0
-          : promoDiscount
+        const parsedRemise = parsePercent(sp.remisePercent)
+        const finalPct = parsedRemise !== null ? parsedRemise : promoDiscount
         return {
           ...sp,
           remisePercent: finalPct,
@@ -790,6 +740,28 @@ export default function Orders({ openWizardTrigger }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {selectedOrderIds.length > 0 && (
+            <button
+              onClick={handleGenerateBatchPdf}
+              className="btn-bardahl"
+              style={{
+                padding: '10px 18px',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: '#34C759',
+                color: '#0D0F12',
+                border: 'none',
+                fontWeight: '900'
+              }}
+              title="Générer un seul fichier PDF groupé contenant tous les bons sélectionnés"
+            >
+              <FileText style={{ width: '16px', height: '16px' }} />
+              Générer PDF Groupé ({selectedOrderIds.length})
+            </button>
+          )}
+
           <button
             onClick={() => exportOrdersToExcel(orders)}
             className="btn-secondary"
@@ -940,6 +912,15 @@ export default function Orders({ openWizardTrigger }) {
               <table className="custom-table">
                 <thead>
                   <tr>
+                    <th style={{ width: '40px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                        onChange={handleSelectAllOrders}
+                        title="Sélectionner / désélectionner tous les bons"
+                        style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)' }}
+                      />
+                    </th>
                     <th>N° Bon</th>
                     <th>Date</th>
                     <th>Client</th>
@@ -953,13 +934,21 @@ export default function Orders({ openWizardTrigger }) {
                 <tbody>
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                         Aucun bon de commande trouvé pour ces critères.
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map(o => (
-                      <tr key={o.id}>
+                      <tr key={o.id} style={{ background: selectedOrderIds.includes(o.id) ? 'rgba(255, 208, 0, 0.05)' : undefined }}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(o.id)}
+                            onChange={() => handleToggleSelectOrder(o.id)}
+                            style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)' }}
+                          />
+                        </td>
                         <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
                         <td style={{ fontSize: '12px' }}>{o.date}</td>
                         <td>
@@ -1999,10 +1988,15 @@ export default function Orders({ openWizardTrigger }) {
                       ) : (
                         selectedProducts.map((item, idx) => {
                           const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
-                          const currentRemise = (item.remisePercent !== undefined && item.remisePercent !== null && item.remisePercent !== '') ? item.remisePercent : promoDiscount
+                          const parsedRemise = parsePercent(item.remisePercent)
+                          const hasManualOverride = parsedRemise !== null
+                          const currentRemise = hasManualOverride ? parsedRemise : promoDiscount
                           const lineGross = item.priceTtc * item.qty
-                          const lineDiscountVal = lineGross * ((parseFloat(currentRemise) || 0) / 100)
+                          const lineDiscountVal = lineGross * (currentRemise / 100)
                           const lineNet = Math.max(0, lineGross - lineDiscountVal)
+                          const upb = item.unitsPerBox || 1
+                          const cartons = Math.floor(item.qty / upb)
+                          const remainderUnits = item.qty % upb
 
                           return (
                             <tr key={idx}>
@@ -2032,6 +2026,8 @@ export default function Orders({ openWizardTrigger }) {
                                   {item.category || 'Bardahl'}
                                 </span>
                               </td>
+
+                              {/* § 4 & § 18.1-2 : Quantité saisie en Unités avec conversion immédiate en Cartons */}
                               <td style={{ textAlign: 'center' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
                                   <button
@@ -2047,7 +2043,7 @@ export default function Orders({ openWizardTrigger }) {
                                     value={item.qty}
                                     onChange={e => handleQtyChange(idx, e.target.value)}
                                     style={{
-                                      width: '42px',
+                                      width: '46px',
                                       height: '28px',
                                       textAlign: 'center',
                                       background: 'transparent',
@@ -2057,6 +2053,7 @@ export default function Orders({ openWizardTrigger }) {
                                       fontSize: '13px',
                                       outline: 'none'
                                     }}
+                                    title="Saisie en unités (flacons, bidons...)"
                                   />
                                   <button
                                     type="button"
@@ -2066,7 +2063,16 @@ export default function Orders({ openWizardTrigger }) {
                                     +
                                   </button>
                                 </div>
+                                <div style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: '800', marginTop: '3px' }}>
+                                  = {cartons} carton(s)
+                                  {remainderUnits > 0 && (
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '10px', fontWeight: 'normal' }}>
+                                      {' '}(+{remainderUnits} un.)
+                                    </span>
+                                  )}
+                                </div>
                               </td>
+
                               <td style={{ textAlign: 'center' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(52, 199, 89, 0.4)', borderRadius: '8px', padding: '2px' }}>
                                   <button
@@ -2102,23 +2108,22 @@ export default function Orders({ openWizardTrigger }) {
                                   </button>
                                 </div>
                               </td>
+
                               <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontSize: '12px' }}>
                                 {item.priceTtc.toFixed(2)} DH
                               </td>
 
-                              {/* Remise Commerciale (%) par produit */}
+                              {/* § 8 & § 9 & § 18.4 : Remise Commerciale (%) acceptant les décimales avec virgule ou point + Alerte manuelle vs promo */}
                               <td style={{ textAlign: 'center' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 6px' }}>
                                   <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="0.5"
-                                    value={currentRemise}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={item.remisePercent !== undefined && item.remisePercent !== '' ? item.remisePercent : (promoDiscount > 0 ? promoDiscount : '')}
                                     onChange={e => handleLineRemiseChange(idx, e.target.value)}
-                                    placeholder="0"
+                                    placeholder={promoDiscount > 0 ? `${promoDiscount}` : "0"}
                                     style={{
-                                      width: '42px',
+                                      width: '48px',
                                       height: '26px',
                                       textAlign: 'center',
                                       background: 'transparent',
@@ -2128,10 +2133,15 @@ export default function Orders({ openWizardTrigger }) {
                                       fontSize: '12px',
                                       outline: 'none'
                                     }}
-                                    title="Remise commerciale en % sur cet article"
+                                    title="Remise commerciale en % sur cet article (saisie décimale avec virgule ou point)"
                                   />
                                   <span style={{ fontSize: '11px', fontWeight: 'bold', color: currentRemise > 0 ? '#007AFF' : 'var(--text-secondary)', paddingRight: '2px' }}>%</span>
                                 </div>
+                                {hasManualOverride && promoDiscount > 0 && (
+                                  <div style={{ fontSize: '10px', color: '#FF9500', fontWeight: 'bold', marginTop: '2px' }} title="Remise manuelle prioritaire sur la promotion">
+                                    ⚠️ Manuelle ({item.remisePercent}%)
+                                  </div>
+                                )}
                               </td>
 
                               {/* Total Net TTC */}
@@ -2194,6 +2204,61 @@ export default function Orders({ openWizardTrigger }) {
                           )
                         })
                       )}
+
+                      {/* § 10, § 11 & § 18.5-7 : Affichage automatique des cadeaux promotionnels sans doublon et à 0.00 DH */}
+                      {promoAnalysis.freeItems && promoAnalysis.freeItems.map((fi, fiIdx) => (
+                        <tr key={`promo_gift_${fiIdx}`} style={{ background: 'rgba(52, 199, 89, 0.08)', borderLeft: '3px solid #34C759' }}>
+                          <td>
+                            <span style={{
+                              fontWeight: '900',
+                              fontSize: '11px',
+                              color: '#34C759',
+                              background: 'rgba(52, 199, 89, 0.15)',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              display: 'inline-block'
+                            }}>
+                              {fi.reference}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>{fi.productName}</strong>
+                              <span style={{ background: '#34C759', color: '#0D0F12', fontSize: '10px', fontWeight: '900', padding: '1px 6px', borderRadius: '4px' }}>
+                                🎁 CADEAU
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#34C759', marginTop: '2px' }}>
+                              Offert via « {fi.promoName} »
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: '700' }}>
+                              Gratuité Offerte
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{ fontWeight: '800', color: '#34C759', fontSize: '13px' }}>
+                              {fi.qtyGratuit} carton(s)
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{ color: '#8E95A5', fontSize: '12px' }}>-</span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: '700', color: '#34C759', fontSize: '12px' }}>
+                            0.00 DH
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{ color: '#8E95A5', fontSize: '12px' }}>-</span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: '900', color: '#34C759', fontSize: '13px' }}>
+                            0.00 DH
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{ fontSize: '10px', color: '#34C759', fontWeight: '700' }}>Automatique</span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

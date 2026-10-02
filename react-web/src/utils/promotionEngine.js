@@ -91,24 +91,29 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     const lineTotal = priceTtc * qty
 
     const meta = productMetaMap[item.productId] || productMetaMap[item.reference] || {}
+    const unitsPerBox = parseInt(item.unitsPerBox || meta.unitsPerBox || meta.unitsPerCarton || 1, 10) || 1
+    // Règle fonctionnelle § 4 & 18.1 : Conversion des unités saisies en cartons éligibles complets
+    const eligibleCartons = Math.floor(qty / unitsPerBox)
     const family = String(meta.category || item.category || 'AUTRES').toUpperCase().trim()
 
     // Par famille
     if (!familyStats[family]) {
-      familyStats[family] = { totalCartons: 0, totalAmountTtc: 0, items: [] }
+      familyStats[family] = { totalCartons: 0, totalUnits: 0, totalAmountTtc: 0, items: [] }
     }
-    familyStats[family].totalCartons += qty
+    familyStats[family].totalCartons += eligibleCartons
+    familyStats[family].totalUnits += qty
     familyStats[family].totalAmountTtc += lineTotal
-    familyStats[family].items.push({ item, idx })
+    familyStats[family].items.push({ item, idx, eligibleCartons, unitsPerBox })
 
     // Par produit individuel (par référence et ID)
     const prodKey = String(item.reference || item.productId || 'UNKNOWN').trim()
     if (!productStats[prodKey]) {
-      productStats[prodKey] = { totalCartons: 0, totalAmountTtc: 0, items: [] }
+      productStats[prodKey] = { totalCartons: 0, totalUnits: 0, totalAmountTtc: 0, items: [] }
     }
-    productStats[prodKey].totalCartons += qty
+    productStats[prodKey].totalCartons += eligibleCartons
+    productStats[prodKey].totalUnits += qty
     productStats[prodKey].totalAmountTtc += lineTotal
-    productStats[prodKey].items.push({ item, idx })
+    productStats[prodKey].items.push({ item, idx, eligibleCartons, unitsPerBox })
   })
 
   // 3. Calcul du statut de l'offre spécifique si une offre précise est sélectionnée
@@ -134,8 +139,11 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
           const itemId = String(item.productId || '').trim()
           if (targetRefs.some(r => r === itemRef || r === itemId)) {
             const qty = parseInt(item.qty || 1, 10)
+            const meta = productMetaMap[item.productId] || productMetaMap[item.reference] || {}
+            const unitsPerBox = parseInt(item.unitsPerBox || meta.unitsPerBox || meta.unitsPerCarton || 1, 10) || 1
+            const cartons = Math.floor(qty / unitsPerBox)
             const price = parseFloat(item.priceTtc || 0)
-            sumCartons += qty
+            sumCartons += cartons
             sumAmount += (price * qty)
           }
         })
@@ -177,7 +185,13 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
 
   // 4. Identifier les promotions éligibles
   const candidatePromos = []
-  const activePromos = promotions.filter(p => p.isActive !== false)
+  const todayStr = new Date().toISOString().substring(0, 10)
+  const activePromos = promotions.filter(p => {
+    if (p.isActive === false) return false
+    if (p.startDate && p.startDate > todayStr) return false
+    if (p.endDate && p.endDate < todayStr) return false
+    return true
+  })
   const promosToEvaluate = (selectedPromoId && selectedPromoId !== 'AUTO')
     ? activePromos.filter(p => p.id === selectedPromoId)
     : activePromos
@@ -222,10 +236,13 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
         const isMatch = targetRefs.some(ref => ref === itemRef || ref === itemId)
         if (isMatch) {
           const qty = parseInt(item.qty || 1, 10)
+          const meta = productMetaMap[item.productId] || productMetaMap[item.reference] || {}
+          const unitsPerBox = parseInt(item.unitsPerBox || meta.unitsPerBox || meta.unitsPerCarton || 1, 10) || 1
+          const cartons = Math.floor(qty / unitsPerBox)
           const price = parseFloat(item.priceTtc || 0)
-          matchedCartons += qty
+          matchedCartons += cartons
           matchedAmount += (price * qty)
-          matchedItems.push({ item, idx })
+          matchedItems.push({ item, idx, eligibleCartons: cartons, unitsPerBox })
         }
       })
 
@@ -283,15 +300,29 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     }
 
     if (isEligible) {
-      const effectiveDiscount = appliedTier && appliedTier.discountPercent !== undefined 
+      let effectiveDiscount = appliedTier && appliedTier.discountPercent !== undefined 
         ? appliedTier.discountPercent 
         : parseFloat(promo.discountPercent || 0)
-      const effectiveFreeQty = appliedTier && appliedTier.freeQuantity !== undefined 
+      let effectiveFreeQty = appliedTier && appliedTier.freeQuantity !== undefined 
         ? appliedTier.freeQuantity 
         : parseInt(promo.freeQuantity || 0, 10)
-      const effectiveVoucher = appliedTier && appliedTier.voucherAmount !== undefined 
+      let effectiveVoucher = appliedTier && appliedTier.voucherAmount !== undefined 
         ? appliedTier.voucherAmount 
         : parseFloat(promo.voucherAmount || 0)
+
+      // Strict enforcement of Types (§ 12, § 13, § 14, § 18.8)
+      if (promo.type === 'TYPE_1') {
+        effectiveFreeQty = 0
+        effectiveVoucher = 0
+      } else if (promo.type === 'TYPE_3') {
+        effectiveFreeQty = 0
+        effectiveDiscount = 0
+      } else if (promo.type === 'TYPE_4') {
+        effectiveFreeQty = 0
+        effectiveVoucher = 0
+      } else if (promo.type === 'TYPE_2') {
+        effectiveVoucher = 0
+      }
 
       candidatePromos.push({
         promo,
@@ -370,9 +401,9 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       })
     }
 
-    // B. Cartons gratuits (Type 2 ou palier avec gratuité)
+    // B. Cartons gratuits (Type 2 uniquement, calcul strict non-cumulatif selon palier atteint)
     let giftSummary = null
-    if (freeQuantity > 0 && (promo.type === 'TYPE_2' || freeQuantity > 0)) {
+    if (promo.type === 'TYPE_2' && freeQuantity > 0) {
       if (promo.freeItemType === 'SAME_PRODUCT') {
         const sourceItem = applicableItems[0]?.item
         if (sourceItem) {
@@ -389,24 +420,27 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
         }
       } else {
         const giftMeta = productMetaMap[promo.freeProductId] || productMetaMap[promo.freeProductRef] || {}
-        const giftRef = promo.freeProductRef || giftMeta.reference || 'PROMO-GIFT'
-        const giftName = promo.freeProductName || giftMeta.name || 'Produit Cadeau Offert'
+        const giftRef = promo.freeProductRef || giftMeta.reference
+        const giftName = promo.freeProductName || giftMeta.name
 
-        freeItems.push({
-          productId: promo.freeProductId || giftMeta.id || 'promo_gift',
-          reference: giftRef,
-          productName: giftName,
-          qtyGratuit: freeQuantity,
-          priceTtc: 0,
-          promoId: promo.id,
-          promoName: promo.name
-        })
-        giftSummary = `${freeQuantity} carton(s) offert(s) de ${giftName} (Réf. ${giftRef})`
+        // Règle § 10 & 18.6 : Aucun cadeau fictif ne doit être injecté si aucun produit cadeau n'est configuré
+        if (giftRef || giftName) {
+          freeItems.push({
+            productId: promo.freeProductId || giftMeta.id || 'promo_gift',
+            reference: giftRef || 'CADEAU',
+            productName: giftName || 'Cadeau Promotionnel',
+            qtyGratuit: freeQuantity,
+            priceTtc: 0,
+            promoId: promo.id,
+            promoName: promo.name
+          })
+          giftSummary = `${freeQuantity} carton(s) offert(s) de ${giftName || giftRef}`
+        }
       }
     }
 
-    // C. Bon d'achat fixe immédiat (Type 3 ou palier avec bon)
-    if (voucherAmount > 0) {
+    // C. Bon d'achat fixe immédiat (Type 3 uniquement, déduit globalement sur le bon de commande)
+    if (promo.type === 'TYPE_3' && voucherAmount > 0) {
       voucherDiscount += voucherAmount
     }
 
