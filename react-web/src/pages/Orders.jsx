@@ -659,11 +659,10 @@ export default function Orders({ openWizardTrigger }) {
         items: combinedItems
       }
       updateOrder(updatedOrder)
-      generateOrderPdf(updatedOrder)
       setShowOrderWizard(false)
       setEditingOrder(null)
       setAppliedAvoirCompensation(null)
-      alert(`Bon de commande ${updatedOrder.orderNumber} modifié avec succès !`)
+      alert(`Bon de commande ${updatedOrder.orderNumber} modifié et enregistré avec succès !`)
     } else {
       const newOrder = {
         id: 'o_' + Date.now(),
@@ -691,10 +690,9 @@ export default function Orders({ openWizardTrigger }) {
         items: combinedItems
       }
       addOrder(newOrder)
-      generateOrderPdf(newOrder)
       setShowOrderWizard(false)
       setAppliedAvoirCompensation(null)
-      alert(`Bon de commande ${newOrder.orderNumber} créé avec succès !`)
+      alert(`Bon de commande ${newOrder.orderNumber} enregistré avec succès dans la base de données !`)
     }
 
     setCustomOrderNumber('')
@@ -2637,7 +2635,7 @@ export default function Orders({ openWizardTrigger }) {
                   Annuler
                 </button>
                 <button type="button" onClick={handleSaveOrderSubmit} className="btn-bardahl" style={{ padding: '8px 16px', fontSize: '12px' }}>
-                  <CheckCircle2 style={{ width: '16px', height: '16px' }} /> {editingOrder ? 'Enregistrer Modifications' : 'Valider et Générer PDF'}
+                  <CheckCircle2 style={{ width: '16px', height: '16px' }} /> {editingOrder ? 'Enregistrer Modifications' : 'Valider et Enregistrer'}
                 </button>
               </div>
 
