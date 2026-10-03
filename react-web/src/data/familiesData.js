@@ -52,24 +52,50 @@ export const DEFAULT_BARDAHL_FAMILIES = [
   }
 ]
 
+let _activeProductFamiliesCache = (() => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('bardahl_product_families')
+      if (saved) return JSON.parse(saved)
+    }
+  } catch (e) {}
+  return DEFAULT_BARDAHL_FAMILIES
+})()
+
+export function setGlobalProductFamilies(list) {
+  if (Array.isArray(list) && list.length > 0) {
+    _activeProductFamiliesCache = list
+  }
+}
+
+export function getGlobalProductFamilies() {
+  return _activeProductFamiliesCache || DEFAULT_BARDAHL_FAMILIES
+}
+
 /**
  * Identifie la famille correspondante pour une catégorie ou un libellé produit
  * @param {string} categoryOrFamily - Catégorie ou libellé de l'article
  * @param {Array} familiesList - Liste dynamique des familles disponibles
  * @returns {Object} Famille trouvée ou fallback
  */
-export const getFamilyInfo = (categoryOrFamily, familiesList = DEFAULT_BARDAHL_FAMILIES) => {
-  const families = (familiesList && familiesList.length > 0) ? familiesList : DEFAULT_BARDAHL_FAMILIES
+export const getFamilyInfo = (categoryOrFamily, familiesList = null) => {
+  const families = (familiesList && familiesList.length > 0) 
+    ? familiesList 
+    : (_activeProductFamiliesCache && _activeProductFamiliesCache.length > 0 
+        ? _activeProductFamiliesCache 
+        : DEFAULT_BARDAHL_FAMILIES)
+
   if (!categoryOrFamily) return families[0]
   
   const c = String(categoryOrFamily).toUpperCase().trim()
 
-  // 1. Recherche par correspondance exacte de code ou label
+  // 1. Recherche par correspondance exacte de code, label ou id
   const exact = families.find(f => 
-    f.code.toUpperCase() === c || 
-    f.label.toUpperCase() === c ||
-    c.includes(f.code.toUpperCase()) ||
-    c.includes(f.label.toUpperCase())
+    (f.code && f.code.toUpperCase() === c) || 
+    (f.label && f.label.toUpperCase() === c) ||
+    (f.id && f.id.toUpperCase() === c) ||
+    (f.code && c.includes(f.code.toUpperCase())) ||
+    (f.label && c.includes(f.label.toUpperCase()))
   )
   if (exact) return exact
 
@@ -98,10 +124,12 @@ export const getFamilyInfo = (categoryOrFamily, familiesList = DEFAULT_BARDAHL_F
   // 3. Fallback dynamique
   return { 
     id: `fam_dyn_${c.replace(/\s+/g, '_')}`, 
-    code: c, 
+    code: c.replace(/\s+/g, '_'), 
     label: categoryOrFamily, 
     icon: '🏷️', 
-    color: '#8E8E93',
+    color: '#FFD000',
+    description: `Famille ${categoryOrFamily}`,
     isActive: true 
   }
 }
+

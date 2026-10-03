@@ -56,35 +56,38 @@ export default function Settings() {
     setShowFamilyModal(true)
   }
 
-  const handleSaveFamily = (e) => {
+  const handleSaveFamily = async (e) => {
     e.preventDefault()
     if (!famLabel.trim()) return
-    const code = famCode.trim() || famLabel.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    const code = (famCode.trim() || famLabel.trim()).toUpperCase().replace(/[^A-Z0-9_]/g, '_')
     if (editingFamily) {
-      updateProductFamily({
+      await updateProductFamily({
         ...editingFamily,
         label: famLabel.trim(),
         code,
-        icon: famIcon,
-        color: famColor,
+        icon: famIcon || '🏷️',
+        color: famColor || '#FFD000',
         description: famDesc
       })
+      alert(`Famille « ${famLabel.trim()} » modifiée avec succès et synchronisée dans Supabase !`)
     } else {
-      addProductFamily({
+      await addProductFamily({
         label: famLabel.trim(),
         code,
-        icon: famIcon,
-        color: famColor,
+        icon: famIcon || '🏷️',
+        color: famColor || '#FFD000',
         description: famDesc,
         isActive: true
       })
+      alert(`Nouvelle Famille « ${famLabel.trim()} » (CODE: ${code}) créée avec succès et enregistrée dans Supabase !`)
     }
     setShowFamilyModal(false)
   }
 
-  const handleDeleteFamily = (fam) => {
+  const handleDeleteFamily = async (fam) => {
     if (window.confirm(`Supprimer définitivement la famille « ${fam.label} » ?`)) {
-      deleteProductFamily(fam.id)
+      await deleteProductFamily(fam.id, fam.code)
+      alert(`Famille « ${fam.label} » supprimée.`)
     }
   }
 

@@ -5,20 +5,26 @@ import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
 import { getProductUnitsPerCarton } from '../data/productsData'
 
 export default function Products() {
-  const { products, addProduct, updateProduct, deleteProduct } = useApp()
+  const { products, addProduct, updateProduct, deleteProduct, productFamilies = [] } = useApp()
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('ALL')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
 
+  const activeFamilies = useMemo(() => {
+    return (productFamilies && productFamilies.length > 0)
+      ? productFamilies.filter(f => f.isActive !== false)
+      : DEFAULT_BARDAHL_FAMILIES
+  }, [productFamilies])
+
   const [formData, setFormData] = useState({
     code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100'
   })
 
-  const categories = [
+  const categories = useMemo(() => [
     { id: 'ALL', label: 'Toutes les Familles' },
-    ...DEFAULT_BARDAHL_FAMILIES.map(f => ({ id: f.code, label: f.label }))
-  ]
+    ...activeFamilies.map(f => ({ id: f.code, label: `${f.icon} ${f.label}` }))
+  ], [activeFamilies])
 
   const filteredProducts = products.filter(p => {
     const q = search.trim().toLowerCase()
@@ -30,7 +36,7 @@ export default function Products() {
     if (!matchesSearch) return false
     if (selectedCategory === 'ALL') return true
 
-    const fam = getFamilyInfo(p.category)
+    const fam = getFamilyInfo(p.category, activeFamilies)
     return fam.code === selectedCategory || (p.category || '').toUpperCase().includes(selectedCategory)
   })
 
@@ -76,7 +82,7 @@ export default function Products() {
       priceTtc: parseFloat(formData.priceTtc) || 0,
       stock: parseInt(formData.stock, 10) || 100
     })
-    const fam = getFamilyInfo(formData.category)
+    const fam = getFamilyInfo(formData.category, activeFamilies)
     setEditingProduct(null)
     alert(`Fiche produit « ${formData.name} » modifiée avec succès !\nFamille associée : ${fam.icon} ${fam.label}\nConditionnement : ${formData.unitsPerBox} unités par carton.\nEnregistré dans la base de données.`)
   }
@@ -190,20 +196,25 @@ export default function Products() {
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '2px 0' }}>
                   <span>Famille :</span>
-                  <span style={{
-                    background: 'rgba(255, 208, 0, 0.12)',
-                    color: 'var(--bardahl-yellow)',
-                    fontWeight: '800',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(255, 208, 0, 0.3)',
-                    fontSize: '11px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
-                    {getFamilyInfo(p.category).icon} {getFamilyInfo(p.category).label}
-                  </span>
+                  {(() => {
+                    const famInfo = getFamilyInfo(p.category, activeFamilies)
+                    return (
+                      <span style={{
+                        background: `${famInfo.color || '#FFD000'}22`,
+                        color: famInfo.color || 'var(--bardahl-yellow)',
+                        fontWeight: '800',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        border: `1px solid ${famInfo.color || 'rgba(255, 208, 0, 0.3)'}55`,
+                        fontSize: '11px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        {famInfo.icon} {famInfo.label}
+                      </span>
+                    )
+                  })()}
                 </div>
                 <div>Conditionnement : <strong style={{ color: '#FFFFFF' }}>{p.packaging}</strong> <span style={{ color: '#A1A1AA', fontSize: '11px' }}>({p.unitsPerBox || getProductUnitsPerCarton(p)} un./carton)</span></div>
               </div>
@@ -303,7 +314,7 @@ export default function Products() {
                     onChange={e => setFormData({...formData, category: e.target.value})}
                     className="input-field"
                   >
-                    {DEFAULT_BARDAHL_FAMILIES.map(fam => (
+                    {activeFamilies.map(fam => (
                       <option key={fam.code} value={fam.code}>
                         {fam.icon} {fam.label}
                       </option>

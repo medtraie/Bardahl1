@@ -83,6 +83,13 @@ export default function Analytics() {
   const promotions = Array.isArray(context.promotions) ? context.promotions : []
   const commercials = Array.isArray(context.commercials) ? context.commercials : []
   const currentUser = context.currentUser || null
+  const productFamilies = Array.isArray(context.productFamilies) ? context.productFamilies : []
+
+  const activeFamiliesList = useMemo(() => {
+    return (productFamilies && productFamilies.length > 0)
+      ? productFamilies.filter(f => f.isActive !== false)
+      : BARDAHL_FAMILIES_METRICS
+  }, [productFamilies])
 
   // Filter States
   const [periodFilter, setPeriodFilter] = useState('ALL') // 'TODAY' | '7DAYS' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'CUSTOM' | 'ALL'
@@ -677,12 +684,12 @@ export default function Analytics() {
 
   // 10. Chart: Cartons par Famille sous Promo (Bar)
   const familyPromoChartData = {
-    labels: BARDAHL_FAMILIES_METRICS.map(f => f.label),
+    labels: activeFamiliesList.map(f => f.label),
     datasets: [
       {
         label: 'Cartons Écoulés sous Promo',
-        data: BARDAHL_FAMILIES_METRICS.map(f => promoMetrics.familyCartons[f.label] || 0),
-        backgroundColor: BARDAHL_FAMILIES_METRICS.map(f => f.color),
+        data: activeFamiliesList.map(f => promoMetrics.familyCartons[f.label] || 0),
+        backgroundColor: activeFamiliesList.map(f => f.color || '#FFD000'),
         borderRadius: 8
       }
     ]

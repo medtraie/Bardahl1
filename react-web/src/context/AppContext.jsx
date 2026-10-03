@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { allProductsData } from '../data/productsData'
 import { defaultPromotions } from '../data/promotionsData'
-import { DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
+import { DEFAULT_BARDAHL_FAMILIES, setGlobalProductFamilies } from '../data/familiesData'
 import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
   dbGetOrders,      dbAddOrder,       dbUpdateOrder,       dbDeleteOrder,
   dbGetPromotions,  dbAddPromotion,   dbUpdatePromotion,   dbDeletePromotion,
   dbGetProducts,    dbAddProduct,     dbUpdateProduct,     dbDeleteProduct,
+  dbGetProductFamilies, dbAddProductFamily, dbUpdateProductFamily, dbDeleteProductFamily,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
@@ -211,15 +212,44 @@ export function AppProvider({ children }) {
   const [productFamilies, setProductFamilies] = useState(() => {
     try {
       const saved = localStorage.getItem('bardahl_product_families')
-      return saved ? JSON.parse(saved) : DEFAULT_BARDAHL_FAMILIES
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setGlobalProductFamilies(parsed)
+        return parsed
+      }
     } catch {
-      return DEFAULT_BARDAHL_FAMILIES
     }
+    setGlobalProductFamilies(DEFAULT_BARDAHL_FAMILIES)
+    return DEFAULT_BARDAHL_FAMILIES
   })
+
+  // Sync families from Supabase on mount
+  useEffect(() => {
+    async function loadFamilies() {
+      const remote = await dbGetProductFamilies()
+      if (remote && remote.length > 0) {
+        setProductFamilies(prev => {
+          const map = new Map()
+          DEFAULT_BARDAHL_FAMILIES.forEach(f => map.set(f.code, f))
+          prev.forEach(f => map.set(f.code, f))
+          remote.forEach(f => {
+            const existing = map.get(f.code) || {}
+            map.set(f.code, { ...existing, ...f })
+          })
+          const merged = Array.from(map.values())
+          try { localStorage.setItem('bardahl_product_families', JSON.stringify(merged)) } catch (e) {}
+          setGlobalProductFamilies(merged)
+          return merged
+        })
+      }
+    }
+    loadFamilies()
+  }, [])
 
   useEffect(() => {
     try {
       localStorage.setItem('bardahl_product_families', JSON.stringify(productFamilies))
+      setGlobalProductFamilies(productFamilies)
     } catch (e) {
       console.error('Error saving product families to localStorage:', e)
     }
@@ -279,11 +309,12 @@ export function AppProvider({ children }) {
   const refreshAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [commsRows, clientsRows, ordersRows, productsRows] = await Promise.all([
+      const [commsRows, clientsRows, ordersRows, productsRows, familiesRows] = await Promise.all([
         dbGetCommercials(),
         dbGetClients(),
         dbGetOrders(),
         dbGetProducts().catch(() => null),
+        dbGetProductFamilies().catch(() => null),
       ])
 
       const appComms = commsRows.map(rowToCommercial)
@@ -326,6 +357,22 @@ export function AppProvider({ children }) {
           return Array.from(map.values())
         })
       }
+
+      if (familiesRows && familiesRows.length > 0) {
+        setProductFamilies(prev => {
+          const map = new Map()
+          DEFAULT_BARDAHL_FAMILIES.forEach(f => map.set(f.code, f))
+          prev.forEach(f => map.set(f.code, f))
+          familiesRows.forEach(f => {
+            const existing = map.get(f.code) || {}
+            map.set(f.code, { ...existing, ...f })
+          })
+          const merged = Array.from(map.values())
+          try { localStorage.setItem('bardahl_product_families', JSON.stringify(merged)) } catch (e) {}
+          setGlobalProductFamilies(merged)
+          return merged
+        })
+      }
     } catch (err) {
       console.error('refreshAll error:', err)
     } finally {
@@ -340,10 +387,12 @@ export function AppProvider({ children }) {
     const chComm = subscribeToTable('commercials', refreshAll)
     const chCli  = subscribeToTable('clients',     refreshAll)
     const chOrd  = subscribeToTable('orders',      refreshAll)
+    const chFam  = subscribeToTable('product_families', refreshAll)
     return () => {
       unsubscribeChannel(chComm)
       unsubscribeChannel(chCli)
       unsubscribeChannel(chOrd)
+      unsubscribeChannel(chFam)
     }
   }, [refreshAll])
 
@@ -645,30 +694,68 @@ export function AppProvider({ children }) {
   }, [])
 
   // ── FAMILLES DE PRODUITS ADMINISTRABLES ──────────────────────────────────────
-  const addProductFamily = useCallback((fam) => {
+  const addProductFamily = useCallback(async (fam) => {
+    const code = (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
     const newFam = {
-      id: `fam_${Date.now()}`,
-      code: (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
+      id: fam.id || `fam_${Date.now()}`,
+      code,
       label: fam.label || 'Nouvelle Famille',
       icon: fam.icon || '🏷️',
       color: fam.color || '#FFD000',
       description: fam.description || '',
       isActive: fam.isActive !== false
     }
-    setProductFamilies(prev => [...prev, newFam])
-    return newFam
+    setProductFamilies(prev => {
+      const filtered = prev.filter(f => f.id !== newFam.id && f.code !== newFam.code)
+      const updated = [...filtered, newFam]
+      try { localStorage.setItem('bardahl_product_families', JSON.stringify(updated)) } catch (e) {}
+      setGlobalProductFamilies(updated)
+      return updated
+    })
+    const remote = await dbAddProductFamily(newFam).catch(e => console.warn('Supabase family add error:', e))
+    return remote || newFam
   }, [])
 
-  const updateProductFamily = useCallback((fam) => {
-    setProductFamilies(prev => prev.map(f => f.id === fam.id ? { ...f, ...fam } : f))
+  const updateProductFamily = useCallback(async (fam) => {
+    const code = (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    const updatedFam = { ...fam, code }
+    setProductFamilies(prev => {
+      const updated = prev.map(f => (f.id === fam.id || f.code === fam.code || f.code === code) ? { ...f, ...updatedFam } : f)
+      try { localStorage.setItem('bardahl_product_families', JSON.stringify(updated)) } catch (e) {}
+      setGlobalProductFamilies(updated)
+      return updated
+    })
+    await dbUpdateProductFamily(updatedFam).catch(e => console.warn('Supabase family update error:', e))
+    return updatedFam
   }, [])
 
-  const deleteProductFamily = useCallback((id) => {
-    setProductFamilies(prev => prev.filter(f => f.id !== id))
+  const deleteProductFamily = useCallback(async (id, code) => {
+    setProductFamilies(prev => {
+      const updated = prev.filter(f => f.id !== id && (!code || f.code !== code))
+      try { localStorage.setItem('bardahl_product_families', JSON.stringify(updated)) } catch (e) {}
+      setGlobalProductFamilies(updated)
+      return updated
+    })
+    await dbDeleteProductFamily(id, code).catch(e => console.warn('Supabase family delete error:', e))
   }, [])
 
-  const toggleProductFamily = useCallback((id) => {
-    setProductFamilies(prev => prev.map(f => f.id === id ? { ...f, isActive: !f.isActive } : f))
+  const toggleProductFamily = useCallback(async (id) => {
+    let toggledFam = null
+    setProductFamilies(prev => {
+      const updated = prev.map(f => {
+        if (f.id === id) {
+          toggledFam = { ...f, isActive: !f.isActive }
+          return toggledFam
+        }
+        return f
+      })
+      try { localStorage.setItem('bardahl_product_families', JSON.stringify(updated)) } catch (e) {}
+      setGlobalProductFamilies(updated)
+      return updated
+    })
+    if (toggledFam) {
+      await dbUpdateProductFamily(toggledFam).catch(e => console.warn('Supabase family toggle error:', e))
+    }
   }, [])
 
   // ── CLIENT COMPENSATIONS & AVOIRS DE RÉGULARISATION ─────────────────────────

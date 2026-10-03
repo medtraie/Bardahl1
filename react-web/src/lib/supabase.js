@@ -614,7 +614,173 @@ export async function dbDeleteProduct(id, reference) {
   }
 }
 
+// ─── PRODUCT FAMILIES ────────────────────────────────────────────────────────
+
+export function rowToProductFamily(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    label: row.label || row.name,
+    icon: row.icon || row.icon_name || '🏷️',
+    color: row.color || '#FFD000',
+    description: row.description || '',
+    isActive: row.is_active !== false,
+    sortOrder: row.sort_order || 0
+  }
+}
+
+export async function dbGetProductFamilies() {
+  try {
+    // 1. Try dedicated product_families table
+    const { data: famData, error: famErr } = await supabase
+      .from('product_families')
+      .select('*')
+      .order('sort_order', { ascending: true })
+
+    if (!famErr && famData && famData.length > 0) {
+      return famData.map(rowToProductFamily)
+    }
+
+    // 2. Fallback to categories table if product_families not yet created
+    const { data: catData, error: catErr } = await supabase
+      .from('categories')
+      .select('*')
+      .order('created_at', { ascending: true })
+
+    if (!catErr && catData && catData.length > 0) {
+      return catData.map(c => ({
+        id: c.id,
+        code: c.code,
+        label: c.name,
+        icon: c.icon_name || '🏷️',
+        color: '#FFD000',
+        description: c.description || '',
+        isActive: true,
+        sortOrder: 0
+      }))
+    }
+
+    return null
+  } catch (e) {
+    console.warn('dbGetProductFamilies exception:', e)
+    return null
+  }
+}
+
+export async function dbAddProductFamily(fam) {
+  try {
+    const code = (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    const payload = {
+      id: fam.id || `fam_${Date.now()}`,
+      code,
+      label: fam.label,
+      icon: fam.icon || '🏷️',
+      color: fam.color || '#FFD000',
+      description: fam.description || '',
+      is_active: fam.isActive !== false,
+      sort_order: fam.sortOrder || 10
+    }
+
+    let result = null
+
+    // 1. Insert into product_families if table exists
+    try {
+      const { data, error } = await supabase
+        .from('product_families')
+        .upsert(payload, { onConflict: 'code' })
+        .select()
+        .single()
+      if (!error && data) {
+        result = rowToProductFamily(data)
+      }
+    } catch (e) {
+      // product_families table might not exist yet
+    }
+
+    // 2. Also sync to categories table for referential integrity
+    try {
+      await supabase.from('categories').upsert({
+        name: fam.label,
+        code,
+        description: fam.description || '',
+        icon_name: fam.icon || '🏷️'
+      }, { onConflict: 'code' })
+    } catch (e) {
+      console.warn('Sync to categories notice:', e)
+    }
+
+    return result || { ...fam, code, id: payload.id }
+  } catch (e) {
+    console.error('dbAddProductFamily exception:', e)
+    return fam
+  }
+}
+
+export async function dbUpdateProductFamily(fam) {
+  try {
+    const code = (fam.code || fam.label || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+    const payload = {
+      code,
+      label: fam.label,
+      icon: fam.icon || '🏷️',
+      color: fam.color || '#FFD000',
+      description: fam.description || '',
+      is_active: fam.isActive !== false,
+      sort_order: fam.sortOrder || 10
+    }
+
+    // 1. Update product_families table
+    try {
+      if (fam.id) {
+        await supabase.from('product_families').update(payload).eq('id', fam.id)
+      } else {
+        await supabase.from('product_families').update(payload).eq('code', code)
+      }
+    } catch (e) {}
+
+    // 2. Sync to categories table
+    try {
+      await supabase.from('categories').update({
+        name: fam.label,
+        description: fam.description || '',
+        icon_name: fam.icon || '🏷️'
+      }).eq('code', code)
+    } catch (e) {}
+
+    return fam
+  } catch (e) {
+    console.error('dbUpdateProductFamily exception:', e)
+    return fam
+  }
+}
+
+export async function dbDeleteProductFamily(id, code) {
+  try {
+    // 1. Delete from product_families
+    try {
+      if (id) {
+        await supabase.from('product_families').delete().eq('id', id)
+      } else if (code) {
+        await supabase.from('product_families').delete().eq('code', code)
+      }
+    } catch (e) {}
+
+    // 2. Delete from categories if present
+    try {
+      if (code) {
+        await supabase.from('categories').delete().eq('code', code)
+      }
+    } catch (e) {}
+
+    return true
+  } catch (e) {
+    console.error('dbDeleteProductFamily exception:', e)
+    return false
+  }
+}
+
 // ─── REALTIME ────────────────────────────────────────────────────────────────
+
 
 export function subscribeToTable(table, callback) {
   const channel = supabase

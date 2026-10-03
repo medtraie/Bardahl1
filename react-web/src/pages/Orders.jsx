@@ -11,22 +11,27 @@ import { generateOrderPdf, generateMultipleOrdersPdf } from '../utils/pdfGenerat
 import { exportOrdersToExcel } from '../utils/excelExporter'
 import { evaluatePromotions } from '../utils/promotionEngine'
 import { getProductUnitsPerCarton } from '../data/productsData'
+import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
 
-const PRODUCT_CATEGORIES = [
-  { id: 'ALL', label: 'Toutes les Gammes' },
-  { id: 'ADDITIFS', label: 'Additifs' },
-  { id: 'LUBRIFIANTS', label: 'Lubrifiants Auto' },
-  { id: 'FLUIDES', label: 'Fluides & LR' },
-  { id: 'AEROSOLS', label: 'Aérosols & Nettoyants' },
-  { id: 'INDUSTRIE', label: 'Industrie & Graisses' },
-]
 
 export default function Orders({ openWizardTrigger }) {
   const { 
     orders, clients, products, commercials, promotions, 
     addOrder, updateOrder, deleteOrder, currentUser,
-    clientCompensations = [], addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation
+    clientCompensations = [], addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
+    productFamilies = []
   } = useApp()
+
+  const activeFamilies = useMemo(() => {
+    return (productFamilies && productFamilies.length > 0)
+      ? productFamilies.filter(f => f.isActive !== false)
+      : DEFAULT_BARDAHL_FAMILIES
+  }, [productFamilies])
+
+  const productCategoriesList = useMemo(() => [
+    { id: 'ALL', label: 'Toutes les Gammes' },
+    ...activeFamilies.map(f => ({ id: f.code, label: `${f.icon} ${f.label}` }))
+  ], [activeFamilies])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [commercialFilter, setCommercialFilter] = useState('ALL')
@@ -101,8 +106,10 @@ export default function Orders({ openWizardTrigger }) {
     const q = (productSearchQuery || '').toLowerCase().trim()
     return (products || []).filter(p => {
       if (selectedProductCategoryFilter !== 'ALL') {
-        const cat = (p.category || p.categoryId || '').toUpperCase()
-        if (!cat.includes(selectedProductCategoryFilter)) return false
+        const fam = getFamilyInfo(p.category || p.categoryId, activeFamilies)
+        if (fam.code !== selectedProductCategoryFilter && !(p.category || '').toUpperCase().includes(selectedProductCategoryFilter)) {
+          return false
+        }
       }
       if (!q) return true
       const matchName = (p.name || '').toLowerCase().includes(q)
@@ -1668,7 +1675,7 @@ export default function Orders({ openWizardTrigger }) {
                         {/* Header: Category Filter Pills */}
                         <div style={{ padding: '12px 14px', background: 'rgba(13, 15, 18, 0.95)', borderBottom: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
-                            {PRODUCT_CATEGORIES.map(cat => (
+                            {productCategoriesList.map(cat => (
                               <button
                                 key={cat.id}
                                 type="button"
@@ -1760,7 +1767,10 @@ export default function Orders({ openWizardTrigger }) {
                                         background: '#2B313E',
                                         color: '#CBD5E1'
                                       }}>
-                                        {p.category || 'BARDAHL'}
+                                        {(() => {
+                                          const famInfo = getFamilyInfo(p.category, activeFamilies)
+                                          return `${famInfo.icon} ${famInfo.label}`
+                                        })()}
                                       </span>
                                       {p.viscosity && p.viscosity !== 'N/A' && (
                                         <span style={{ fontSize: '10px', fontWeight: '800', color: '#007AFF' }}>
