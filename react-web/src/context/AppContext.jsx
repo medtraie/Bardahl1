@@ -603,10 +603,13 @@ export function AppProvider({ children }) {
   }, [])
 
   const deleteOrder = useCallback(async (id) => {
-    const ok = await dbDeleteOrder(id)
-    if (!ok) return
     setOrderExtras(prev => { const n = { ...prev }; delete n[id]; return n })
-    setOrders(prev => prev.filter(x => x.id !== id))
+    setOrders(prev => prev.filter(x => x.id !== id && x.dbId !== id))
+    try {
+      await dbDeleteOrder(id)
+    } catch (e) {
+      console.warn('Error deleting order from Supabase:', e)
+    }
   }, [])
 
   const updateOrderStatus = useCallback(async (orderId, newStatus) => {

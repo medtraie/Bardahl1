@@ -4,7 +4,7 @@ import {
   CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag,
   Sparkles, AlertCircle, Package, X, ShoppingBag, Layers,
   Scale, Calculator, ArrowRight, Clock, History, AlertTriangle, RefreshCw, BadgePercent, Coins, CheckSquare, Square,
-  ChevronDown
+  ChevronDown, User
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf, generateMultipleOrdersPdf } from '../utils/pdfGenerator'
@@ -74,6 +74,66 @@ export default function Orders({ openWizardTrigger }) {
       )
     }
     return <span className={`badge-status ${s}`}>{s}</span>
+  }
+
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '-'
+    const clean = String(dateStr).substring(0, 10)
+    const parts = clean.split('-')
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`
+    }
+    return clean
+  }
+
+  const renderPaymentBadge = (method) => {
+    const m = String(method || 'Chèque').trim()
+    let bg = 'rgba(255, 255, 255, 0.06)'
+    let color = '#E2E8F0'
+    let border = 'rgba(255, 255, 255, 0.12)'
+    let icon = '💳'
+
+    const lower = m.toLowerCase()
+    if (lower.includes('espèce') || lower.includes('espece')) {
+      bg = 'rgba(52, 199, 89, 0.14)'
+      color = '#34C759'
+      border = 'rgba(52, 199, 89, 0.3)'
+      icon = '💵'
+    } else if (lower.includes('chèque') || lower.includes('cheque')) {
+      bg = 'rgba(0, 122, 255, 0.14)'
+      color = '#007AFF'
+      border = 'rgba(0, 122, 255, 0.3)'
+      icon = '📝'
+    } else if (lower.includes('virement')) {
+      bg = 'rgba(175, 82, 222, 0.14)'
+      color = '#AF52DE'
+      border = 'rgba(175, 82, 222, 0.3)'
+      icon = '🏦'
+    } else if (lower.includes('traite') || lower.includes('effet')) {
+      bg = 'rgba(255, 149, 0, 0.14)'
+      color = '#FF9500'
+      border = 'rgba(255, 149, 0, 0.3)'
+      icon = '📄'
+    }
+
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        fontSize: '11px',
+        fontWeight: '700',
+        padding: '3px 8px',
+        borderRadius: '6px',
+        background: bg,
+        color: color,
+        border: `1px solid ${border}`,
+        whiteSpace: 'nowrap'
+      }}>
+        <span style={{ fontSize: '12px' }}>{icon}</span>
+        {m}
+      </span>
+    )
   }
 
   const activeFamilies = useMemo(() => {
@@ -259,8 +319,9 @@ export default function Orders({ openWizardTrigger }) {
   }
 
   const handleDeleteOrder = (order) => {
-    if (window.confirm(`Voulez-vous vraiment supprimer le bon de commande ${order.orderNumber} ?`)) {
-      deleteOrder(order.id)
+    const confirmMessage = `Voulez-vous vraiment supprimer le bon de commande N° ${order.orderNumber} ?\n\n• Client : ${order.clientName || 'Inconnu'}\n• Montant : ${(parseFloat(order.totalTtc) || 0).toFixed(2)} DH\n\nAttention : Cette action est irréversible.`
+    if (window.confirm(confirmMessage)) {
+      deleteOrder(order.dbId || order.id)
     }
   }
 
@@ -971,12 +1032,12 @@ export default function Orders({ openWizardTrigger }) {
           </div>
 
           {/* Orders Table */}
-          <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="custom-table">
+          <div className="glass-card" style={{ padding: 0, overflow: 'hidden', borderRadius: '16px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ overflowX: 'auto', width: '100%' }}>
+              <table className="custom-table" style={{ width: '100%', minWidth: '1080px' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '40px', textAlign: 'center' }}>
+                    <th style={{ width: '44px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
                         checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
@@ -985,27 +1046,36 @@ export default function Orders({ openWizardTrigger }) {
                         style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)' }}
                       />
                     </th>
-                    <th>N° Bon</th>
-                    <th>Date</th>
-                    <th>Client</th>
-                    <th>Commercial</th>
-                    <th>Paiement</th>
-                    <th>Total TTC</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
+                    <th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>N° Bon</th>
+                    <th style={{ minWidth: '110px', whiteSpace: 'nowrap' }}>Date</th>
+                    <th style={{ minWidth: '220px' }}>Client</th>
+                    <th style={{ minWidth: '140px', whiteSpace: 'nowrap' }}>Commercial</th>
+                    <th style={{ minWidth: '115px', textAlign: 'center', whiteSpace: 'nowrap' }}>Paiement</th>
+                    <th style={{ minWidth: '125px', textAlign: 'right', whiteSpace: 'nowrap' }}>Total TTC</th>
+                    <th style={{ minWidth: '125px', textAlign: 'center', whiteSpace: 'nowrap' }}>Statut</th>
+                    <th style={{ minWidth: isAdmin ? '345px' : '230px', textAlign: 'center', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                        Aucun bon de commande trouvé pour ces critères.
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <AlertCircle size={32} style={{ opacity: 0.5, color: 'var(--bardahl-yellow)' }} />
+                          <span style={{ fontSize: '14px', fontWeight: '600' }}>Aucun bon de commande trouvé pour ces critères.</span>
+                        </div>
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map(o => (
-                      <tr key={o.id} style={{ background: selectedOrderIds.includes(o.id) ? 'rgba(255, 208, 0, 0.05)' : undefined }}>
-                        <td style={{ textAlign: 'center' }}>
+                      <tr 
+                        key={o.id} 
+                        style={{ 
+                          background: selectedOrderIds.includes(o.id) ? 'rgba(255, 208, 0, 0.06)' : undefined,
+                          transition: 'background 0.15s ease'
+                        }}
+                      >
+                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                           <input
                             type="checkbox"
                             checked={selectedOrderIds.includes(o.id)}
@@ -1013,104 +1083,264 @@ export default function Orders({ openWizardTrigger }) {
                             style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--bardahl-yellow)' }}
                           />
                         </td>
-                        <td><strong style={{ color: '#FFFFFF' }}>{o.orderNumber}</strong></td>
-                        <td style={{ fontSize: '12px' }}>{o.date}</td>
-                        <td>
+                        <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <span style={{
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                            fontWeight: '800',
+                            fontSize: '12.5px',
+                            color: 'var(--bardahl-yellow)',
+                            background: 'rgba(255, 208, 0, 0.08)',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(255, 208, 0, 0.22)',
+                            display: 'inline-block',
+                            letterSpacing: '0.3px'
+                          }}>
+                            {o.orderNumber}
+                          </span>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <span style={{
+                            fontSize: '12px',
+                            color: 'var(--text-secondary)',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <Clock size={12} style={{ opacity: 0.6 }} />
+                            {formatDateDisplay(o.date)}
+                          </span>
+                        </td>
+                        <td style={{ verticalAlign: 'middle', minWidth: '220px' }}>
                           <div>
-                            <strong style={{ color: '#FFFFFF' }}>{o.clientName}</strong>
-                            {o.totalFreeItems > 0 && (
-                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
-                                +{o.totalFreeItems} Offert(s)
-                              </span>
-                            )}
-                            {o.hasCompensation && (
-                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(0, 122, 255, 0.2)', color: '#007AFF', fontWeight: 'bold' }}>
-                                ⚖️ {o.compensationSummary || 'Régularisé'}
-                              </span>
-                            )}
-                            {o.avoirDeduction > 0 && (
-                              <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: 'bold' }}>
-                                💰 Avoir déduit -{parseFloat(o.avoirDeduction).toFixed(2)} DH
-                              </span>
-                            )}
+                            <div style={{ color: '#FFFFFF', fontWeight: '800', fontSize: '13px', lineHeight: '1.4' }}>
+                              {o.clientName}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', marginTop: '4px' }}>
+                              {o.totalFreeItems > 0 && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(52, 199, 89, 0.16)',
+                                  color: '#34C759',
+                                  fontWeight: '800',
+                                  border: '1px solid rgba(52, 199, 89, 0.35)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}>
+                                  <span>🎁</span> +{o.totalFreeItems} Offert(s)
+                                </span>
+                              )}
+                              {o.hasCompensation && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(0, 122, 255, 0.16)',
+                                  color: '#007AFF',
+                                  fontWeight: '800',
+                                  border: '1px solid rgba(0, 122, 255, 0.35)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}>
+                                  <span>⚖️</span> {o.compensationSummary || 'Régularisé'}
+                                </span>
+                              )}
+                              {o.avoirDeduction > 0 && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(255, 208, 0, 0.16)',
+                                  color: 'var(--bardahl-yellow)',
+                                  fontWeight: '800',
+                                  border: '1px solid rgba(255, 208, 0, 0.35)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}>
+                                  <span>💰</span> Avoir déduit -{parseFloat(o.avoirDeduction).toFixed(2)} DH
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
-                        <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{o.commercialName}</td>
-                        <td><span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', color: '#FFFFFF' }}>{o.paymentMethod || 'Chèque'}</span></td>
-                        <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '14px' }}>
-                          {(parseFloat(o.totalTtc) || 0).toFixed(2)} DH
+                        <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <span style={{
+                            fontSize: '12px',
+                            color: 'rgba(255, 255, 255, 0.85)',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            <span style={{
+                              width: '22px',
+                              height: '22px',
+                              borderRadius: '50%',
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              border: '1px solid rgba(255, 255, 255, 0.16)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '10px',
+                              fontWeight: '800',
+                              color: 'var(--bardahl-yellow)'
+                            }}>
+                              {(o.commercialName || 'C')[0].toUpperCase()}
+                            </span>
+                            {o.commercialName}
+                          </span>
                         </td>
-                        <td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          {renderPaymentBadge(o.paymentMethod)}
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <span style={{
+                            color: 'var(--bardahl-yellow)',
+                            fontWeight: '900',
+                            fontSize: '14px',
+                            letterSpacing: '0.2px'
+                          }}>
+                            {(parseFloat(o.totalTtc) || 0).toFixed(2)} <span style={{ fontSize: '11px', color: 'rgba(255, 208, 0, 0.7)' }}>DH</span>
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                           {renderOrderStatusBadge(o.status)}
                         </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap',
+                            flexWrap: 'nowrap'
+                          }}>
                             {isAdmin && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <select
-                                  value={o.status === 'DRAFT' ? 'EN_ATTENTE' : (o.status || 'EN_ATTENTE')}
-                                  onChange={(e) => handleStatusChange(o, e.target.value)}
-                                  className="btn-secondary"
-                                  style={{
-                                    padding: '5px 8px',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer',
-                                    borderRadius: '8px',
-                                    outline: 'none',
-                                    background: o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.18)' :
-                                                o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.18)' :
-                                                o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.18)' :
-                                                'rgba(255, 149, 0, 0.18)',
-                                    color: o.status === 'VALIDATED' ? '#007AFF' :
-                                           o.status === 'DELIVERED' ? '#34C759' :
-                                           o.status === 'CANCELLED' ? '#FF453A' :
-                                           '#FF9500',
-                                    border: `1px solid ${
-                                      o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.45)' :
-                                      o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.45)' :
-                                      o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.45)' :
-                                      'rgba(255, 149, 0, 0.45)'
-                                    }`
-                                  }}
-                                  title="Direction Bardahl : Changer le statut du bon (Validé, Livré, Annulé)"
-                                >
-                                  <option value="EN_ATTENTE" style={{ background: '#12151C', color: '#FF9500' }}>⏳ En Attente</option>
-                                  <option value="VALIDATED" style={{ background: '#12151C', color: '#007AFF' }}>✓ Validé</option>
-                                  <option value="DELIVERED" style={{ background: '#12151C', color: '#34C759' }}>🚚 Livré</option>
-                                  <option value="CANCELLED" style={{ background: '#12151C', color: '#FF453A' }}>✕ Annulé</option>
-                                </select>
-                              </div>
+                              <select
+                                value={o.status === 'DRAFT' ? 'EN_ATTENTE' : (o.status || 'EN_ATTENTE')}
+                                onChange={(e) => handleStatusChange(o, e.target.value)}
+                                style={{
+                                  height: '32px',
+                                  padding: '0 8px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer',
+                                  borderRadius: '8px',
+                                  outline: 'none',
+                                  background: o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.18)' :
+                                              o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.18)' :
+                                              o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.18)' :
+                                              'rgba(255, 149, 0, 0.18)',
+                                  color: o.status === 'VALIDATED' ? '#007AFF' :
+                                         o.status === 'DELIVERED' ? '#34C759' :
+                                         o.status === 'CANCELLED' ? '#FF453A' :
+                                         '#FF9500',
+                                  border: `1px solid ${
+                                    o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.45)' :
+                                    o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.45)' :
+                                    o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.45)' :
+                                    'rgba(255, 149, 0, 0.45)'
+                                  }`,
+                                  transition: 'all 0.2s'
+                                }}
+                                title="Direction Bardahl : Changer le statut du bon (Validé, Livré, Annulé)"
+                              >
+                                <option value="EN_ATTENTE" style={{ background: '#12151C', color: '#FF9500' }}>⏳ En Attente</option>
+                                <option value="VALIDATED" style={{ background: '#12151C', color: '#007AFF' }}>✓ Validé</option>
+                                <option value="DELIVERED" style={{ background: '#12151C', color: '#34C759' }}>🚚 Livré</option>
+                                <option value="CANCELLED" style={{ background: '#12151C', color: '#FF453A' }}>✕ Annulé</option>
+                              </select>
                             )}
 
                             <button
                               onClick={() => generateOrderPdf(o)}
                               className="btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: '11px' }}
-                              title="Télécharger PDF"
+                              style={{
+                                height: '32px',
+                                padding: '0 10px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Télécharger Bon de Commande (PDF)"
                             >
-                              <FileText style={{ width: '14px', height: '14px' }} /> PDF
+                              <FileText style={{ width: '13px', height: '13px', color: 'var(--bardahl-yellow)' }} />
+                              <span>PDF</span>
                             </button>
+
                             <button
                               onClick={() => handleOpenRemiseAdjustment(o)}
-                              className="btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: '11px', color: '#007AFF', borderColor: 'rgba(0, 122, 255, 0.4)', background: 'rgba(0, 122, 255, 0.08)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              style={{
+                                height: '32px',
+                                padding: '0 10px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: '#007AFF',
+                                borderColor: 'rgba(0, 122, 255, 0.4)',
+                                background: 'rgba(0, 122, 255, 0.08)',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                                border: '1px solid rgba(0, 122, 255, 0.4)',
+                                transition: 'all 0.2s'
+                              }}
                               title="Régularisation & Compensation Remise Produit"
                             >
-                              <Scale style={{ width: '13px', height: '13px' }} /> Régulariser
+                              <Scale style={{ width: '13px', height: '13px' }} />
+                              <span>Régulariser</span>
                             </button>
+
                             <button
                               onClick={() => handleOpenEditWizard(o)}
-                              className="btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--bardahl-yellow)', borderColor: 'var(--bardahl-yellow)' }}
-                              title="Modifier"
+                              style={{
+                                height: '32px',
+                                width: '32px',
+                                padding: 0,
+                                fontSize: '12px',
+                                color: 'var(--bardahl-yellow)',
+                                border: '1px solid rgba(255, 208, 0, 0.35)',
+                                background: 'rgba(255, 208, 0, 0.08)',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Modifier ce bon de commande"
                             >
                               <Edit3 style={{ width: '14px', height: '14px' }} />
                             </button>
+
                             <button
                               onClick={() => handleDeleteOrder(o)}
-                              style={{ padding: '6px 10px', fontSize: '11px', color: '#FF453A', background: 'rgba(255, 69, 58, 0.1)', border: '1px solid rgba(255, 69, 58, 0.3)', borderRadius: '8px', cursor: 'pointer' }}
-                              title="Supprimer"
+                              className="btn-delete-order"
+                              style={{
+                                height: '32px',
+                                width: '32px',
+                                padding: 0,
+                                fontSize: '12px',
+                                color: '#FF453A',
+                                background: 'rgba(255, 69, 58, 0.12)',
+                                border: '1px solid rgba(255, 69, 58, 0.35)',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                              title="Supprimer ce bon de commande"
                             >
                               <Trash2 style={{ width: '14px', height: '14px' }} />
                             </button>
@@ -1316,10 +1546,24 @@ export default function Orders({ openWizardTrigger }) {
                                   deleteClientCompensation(c.id)
                                 }
                               }}
-                              style={{ padding: '6px 10px', fontSize: '11px', color: '#FF453A', background: 'rgba(255, 69, 58, 0.1)', border: '1px solid rgba(255, 69, 58, 0.3)', borderRadius: '8px', cursor: 'pointer' }}
+                              className="btn-delete-order"
+                              style={{
+                                height: '32px',
+                                width: '32px',
+                                padding: 0,
+                                fontSize: '12px',
+                                color: '#FF453A',
+                                background: 'rgba(255, 69, 58, 0.12)',
+                                border: '1px solid rgba(255, 69, 58, 0.35)',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
                               title="Annuler cette compensation"
                             >
-                              <Trash2 style={{ width: '13px', height: '13px' }} />
+                              <Trash2 style={{ width: '14px', height: '14px' }} />
                             </button>
                           )}
                         </td>
