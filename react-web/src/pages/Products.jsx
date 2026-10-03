@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Search, Package, Tag, Filter, Plus, Edit3, Trash2, Box, Layers } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
