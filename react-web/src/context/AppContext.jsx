@@ -9,6 +9,7 @@ import {
   dbGetPromotions,  dbAddPromotion,   dbUpdatePromotion,   dbDeletePromotion,
   dbGetProducts,    dbAddProduct,     dbUpdateProduct,     dbDeleteProduct,
   dbGetProductFamilies, dbAddProductFamily, dbUpdateProductFamily, dbDeleteProductFamily,
+  dbUpdateOrderStatus,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
@@ -63,7 +64,13 @@ function rowToClient(row) {
 }
 
 function rowToOrder(row, extras = {}) {
-  const statusMap = { validated: 'VALIDATED', draft: 'DRAFT', sent: 'SENT' }
+  const statusMap = { 
+    validated: 'VALIDATED', 
+    draft: 'EN_ATTENTE', 
+    sent: 'SENT', 
+    delivered: 'DELIVERED', 
+    cancelled: 'CANCELLED' 
+  }
   const totalTtc = row.total_ttc || 0
 
   let parsedObs = {}
@@ -116,7 +123,7 @@ function rowToOrder(row, extras = {}) {
     dbId: row.id,
     orderNumber: row.order_number || '',
     date: row.order_date ? String(row.order_date).substring(0, 10) : '',
-    status: statusMap[(row.status || 'draft').toLowerCase()] || 'DRAFT',
+    status: statusMap[(row.status || 'draft').toLowerCase()] || (row.status === 'EN_ATTENTE' ? 'EN_ATTENTE' : 'EN_ATTENTE'),
     totalHt: row.total_ht || (totalTtc / 1.20),
     totalDiscount: row.total_discount || 0,
     totalTva: row.total_tva || (totalTtc - (totalTtc / 1.20)),
@@ -602,6 +609,11 @@ export function AppProvider({ children }) {
     setOrders(prev => prev.filter(x => x.id !== id))
   }, [])
 
+  const updateOrderStatus = useCallback(async (orderId, newStatus) => {
+    setOrders(prev => prev.map(o => (o.id === orderId || o.dbId === orderId) ? { ...o, status: newStatus } : o))
+    await dbUpdateOrderStatus(orderId, newStatus).catch(e => console.warn('Supabase status update error:', e))
+  }, [])
+
   // ── PRODUCTS CRUD ────────────────────────────────────────────────────────────
   const addProduct = useCallback(async (p) => {
     const newProd = {
@@ -829,7 +841,7 @@ export function AppProvider({ children }) {
       products: localProducts, addProduct, updateProduct, deleteProduct,
       productFamilies, addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily,
       orders: visibleOrders, allOrders: orders,
-      addOrder, updateOrder, deleteOrder,
+      addOrder, updateOrder, deleteOrder, updateOrderStatus,
       clientCompensations, addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
       commercials, addCommercial, updateCommercial, deleteCommercial,
       promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion,

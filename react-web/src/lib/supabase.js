@@ -247,7 +247,14 @@ export async function dbGetOrders() {
 }
 
 export async function dbAddOrder(o) {
-  const statusMap = { VALIDATED: 'validated', DRAFT: 'draft', SENT: 'sent' }
+  const statusMap = { 
+    VALIDATED: 'validated', 
+    EN_ATTENTE: 'draft', 
+    DRAFT: 'draft', 
+    SENT: 'sent', 
+    DELIVERED: 'delivered', 
+    CANCELLED: 'cancelled' 
+  }
   const dbStatus = statusMap[(o.status || 'DRAFT').toUpperCase()] || 'draft'
 
   // Pack items and full order metadata into observations JSON
@@ -290,7 +297,14 @@ export async function dbAddOrder(o) {
 }
 
 export async function dbUpdateOrder(o) {
-  const statusMap = { VALIDATED: 'validated', DRAFT: 'draft', SENT: 'sent' }
+  const statusMap = { 
+    VALIDATED: 'validated', 
+    EN_ATTENTE: 'draft', 
+    DRAFT: 'draft', 
+    SENT: 'sent', 
+    DELIVERED: 'delivered', 
+    CANCELLED: 'cancelled' 
+  }
   const dbStatus = statusMap[(o.status || 'DRAFT').toUpperCase()] || 'draft'
 
   const observationsPayload = JSON.stringify({
@@ -327,6 +341,34 @@ export async function dbUpdateOrder(o) {
   }).eq('id', targetId).select().single()
   if (error) { console.error('dbUpdateOrder:', error.message); return null }
   return data
+}
+
+export async function dbUpdateOrderStatus(id, newStatus) {
+  try {
+    const statusMap = { 
+      VALIDATED: 'validated', 
+      EN_ATTENTE: 'draft', 
+      DRAFT: 'draft', 
+      SENT: 'sent', 
+      DELIVERED: 'delivered', 
+      CANCELLED: 'cancelled' 
+    }
+    const dbStatus = statusMap[(newStatus || '').toUpperCase()] || 'draft'
+    const { data, error } = await supabase
+      .from('orders')
+      .update({ status: dbStatus })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) {
+      console.error('dbUpdateOrderStatus error:', error.message)
+      return null
+    }
+    return data
+  } catch (e) {
+    console.error('dbUpdateOrderStatus exception:', e)
+    return null
+  }
 }
 
 export async function dbDeleteOrder(id) {

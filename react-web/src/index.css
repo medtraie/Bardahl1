@@ -419,7 +419,8 @@ select.input-field option {
   letter-spacing: 0.3px;
 }
 
-.badge-status.DRAFT { background: rgba(142, 149, 165, 0.18); color: var(--status-draft); border: 1px solid rgba(142, 149, 165, 0.3); }
+.badge-status.EN_ATTENTE,
+.badge-status.DRAFT { background: rgba(255, 149, 0, 0.18); color: #FF9500; border: 1px solid rgba(255, 149, 0, 0.35); }
 .badge-status.VALIDATED { background: rgba(0, 122, 255, 0.18); color: var(--status-validated); border: 1px solid rgba(0, 122, 255, 0.3); }
 .badge-status.SENT { background: rgba(255, 149, 0, 0.18); color: var(--status-sent); border: 1px solid rgba(255, 149, 0, 0.3); }
 .badge-status.DELIVERED { background: rgba(52, 199, 89, 0.18); color: var(--status-delivered); border: 1px solid rgba(52, 199, 89, 0.3); }

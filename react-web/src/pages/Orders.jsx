@@ -17,10 +17,64 @@ import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
 export default function Orders({ openWizardTrigger }) {
   const { 
     orders, clients, products, commercials, promotions, 
-    addOrder, updateOrder, deleteOrder, currentUser,
+    addOrder, updateOrder, deleteOrder, updateOrderStatus, currentUser,
     clientCompensations = [], addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
     productFamilies = []
   } = useApp()
+
+  const isAdmin = currentUser?.role === 'ADMIN'
+
+  const handleStatusChange = async (order, newStatus) => {
+    const statusLabels = {
+      EN_ATTENTE: 'En Attente',
+      VALIDATED: 'Validé',
+      DELIVERED: 'Livré',
+      CANCELLED: 'Annulé'
+    }
+    const label = statusLabels[newStatus] || newStatus
+    const confirmChange = window.confirm(`Direction Bardahl : Voulez-vous changer le statut du bon N° ${order.orderNumber} en « ${label} » ?`)
+    if (!confirmChange) return
+
+    const updated = { ...order, status: newStatus }
+    updateOrder(updated)
+    if (updateOrderStatus) {
+      await updateOrderStatus(order.dbId || order.id, newStatus)
+    }
+    alert(`Le statut du bon N° ${order.orderNumber} est désormais « ${label} » !`)
+  }
+
+  const renderOrderStatusBadge = (status) => {
+    const s = String(status || '').toUpperCase()
+    if (s === 'EN_ATTENTE' || s === 'DRAFT') {
+      return (
+        <span className="badge-status EN_ATTENTE" style={{ background: 'rgba(255, 149, 0, 0.16)', color: '#FF9500', border: '1px solid rgba(255, 149, 0, 0.35)', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <span>⏳</span> En Attente
+        </span>
+      )
+    }
+    if (s === 'VALIDATED' || s === 'VALIDÉ') {
+      return (
+        <span className="badge-status VALIDATED" style={{ background: 'rgba(0, 122, 255, 0.16)', color: '#007AFF', border: '1px solid rgba(0, 122, 255, 0.35)', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <span>✓</span> Validé
+        </span>
+      )
+    }
+    if (s === 'DELIVERED' || s === 'LIVRÉ') {
+      return (
+        <span className="badge-status DELIVERED" style={{ background: 'rgba(52, 199, 89, 0.16)', color: '#34C759', border: '1px solid rgba(52, 199, 89, 0.35)', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <span>🚚</span> Livré
+        </span>
+      )
+    }
+    if (s === 'CANCELLED' || s === 'ANNULÉ') {
+      return (
+        <span className="badge-status CANCELLED" style={{ background: 'rgba(255, 69, 58, 0.16)', color: '#FF453A', border: '1px solid rgba(255, 69, 58, 0.35)', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <span>✕</span> Annulé
+        </span>
+      )
+    }
+    return <span className={`badge-status ${s}`}>{s}</span>
+  }
 
   const activeFamilies = useMemo(() => {
     return (productFamilies && productFamilies.length > 0)
@@ -88,7 +142,8 @@ export default function Orders({ openWizardTrigger }) {
   const filteredOrders = orders.filter(o => {
     const matchesSearch = (o.orderNumber || '').toLowerCase().includes(search.toLowerCase()) ||
                           (o.clientName || '').toLowerCase().includes(search.toLowerCase())
-    const matchesStatus = statusFilter === 'ALL' || o.status === statusFilter
+    const matchesStatus = statusFilter === 'ALL' || 
+      (statusFilter === 'EN_ATTENTE' ? (o.status === 'EN_ATTENTE' || o.status === 'DRAFT') : o.status === statusFilter)
     const matchesCommercial = commercialFilter === 'ALL' ||
       (o.commercialName && o.commercialName.trim().toLowerCase() === commercialFilter.trim().toLowerCase())
     return matchesSearch && matchesStatus && matchesCommercial
@@ -649,6 +704,7 @@ export default function Orders({ openWizardTrigger }) {
         avoirDeduction: avoirDeductionAmount,
         avoirOrderNumber: activeAvoirOrderNumber,
         promoNote: finalPromoNote,
+        status: isAdmin ? (editingOrder?.status || 'VALIDATED') : 'EN_ATTENTE',
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
         voucherDiscount: voucherDiscount,
@@ -679,7 +735,7 @@ export default function Orders({ openWizardTrigger }) {
         avoirDeduction: avoirDeductionAmount,
         avoirOrderNumber: activeAvoirOrderNumber,
         promoNote: finalPromoNote,
-        status: "VALIDATED",
+        status: isAdmin ? "VALIDATED" : "EN_ATTENTE",
         totalHt: totalHt,
         totalDiscount: totalDiscountAmount,
         voucherDiscount: voucherDiscount,
@@ -692,7 +748,10 @@ export default function Orders({ openWizardTrigger }) {
       addOrder(newOrder)
       setShowOrderWizard(false)
       setAppliedAvoirCompensation(null)
-      alert(`Bon de commande ${newOrder.orderNumber} enregistré avec succès dans la base de données !`)
+      alert(isAdmin
+        ? `Bon de commande ${newOrder.orderNumber} enregistré avec succès dans la base de données !`
+        : `Bon de commande ${newOrder.orderNumber} créé avec succès ! Statut : « En Attente » de validation par la Direction Bardahl.`
+      )
     }
 
     setCustomOrderNumber('')
@@ -886,11 +945,11 @@ export default function Orders({ openWizardTrigger }) {
                   className="input-field"
                   style={{ padding: '10px' }}
                 >
-                  <option value="ALL">Tous les Statuts</option>
-                  <option value="VALIDATED">Validés</option>
-                  <option value="DRAFT">Brouillons</option>
-                  <option value="DELIVERED">Livrés</option>
-                  <option value="CANCELLED">Annulés</option>
+                  <option value="ALL">Tous les Statuts ({orders.length})</option>
+                  <option value="EN_ATTENTE">⏳ En Attente ({orders.filter(o => o.status === 'EN_ATTENTE' || o.status === 'DRAFT').length})</option>
+                  <option value="VALIDATED">✓ Validés ({orders.filter(o => o.status === 'VALIDATED').length})</option>
+                  <option value="DELIVERED">🚚 Livrés ({orders.filter(o => o.status === 'DELIVERED').length})</option>
+                  <option value="CANCELLED">✕ Annulés ({orders.filter(o => o.status === 'CANCELLED').length})</option>
                 </select>
               </div>
 
@@ -981,9 +1040,49 @@ export default function Orders({ openWizardTrigger }) {
                         <td style={{ color: 'var(--bardahl-yellow)', fontWeight: '900', fontSize: '14px' }}>
                           {(parseFloat(o.totalTtc) || 0).toFixed(2)} DH
                         </td>
-                        <td><span className={`badge-status ${o.status}`}>{o.status}</span></td>
+                        <td>
+                          {renderOrderStatusBadge(o.status)}
+                        </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            {isAdmin && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <select
+                                  value={o.status === 'DRAFT' ? 'EN_ATTENTE' : (o.status || 'EN_ATTENTE')}
+                                  onChange={(e) => handleStatusChange(o, e.target.value)}
+                                  className="btn-secondary"
+                                  style={{
+                                    padding: '5px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    cursor: 'pointer',
+                                    borderRadius: '8px',
+                                    outline: 'none',
+                                    background: o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.18)' :
+                                                o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.18)' :
+                                                o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.18)' :
+                                                'rgba(255, 149, 0, 0.18)',
+                                    color: o.status === 'VALIDATED' ? '#007AFF' :
+                                           o.status === 'DELIVERED' ? '#34C759' :
+                                           o.status === 'CANCELLED' ? '#FF453A' :
+                                           '#FF9500',
+                                    border: `1px solid ${
+                                      o.status === 'VALIDATED' ? 'rgba(0, 122, 255, 0.45)' :
+                                      o.status === 'DELIVERED' ? 'rgba(52, 199, 89, 0.45)' :
+                                      o.status === 'CANCELLED' ? 'rgba(255, 69, 58, 0.45)' :
+                                      'rgba(255, 149, 0, 0.45)'
+                                    }`
+                                  }}
+                                  title="Direction Bardahl : Changer le statut du bon (Validé, Livré, Annulé)"
+                                >
+                                  <option value="EN_ATTENTE" style={{ background: '#12151C', color: '#FF9500' }}>⏳ En Attente</option>
+                                  <option value="VALIDATED" style={{ background: '#12151C', color: '#007AFF' }}>✓ Validé</option>
+                                  <option value="DELIVERED" style={{ background: '#12151C', color: '#34C759' }}>🚚 Livré</option>
+                                  <option value="CANCELLED" style={{ background: '#12151C', color: '#FF453A' }}>✕ Annulé</option>
+                                </select>
+                              </div>
+                            )}
+
                             <button
                               onClick={() => generateOrderPdf(o)}
                               className="btn-secondary"
