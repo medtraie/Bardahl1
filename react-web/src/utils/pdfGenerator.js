@@ -119,13 +119,22 @@ export function renderOrderPage(doc, order) {
 
   doc.autoTable({
     startY: 96,
-    head: [['Réf.', 'Désignation de la Marchandise', 'Qté Fact.', 'Gratuité', 'Prix U. TTC', 'Remise', 'Total Net TTC']],
+    head: [['Réf.', 'Désignation de la Marchandise', 'Qté', 'Gratuité', 'Prix U. TTC', 'Remise', 'Total Net TTC']],
     body: rows,
     headStyles: {
       fillColor: [20, 23, 31],
       textColor: [255, 208, 0],
       fontStyle: 'bold',
       fontSize: 8.5
+    },
+    columnStyles: {
+      0: { cellWidth: 20 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 14, halign: 'center' },
+      3: { cellWidth: 18, halign: 'center' },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 16, halign: 'center' },
+      6: { cellWidth: 28, halign: 'right' }
     },
     bodyStyles: {
       fontSize: 8.5,
@@ -138,33 +147,138 @@ export function renderOrderPage(doc, order) {
   })
 
   // 5. Remarques, Totals & Signatures
-  let finalY = doc.lastAutoTable.finalY + 6
+  let finalY = doc.lastAutoTable.finalY + 5
 
   // Optional Remarque / Promo Note Box if specified
   const hasRemarque = order.remarque && order.remarque.trim()
   const hasPromoNote = order.promoNote && order.promoNote.trim()
+  const hasAppliedPromos = Array.isArray(order.appliedPromotions) && order.appliedPromotions.length > 0
 
-  if (hasRemarque || hasPromoNote) {
-    doc.setFillColor(248, 249, 250)
-    doc.setDrawColor(255, 208, 0)
-    doc.roundedRect(14, finalY, 182, (hasRemarque && hasPromoNote ? 18 : 12), 2, 2, 'FD')
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(13, 15, 18)
-    
-    let noteY = finalY + 4
-    if (hasPromoNote) {
-      doc.text("OFFRE PROMOTIONNELLE : " + order.promoNote, 18, noteY)
-      noteY += 5
+  if (hasRemarque || hasPromoNote || hasAppliedPromos) {
+    // 1. Gather all promo items cleanly
+    const promoItems = []
+
+    if (hasAppliedPromos) {
+      order.appliedPromotions.forEach(ap => {
+        let label = (ap.name || 'Offre Bardahl').trim()
+        let details = []
+        if (ap.discountPercent > 0) details.push(`Remise : ${ap.discountPercent}%`)
+        if (ap.giftSummary) details.push(ap.giftSummary)
+        if (ap.voucherAmount > 0) details.push(`Bon d'achat : -${parseFloat(ap.voucherAmount).toFixed(2)} DH`)
+        promoItems.push(details.length > 0 ? `${label} (${details.join(', ')})` : label)
+      })
+    } else if (hasPromoNote) {
+      // Split by '|' or newlines if multiple promos were concatenated
+      const rawParts = order.promoNote.split(/\s*\|\s*|\n/).map(s => s.trim()).filter(Boolean)
+      rawParts.forEach(p => promoItems.push(p))
     }
+
+    const boxX = 14
+    const boxWidth = 182
+    const contentX = 20
+    const maxContentWidth = 170
+
+    // Prepare line drawing items
+    const linesToDraw = []
+
+    if (promoItems.length > 0) {
+      linesToDraw.push({
+        type: 'promoTitle',
+        text: 'OFFRE PROMOTIONNELLE & AVANTAGES APPLIQUÉS :'
+      })
+
+      promoItems.forEach(item => {
+        const itemText = `•  ${item}`
+        const wrapped = doc.splitTextToSize(itemText, maxContentWidth)
+        wrapped.forEach((wLine, idx) => {
+          linesToDraw.push({
+            type: 'promoItem',
+            text: idx === 0 ? wLine : `    ${wLine}`
+          })
+        })
+      })
+    }
+
     if (hasRemarque) {
-      doc.setFont('helvetica', 'bold')
-      doc.text("INSTRUCTIONS DE LIVRAISON : ", 18, noteY)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(74, 85, 104)
-      doc.text(order.remarque, 70, noteY)
+      if (promoItems.length > 0) {
+        linesToDraw.push({ type: 'spacer', height: 2 })
+      }
+      linesToDraw.push({
+        type: 'remarqueTitle',
+        text: 'INSTRUCTIONS DE LIVRAISON / REMARQUES :'
+      })
+      const wrappedRem = doc.splitTextToSize(order.remarque.trim(), maxContentWidth)
+      wrappedRem.forEach(wLine => {
+        linesToDraw.push({
+          type: 'remarqueText',
+          text: wLine
+        })
+      })
     }
-    finalY += (hasRemarque && hasPromoNote ? 22 : 16)
+
+    // Calculate dynamic box height based on actual lines
+    const paddingTop = 3.5
+    const paddingBottom = 3.5
+    const lineHeight = 4.0
+    let calculatedHeight = paddingTop + paddingBottom
+
+    linesToDraw.forEach(l => {
+      if (l.type === 'spacer') calculatedHeight += (l.height || 2)
+      else if (l.type === 'promoTitle' || l.type === 'remarqueTitle') calculatedHeight += 4.5
+      else calculatedHeight += lineHeight
+    })
+
+    const boxHeight = Math.max(calculatedHeight, 13)
+
+    // Check page overflow before drawing
+    if (finalY + boxHeight + 46 > 275) {
+      doc.addPage()
+      finalY = 20
+    }
+
+    // Draw the clean rounded frame with Bardahl Yellow border
+    doc.setFillColor(254, 252, 243) // Warm subtle tinted background
+    doc.setDrawColor(255, 208, 0)   // Bardahl Yellow border
+    doc.setLineWidth(0.4)
+    doc.roundedRect(boxX, finalY, boxWidth, boxHeight, 2.5, 2.5, 'FD')
+
+    // Yellow left accent indicator bar
+    doc.setFillColor(255, 208, 0)
+    doc.roundedRect(boxX, finalY, 2.5, boxHeight, 1, 1, 'F')
+
+    // Render the text items inside the box
+    let curY = finalY + paddingTop + 2.5
+    linesToDraw.forEach(l => {
+      if (l.type === 'spacer') {
+        curY += (l.height || 2)
+      } else if (l.type === 'promoTitle') {
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(13, 15, 18)
+        doc.text(l.text, contentX, curY)
+        curY += 4.2
+      } else if (l.type === 'promoItem') {
+        doc.setFontSize(7.8)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(45, 55, 72)
+        doc.text(l.text, contentX, curY)
+        curY += lineHeight
+      } else if (l.type === 'remarqueTitle') {
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(13, 15, 18)
+        doc.text(l.text, contentX, curY)
+        curY += 4.2
+      } else if (l.type === 'remarqueText') {
+        doc.setFontSize(7.8)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(74, 85, 104)
+        doc.text(l.text, contentX, curY)
+        curY += lineHeight
+      }
+    })
+
+    finalY += boxHeight + 5
   }
 
   // Totals Box Right
