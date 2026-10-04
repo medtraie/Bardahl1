@@ -43,6 +43,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   // Évolution n°2 : Multi-références produit
   const [formTargetProductRefs, setFormTargetProductRefs] = useState([])
   const [formTargetProductRef, setFormTargetProductRef] = useState('')
+  const [selectedProductFamilyFilter, setSelectedProductFamilyFilter] = useState('ALL')
   const [targetSearchQuery, setTargetSearchQuery] = useState('')
   const [showTargetDropdown, setShowTargetDropdown] = useState(false)
 
@@ -116,14 +117,34 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const selectedTargetProduct = products.find(p => p.reference === formTargetProductRef) || products[0]
   const selectedFreeProduct = products.find(p => p.reference === formFreeProductRef) || products[0]
 
-  // Filtered product lists for searchable autocomplete pickers
-  const filteredTargetProducts = products.filter(p => {
-    if (!targetSearchQuery.trim()) return true
-    const q = targetSearchQuery.toLowerCase()
-    return (p.name || '').toLowerCase().includes(q) ||
-           (p.reference || '').toLowerCase().includes(q) ||
-           (p.category || '').toLowerCase().includes(q)
-  })
+  // Filtered product lists for searchable autocomplete pickers strictly isolated by family
+  const filteredTargetProducts = useMemo(() => {
+    return products.filter(p => {
+      // 1. Filter by family
+      const activeFamilyFilter = formTargetType === 'FAMILY'
+        ? formTargetFamily
+        : (selectedProductFamilyFilter !== 'ALL' ? selectedProductFamilyFilter : null)
+
+      if (activeFamilyFilter) {
+        const famInfo = getFamilyInfo(p.category, activeFamilies)
+        const target = String(activeFamilyFilter).toUpperCase().trim()
+        const matchesFamily = (
+          famInfo.label.toUpperCase() === target ||
+          famInfo.code.toUpperCase() === target ||
+          famInfo.id.toUpperCase() === target ||
+          String(p.category || '').toUpperCase().includes(target)
+        )
+        if (!matchesFamily) return false
+      }
+
+      // 2. Filter by search query
+      if (!targetSearchQuery.trim()) return true
+      const q = targetSearchQuery.toLowerCase().trim()
+      return (p.name || '').toLowerCase().includes(q) ||
+             (p.reference || '').toLowerCase().includes(q) ||
+             (p.category || '').toLowerCase().includes(q)
+    })
+  }, [products, formTargetType, formTargetFamily, selectedProductFamilyFilter, targetSearchQuery, activeFamilies])
 
   const filteredFreeProducts = products.filter(p => {
     if (!freeProductSearchQuery.trim()) return true
@@ -336,6 +357,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormTargetProductRef(initialProduct?.reference || '34131')
     const detectedFam = initialProduct ? getFamilyInfo(initialProduct.category, activeFamilies).label : (activeFamilies[0]?.label || 'Additifs & Traitements')
     setFormTargetFamily(detectedFam)
+    setSelectedProductFamilyFilter('ALL')
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
 
@@ -384,6 +406,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     const firstProd = products.find(p => p.reference === refs[0])
     const detectedFam = firstProd ? getFamilyInfo(firstProd.category, activeFamilies).label : (promo.targetFamily || activeFamilies[0]?.label || 'Additifs & Traitements')
     setFormTargetFamily(promo.targetFamily || detectedFam)
+    setSelectedProductFamilyFilter(promo.targetFamily || detectedFam || 'ALL')
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
 
@@ -1183,13 +1206,20 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                     <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
                       🏷️ FAMILLE DE PRODUITS ENTIÈRE (Sélectionnez la famille Bardahl ciblée)
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '14px' }}>
                       {activeFamilies.map(fam => {
                         const isSelected = formTargetFamily === fam.label
+                        const familyCount = products.filter(p => {
+                          const info = getFamilyInfo(p.category, activeFamilies)
+                          return info.code === fam.code || info.label === fam.label || info.id === fam.id
+                        }).length
                         return (
                           <div
                             key={fam.id}
-                            onClick={() => setFormTargetFamily(fam.label)}
+                            onClick={() => {
+                              setFormTargetFamily(fam.label)
+                              setTargetSearchQuery('')
+                            }}
                             style={{
                               padding: '10px 12px',
                               borderRadius: '8px',
@@ -1207,6 +1237,9 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                               <div style={{ fontSize: '12px', fontWeight: isSelected ? '800' : '600', color: isSelected ? fam.color : '#FFFFFF' }}>
                                 {fam.label}
                               </div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                {familyCount} articles éligibles
+                              </div>
                             </div>
                             {isSelected && <CheckCircle2 size={16} style={{ color: fam.color }} />}
                           </div>
@@ -1215,223 +1248,337 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                     </div>
                   </div>
                 ) : (
-                  <div className="target-product-picker-container" style={{ position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
-                        RÉFÉRENCES PRODUITS CIBLÉES ({formTargetProductRefs.length} article{formTargetProductRefs.length > 1 ? 's' : ''} sélectionné{formTargetProductRefs.length > 1 ? 's' : ''})
-                      </label>
-                      {formTargetProductRefs.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleClearAllTargetProducts}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#FF453A',
-                            fontSize: '11px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            padding: '2px 6px'
-                          }}
-                        >
-                          Tout effacer
-                        </button>
-                      )}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                        Filtrer par Famille :
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedProductFamilyFilter('ALL'); setShowTargetDropdown(true) }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          background: selectedProductFamilyFilter === 'ALL' ? 'rgba(255, 208, 0, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                          color: selectedProductFamilyFilter === 'ALL' ? 'var(--bardahl-yellow)' : 'var(--text-secondary)',
+                          border: selectedProductFamilyFilter === 'ALL' ? '1px solid var(--bardahl-yellow)' : '1px solid rgba(255, 255, 255, 0.1)'
+                        }}
+                      >
+                        🌐 Toutes ({products.length})
+                      </button>
+                      {activeFamilies.map(fam => {
+                        const isSelected = selectedProductFamilyFilter === fam.label || selectedProductFamilyFilter === fam.code
+                        const count = products.filter(p => {
+                          const info = getFamilyInfo(p.category, activeFamilies)
+                          return info.code === fam.code || info.label === fam.label || info.id === fam.id
+                        }).length
+                        return (
+                          <button
+                            key={fam.id}
+                            type="button"
+                            onClick={() => { setSelectedProductFamilyFilter(fam.label); setShowTargetDropdown(true) }}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              background: isSelected ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                              color: isSelected ? (fam.color || '#FFFFFF') : 'var(--text-secondary)',
+                              border: isSelected ? `1.5px solid ${fam.color || 'var(--bardahl-yellow)'}` : '1px solid rgba(255, 255, 255, 0.08)'
+                            }}
+                          >
+                            <span>{fam.icon}</span> {fam.label} ({count})
+                          </button>
+                        )
+                      })}
                     </div>
+                  </div>
+                )}
 
-                    {/* Selected Multi-Reference Chips Container */}
-                    <div style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: '8px',
-                      marginBottom: '10px',
-                      minHeight: formTargetProductRefs.length === 0 ? 'auto' : '44px',
-                      padding: formTargetProductRefs.length === 0 ? '12px' : '8px',
-                      background: 'rgba(0, 0, 0, 0.3)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.08)'
-                    }}>
-                      {formTargetProductRefs.length === 0 ? (
-                        <span style={{ fontSize: '12px', color: '#FF9500', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <AlertCircle size={14} /> Aucune référence sélectionnée. Recherchez et ajoutez un ou plusieurs articles ci-dessous.
+                {/* Target Product Search & Selection (Always visible in both modes, strictly filtered by family) */}
+                <div className="target-product-picker-container" style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                      {formTargetType === 'FAMILY' ? (
+                        <span>
+                          ARTICLES CIBLÉS DANS LA FAMILLE « {formTargetFamily} » ({formTargetProductRefs.length > 0 ? `${formTargetProductRefs.length} sélectionné(s)` : `Tous les ${filteredTargetProducts.length} articles inclus`})
                         </span>
                       ) : (
-                        formTargetProductRefs.map(ref => {
-                          const prod = products.find(p => p.reference === ref) || { reference: ref, name: ref, category: 'Bardahl' }
-                          const famInfo = getFamilyInfo(prod.category, activeFamilies)
-                          return (
-                            <span
-                              key={ref}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: 'rgba(255, 208, 0, 0.12)',
-                                border: '1px solid rgba(255, 208, 0, 0.35)',
-                                borderRadius: '6px',
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                color: '#FFFFFF'
-                              }}
-                            >
-                              <span style={{ background: 'var(--bardahl-yellow)', color: '#000', fontWeight: '900', padding: '1px 5px', borderRadius: '3px', fontSize: '10px' }}>
-                                {ref}
-                              </span>
-                              <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {prod.name}
-                              </span>
-                              <span style={{ color: famInfo.color, fontSize: '10px', fontWeight: 'bold' }}>
-                                ({famInfo.label.split(' ')[0]})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTargetProduct(ref)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#FF453A',
-                                  fontWeight: '900',
-                                  fontSize: '14px',
-                                  cursor: 'pointer',
-                                  marginLeft: '2px',
-                                  lineHeight: 1
-                                }}
-                                title="Retirer cette référence"
-                              >
-                                &times;
-                              </button>
+                        <span>
+                          RÉFÉRENCES PRODUITS CIBLÉES ({formTargetProductRefs.length} article{formTargetProductRefs.length > 1 ? 's' : ''} sélectionné{formTargetProductRefs.length > 1 ? 's' : ''})
+                        </span>
+                      )}
+                    </label>
+                    {formTargetProductRefs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllTargetProducts}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#FF453A',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          padding: '2px 6px'
+                        }}
+                      >
+                        Tout effacer
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Informative banner in FAMILY mode */}
+                  {formTargetType === 'FAMILY' && (
+                    <div style={{
+                      fontSize: '11px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(255, 208, 0, 0.08)',
+                      border: '1px solid rgba(255, 208, 0, 0.25)',
+                      color: 'var(--bardahl-yellow)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginBottom: '10px'
+                    }}>
+                      <CheckCircle2 size={14} color="var(--bardahl-yellow)" />
+                      {formTargetProductRefs.length === 0 ? (
+                        <span>
+                          Cette promotion s'applique par défaut à <strong>tous les {filteredTargetProducts.length} articles</strong> de la famille <strong>{formTargetFamily}</strong>. Vous pouvez aussi rechercher ci-dessous pour ajouter des références spécifiques de cette famille.
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>{formTargetProductRefs.length} référence(s) spécifique(s)</strong> sélectionnée(s) pour la famille <strong>{formTargetFamily}</strong>.
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected Multi-Reference Chips Container */}
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    marginBottom: '10px',
+                    minHeight: formTargetProductRefs.length === 0 ? 'auto' : '44px',
+                    padding: formTargetProductRefs.length === 0 ? '12px' : '8px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}>
+                    {formTargetProductRefs.length === 0 ? (
+                      <span style={{ fontSize: '12px', color: formTargetType === 'FAMILY' ? 'var(--text-secondary)' : '#FF9500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <AlertCircle size={14} />
+                        {formTargetType === 'FAMILY'
+                          ? `Aucune référence isolée : tous les articles de ${formTargetFamily} sont inclus dans la promotion.`
+                          : `Aucune référence sélectionnée. Recherchez et ajoutez un ou plusieurs articles ci-dessous.`
+                        }
+                      </span>
+                    ) : (
+                      formTargetProductRefs.map(ref => {
+                        const prod = products.find(p => p.reference === ref) || { reference: ref, name: ref, category: 'Bardahl' }
+                        const famInfo = getFamilyInfo(prod.category, activeFamilies)
+                        return (
+                          <span
+                            key={ref}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              background: 'rgba(255, 208, 0, 0.12)',
+                              border: '1px solid rgba(255, 208, 0, 0.35)',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              color: '#FFFFFF'
+                            }}
+                          >
+                            <span style={{ background: 'var(--bardahl-yellow)', color: '#000', fontWeight: '900', padding: '1px 5px', borderRadius: '3px', fontSize: '10px' }}>
+                              {ref}
                             </span>
+                            <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {prod.name}
+                            </span>
+                            <span style={{ color: famInfo.color, fontSize: '10px', fontWeight: 'bold' }}>
+                              ({famInfo.label.split(' ')[0]})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTargetProduct(ref)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#FF453A',
+                                fontWeight: '900',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                marginLeft: '2px',
+                                lineHeight: 1
+                              }}
+                              title="Retirer cette référence"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {/* Search Input Field */}
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder={
+                        formTargetType === 'FAMILY'
+                          ? `🔎 Taper une référence ou un nom pour ajouter un article de ${formTargetFamily}...`
+                          : (selectedProductFamilyFilter !== 'ALL'
+                              ? `🔎 Taper une référence ou un nom pour ajouter un article de ${selectedProductFamilyFilter}...`
+                              : `🔎 Taper une référence ou un nom pour ajouter un produit...`)
+                      }
+                      value={targetSearchQuery}
+                      onChange={e => {
+                        setTargetSearchQuery(e.target.value)
+                        setShowTargetDropdown(true)
+                      }}
+                      onFocus={() => setShowTargetDropdown(true)}
+                      style={{ paddingRight: targetSearchQuery ? '36px' : '14px' }}
+                    />
+                    {targetSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetSearchQuery('')
+                          setShowTargetDropdown(true)
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontSize: '16px'
+                        }}
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown Options List - STRICTLY FILTERED BY FAMILY */}
+                  {showTargetDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: '#14171F',
+                      border: '1px solid var(--border-card)',
+                      borderRadius: '10px',
+                      boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      zIndex: 2500
+                    }}>
+                      <div style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span>
+                          {formTargetType === 'FAMILY'
+                            ? `Articles de la famille « ${formTargetFamily} » :`
+                            : (selectedProductFamilyFilter !== 'ALL' ? `Articles de la famille « ${selectedProductFamilyFilter} » :` : 'Tous les articles Bardahl :')
+                          }
+                        </span>
+                        <strong style={{ color: 'var(--bardahl-yellow)' }}>
+                          {filteredTargetProducts.length} article(s) trouvé(s)
+                        </strong>
+                      </div>
+
+                      {filteredTargetProducts.length === 0 ? (
+                        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                          {formTargetType === 'FAMILY'
+                            ? `Aucun article de la famille "${formTargetFamily}" ne correspond à "${targetSearchQuery}"`
+                            : (selectedProductFamilyFilter !== 'ALL'
+                                ? `Aucun article de la famille "${selectedProductFamilyFilter}" ne correspond à "${targetSearchQuery}"`
+                                : `Aucun produit trouvé pour "${targetSearchQuery}"`)
+                          }
+                        </div>
+                      ) : (
+                        filteredTargetProducts.slice(0, 100).map(p => {
+                          const isSelected = formTargetProductRefs.includes(p.reference)
+                          const famInfo = getFamilyInfo(p.category, activeFamilies)
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  handleRemoveTargetProduct(p.reference)
+                                } else {
+                                  handleAddTargetProduct(p)
+                                }
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                background: isSelected ? 'rgba(52, 199, 89, 0.15)' : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={e => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                              onMouseLeave={e => !isSelected && (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                  background: isSelected ? '#34C759' : 'rgba(255,255,255,0.1)',
+                                  color: isSelected ? '#000' : '#FFF',
+                                  fontWeight: '800',
+                                  fontSize: '11px',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  {p.reference}
+                                </span>
+                                <span style={{ color: '#FFFFFF', fontSize: '12px', fontWeight: '600' }}>
+                                  {p.name}
+                                </span>
+                                <span style={{ fontSize: '10px', color: famInfo.color || 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 5px', borderRadius: '4px' }}>
+                                  {famInfo.label}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px' }}>
+                                  {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
+                                </span>
+                                {isSelected ? (
+                                  <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>✓ Ajouté</span>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+ Ajouter</span>
+                                )}
+                              </div>
+                            </div>
                           )
                         })
                       )}
-                    </div>
-
-                    {/* Search Input Field */}
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="text"
-                        className="input-field"
-                        placeholder="🔎 Taper une référence ou un nom pour ajouter un produit..."
-                        value={targetSearchQuery}
-                        onChange={e => {
-                          setTargetSearchQuery(e.target.value)
-                          setShowTargetDropdown(true)
-                        }}
-                        onFocus={() => setShowTargetDropdown(true)}
-                        style={{ paddingRight: targetSearchQuery ? '36px' : '14px' }}
-                      />
-                      {targetSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTargetSearchQuery('')
-                            setShowTargetDropdown(true)
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: '10px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            fontSize: '16px'
-                          }}
-                        >
-                          &times;
-                        </button>
+                      {filteredTargetProducts.length > 100 && (
+                        <div style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px', background: '#0D0F12' }}>
+                          Affichage des 100 premiers résultats sur {filteredTargetProducts.length}. Précisez votre recherche pour affiner.
+                        </div>
                       )}
                     </div>
-
-                    {/* Dropdown Options List */}
-                    {showTargetDropdown && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        marginTop: '4px',
-                        background: '#14171F',
-                        border: '1px solid var(--border-card)',
-                        borderRadius: '10px',
-                        boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
-                        maxHeight: '220px',
-                        overflowY: 'auto',
-                        zIndex: 2500
-                      }}>
-                        {filteredTargetProducts.length === 0 ? (
-                          <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                            Aucun produit trouvé pour "{targetSearchQuery}"
-                          </div>
-                        ) : (
-                          filteredTargetProducts.slice(0, 100).map(p => {
-                            const isSelected = formTargetProductRefs.includes(p.reference)
-                            return (
-                              <div
-                                key={p.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    handleRemoveTargetProduct(p.reference)
-                                  } else {
-                                    handleAddTargetProduct(p)
-                                  }
-                                }}
-                                style={{
-                                  padding: '8px 12px',
-                                  cursor: 'pointer',
-                                  borderBottom: '1px solid rgba(255,255,255,0.06)',
-                                  background: isSelected ? 'rgba(52, 199, 89, 0.15)' : 'transparent',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: '10px',
-                                  transition: 'background 0.15s'
-                                }}
-                                onMouseEnter={e => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                                onMouseLeave={e => !isSelected && (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{
-                                    background: isSelected ? '#34C759' : 'rgba(255,255,255,0.1)',
-                                    color: isSelected ? '#000' : '#FFF',
-                                    fontWeight: '800',
-                                    fontSize: '11px',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px'
-                                  }}>
-                                    {p.reference}
-                                  </span>
-                                  <span style={{ color: '#FFFFFF', fontSize: '12px', fontWeight: '600' }}>
-                                    {p.name}
-                                  </span>
-                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 5px', borderRadius: '4px' }}>
-                                    {p.category}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ color: 'var(--bardahl-yellow)', fontWeight: '700', fontSize: '12px' }}>
-                                    {(parseFloat(p.priceTtc) || 0).toFixed(2)} DH
-                                  </span>
-                                  {isSelected ? (
-                                    <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>✓ Ajouté</span>
-                                  ) : (
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+ Ajouter</span>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })
-                        )}
-                        {filteredTargetProducts.length > 100 && (
-                          <div style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px', background: '#0D0F12' }}>
-                            Affichage des 100 premiers résultats sur {filteredTargetProducts.length}. Précisez votre recherche pour affiner.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {/* Conditions & Paliers Dynamiques */}
