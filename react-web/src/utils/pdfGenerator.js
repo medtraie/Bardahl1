@@ -858,3 +858,93 @@ export function generatePortfolioByCommercialPdf(clients, commercials, targetCom
 
   doc.save(fileName)
 }
+
+export function generateStockReportPdf(movements, filterLabel = 'Global') {
+  const doc = new jsPDF()
+
+  // Top Accent Bar
+  doc.setFillColor(255, 208, 0)
+  doc.rect(0, 0, 210, 5, 'F')
+
+  // Logo
+  try {
+    doc.addImage(BARDAHL_LOGO_BASE64, 'PNG', 14, 8, 48, 30)
+  } catch (e) {
+    // fallback
+  }
+
+  // Header Titles
+  doc.setFontSize(14)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(13, 15, 18)
+  doc.text("DIRECTION BARDAHL — RAPPORT DE STOCK", 196, 14, { align: 'right' })
+
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(100, 116, 139)
+  doc.text("Journal des Mouvements & Consommation Promotions", 196, 20, { align: 'right' })
+  doc.text(`Filtre sélectionné : ${filterLabel}`, 196, 25, { align: 'right' })
+  doc.text(`Date d'édition : ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 196, 30, { align: 'right' })
+
+  doc.setDrawColor(226, 232, 240)
+  doc.setLineWidth(0.5)
+  doc.line(14, 40, 196, 40)
+
+  // Movements Table
+  const tableRows = movements.map(m => [
+    m.date || '',
+    m.orderNumber || '-',
+    m.typeLabel || '',
+    m.reference || '',
+    m.productName || '',
+    `${m.cartons} ctn (${m.units} un.)`,
+    m.promoName || 'Standard',
+    `${m.remainingStock} un.`
+  ])
+
+  doc.autoTable({
+    startY: 44,
+    head: [['Date', 'N° Bon', 'Mouvement', 'Réf.', 'Désignation', 'Quantité', 'Offre Promotionnelle', 'Stock Restant']],
+    body: tableRows,
+    headStyles: {
+      fillColor: [20, 23, 31],
+      textColor: [255, 208, 0],
+      fontStyle: 'bold',
+      fontSize: 8
+    },
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 2.5,
+      textColor: [30, 41, 59]
+    },
+    columnStyles: {
+      0: { cellWidth: 18 },
+      1: { cellWidth: 22 },
+      2: { cellWidth: 24, fontStyle: 'bold' },
+      3: { cellWidth: 16, fontStyle: 'bold' },
+      4: { cellWidth: 'auto' },
+      5: { cellWidth: 26, halign: 'center' },
+      6: { cellWidth: 32 },
+      7: { cellWidth: 22, halign: 'right', fontStyle: 'bold' }
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    theme: 'grid',
+    margin: { left: 14, right: 14 }
+  })
+
+  // Page Numbers Footer
+  const totalPages = doc.internal.getNumberOfPages()
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i)
+    doc.setFontSize(7.5)
+    doc.setTextColor(148, 163, 184)
+    doc.text("Direction Bardahl Maroc — Confidentialité Restreinte", 14, 289)
+    doc.text(`Page ${i} / ${totalPages}`, 196, 289, { align: 'right' })
+  }
+
+  const cleanFilter = (filterLabel || 'Global').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 25)
+  doc.save(`Rapport_Mouvements_Stock_Bardahl_${cleanFilter}.pdf`)
+}
+

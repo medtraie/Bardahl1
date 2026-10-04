@@ -11,6 +11,7 @@ import Orders from './pages/Orders'
 import Commercials from './pages/Commercials'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
+import StockMovements from './pages/StockMovements'
 
 export default function App() {
   const { currentUser } = useApp()
@@ -39,6 +40,7 @@ export default function App() {
     promotions: "Promotions & Offres Commerciales",
     orders: "Bons de Commande",
     commercials: "Équipe Commerciale & Performance",
+    stock_movements: "Mouvements de Stock & Inventaire",
     analytics: "Analyses Business Intelligence",
     settings: "Paramètres & Entreprise"
   }
@@ -63,6 +65,7 @@ export default function App() {
         {activeTab === 'promotions' && <Promotions openNewPromoTrigger={openNewPromoTrigger} />}
         {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
         {activeTab === 'commercials' && <Commercials />}
+        {activeTab === 'stock_movements' && <StockMovements />}
         {activeTab === 'analytics' && <Analytics />}
         {activeTab === 'settings' && <Settings />}
       </main>
