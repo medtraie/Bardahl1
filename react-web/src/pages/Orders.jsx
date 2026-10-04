@@ -325,6 +325,9 @@ export default function Orders({ openWizardTrigger }) {
   const handleDeleteOrder = (order) => {
     const confirmMessage = `Voulez-vous vraiment supprimer le bon de commande N° ${order.orderNumber} ?\n\n• Client : ${order.clientName || 'Inconnu'}\n• Montant : ${(parseFloat(order.totalTtc) || 0).toFixed(2)} DH\n\nAttention : Cette action est irréversible.`
     if (window.confirm(confirmMessage)) {
+      if (restoreProductsStock && order.items && order.status !== 'CANCELLED') {
+        restoreProductsStock(order.items)
+      }
       deleteOrder(order.dbId || order.id)
     }
   }
@@ -743,16 +746,23 @@ export default function Orders({ openWizardTrigger }) {
       }),
       ...(promoAnalysis.freeItems || [])
         .filter(fi => !selectedProducts.some(sp => sp.reference === fi.reference || sp.productId === fi.productId))
-        .map(fi => ({
-          productId: fi.productId,
-          productName: fi.productName,
-          reference: fi.reference,
-          priceTtc: 0,
-          qty: 0,
-          qtyGratuit: (parseInt(fi.qtyGratuit, 10) || 1) * (fi.unitsPerBox || 1),
-          remisePercent: 0,
-          promoTag: `🎁 Offert : ${fi.promoName}`
-        }))
+        .map(fi => {
+          const giftProd = products.find(p => p.reference === fi.reference || p.id === fi.productId)
+          const upb = giftProd?.unitsPerBox || (giftProd ? getProductUnitsPerCarton(giftProd) : 12) || 12
+          const cartons = parseInt(fi.qtyGratuit, 10) || 1
+          const totalUnits = cartons * upb
+          return {
+            productId: fi.productId || giftProd?.id || 'promo_gift',
+            productName: fi.productName || giftProd?.name,
+            reference: fi.reference || giftProd?.reference,
+            priceTtc: 0,
+            qty: 0,
+            qtyGratuit: totalUnits,
+            unitsPerBox: upb,
+            remisePercent: 0,
+            promoTag: `🎁 Offert : ${fi.promoName}`
+          }
+        })
     ]
 
     // Build automated promo note summary if promos are active
@@ -2558,6 +2568,35 @@ export default function Orders({ openWizardTrigger }) {
                                     )
                                   }
 
+                                  const isPromoReached = promoAnalysis.selectedPromoStatus
+                                    ? promoAnalysis.selectedPromoStatus.isReached
+                                    : (promoAnalysis.appliedPromotions && promoAnalysis.appliedPromotions.length > 0)
+                                  const hasDistinctGift = (promoAnalysis.freeItems || []).some(fi => fi.reference !== item.reference && fi.productId !== item.productId)
+
+                                  if (isPromoReached && hasDistinctGift) {
+                                    return (
+                                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                                        <span style={{
+                                          background: 'rgba(52, 199, 89, 0.15)',
+                                          color: '#34C759',
+                                          border: '1px solid rgba(52, 199, 89, 0.35)',
+                                          borderRadius: '6px',
+                                          padding: '3px 8px',
+                                          fontWeight: '800',
+                                          fontSize: '11px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}>
+                                          🎁 Voir ligne cadeau
+                                        </span>
+                                        <span style={{ fontSize: '9px', color: '#34C759', marginTop: '2px', fontWeight: 'bold' }}>
+                                          Offre validée
+                                        </span>
+                                      </div>
+                                    )
+                                  }
+
                                   return (
                                     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
                                       <span style={{
@@ -2571,7 +2610,7 @@ export default function Orders({ openWizardTrigger }) {
                                       }}>
                                         0
                                       </span>
-                                      <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      <span style={{ fontSize: '9px', color: selectedPromoId === 'NONE' ? 'var(--text-secondary)' : '#FF9500', marginTop: '2px' }}>
                                         {selectedPromoId === 'NONE' ? 'Sans promo' : 'Condition non atteinte'}
                                       </span>
                                     </div>
@@ -2607,9 +2646,19 @@ export default function Orders({ openWizardTrigger }) {
                                   />
                                   <span style={{ fontSize: '11px', fontWeight: 'bold', color: currentRemise > 0 ? '#007AFF' : 'var(--text-secondary)', paddingRight: '2px' }}>%</span>
                                 </div>
-                                {hasManualOverride && promoDiscount > 0 && (
-                                  <div style={{ fontSize: '10px', color: '#FF9500', fontWeight: 'bold', marginTop: '2px' }} title="Remise manuelle prioritaire sur la promotion">
-                                    ⚠️ Manuelle ({item.remisePercent}%)
+                                {hasManualOverride && promoDiscount > 0 && parsedRemise !== promoDiscount && (
+                                  <div style={{ marginTop: '3px', display: 'flex', justifyContent: 'center' }}>
+                                    <span
+                                      style={{
+                                        cursor: 'help',
+                                        fontSize: '13px',
+                                        lineHeight: 1,
+                                        display: 'inline-block'
+                                      }}
+                                      title={`Remise manuelle de ${item.remisePercent}% appliquée au lieu de ${promoDiscount}% prévue par l'offre commerciale`}
+                                    >
+                                      ⚠️
+                                    </span>
                                   </div>
                                 )}
                               </td>
@@ -2661,59 +2710,139 @@ export default function Orders({ openWizardTrigger }) {
                       {/* § 10, § 11 & § 18.5-7 : Affichage automatique des cadeaux promotionnels distincts sans doublon */}
                       {promoAnalysis.freeItems && promoAnalysis.freeItems
                         .filter(fi => !selectedProducts.some(sp => sp.reference === fi.reference || sp.productId === fi.productId))
-                        .map((fi, fiIdx) => (
-                        <tr key={`promo_gift_${fiIdx}`} style={{ background: 'rgba(52, 199, 89, 0.08)', borderLeft: '3px solid #34C759' }}>
-                          <td>
-                            <span style={{
-                              fontWeight: '900',
-                              fontSize: '11px',
-                              color: '#34C759',
-                              background: 'rgba(52, 199, 89, 0.15)',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              display: 'inline-block'
-                            }}>
-                              {fi.reference}
-                            </span>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>{fi.productName}</strong>
-                              <span style={{ background: '#34C759', color: '#0D0F12', fontSize: '10px', fontWeight: '900', padding: '1px 6px', borderRadius: '4px' }}>
-                                🎁 CADEAU
-                              </span>
-                            </div>
-                            <div style={{ fontSize: '10px', color: '#34C759', marginTop: '2px' }}>
-                              Offert via « {fi.promoName} »
-                            </div>
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: '700' }}>
-                              Gratuité Offerte
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <span style={{ fontWeight: '800', color: '#34C759', fontSize: '13px' }}>
-                              {fi.qtyGratuit} carton(s)
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <span style={{ color: '#8E95A5', fontSize: '12px' }}>-</span>
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: '700', color: '#34C759', fontSize: '12px' }}>
-                            0.00 DH
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <span style={{ color: '#8E95A5', fontSize: '12px' }}>-</span>
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: '900', color: '#34C759', fontSize: '13px' }}>
-                            0.00 DH
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <span style={{ fontSize: '10px', color: '#34C759', fontWeight: '700' }}>Automatique</span>
-                          </td>
-                        </tr>
-                      ))}
+                        .map((fi, fiIdx) => {
+                          const giftProd = products.find(p => p.reference === fi.reference || p.id === fi.productId)
+                          const upb = giftProd?.unitsPerBox || (giftProd ? getProductUnitsPerCarton(giftProd) : 12) || 12
+                          const cartons = parseInt(fi.qtyGratuit, 10) || 1
+                          const totalGiftUnits = cartons * upb
+                          const giftCategory = giftProd?.category || 'Bardahl'
+
+                          return (
+                            <tr key={`promo_gift_${fiIdx}`} style={{ background: 'rgba(52, 199, 89, 0.08)', borderLeft: '3px solid #34C759' }}>
+                              {/* 1. Réf. */}
+                              <td>
+                                <span style={{
+                                  fontWeight: '900',
+                                  fontSize: '11px',
+                                  color: '#34C759',
+                                  background: 'rgba(52, 199, 89, 0.18)',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  display: 'inline-block'
+                                }}>
+                                  {fi.reference}
+                                </span>
+                              </td>
+
+                              {/* 2. Désignation Produit */}
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>{fi.productName}</strong>
+                                  <span style={{ background: '#34C759', color: '#0D0F12', fontSize: '10px', fontWeight: '900', padding: '1px 6px', borderRadius: '4px' }}>
+                                    🎁 CADEAU
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '10px', color: '#34C759', marginTop: '2px', fontWeight: '600' }}>
+                                  Offert via « {fi.promoName} »
+                                </div>
+                              </td>
+
+                              {/* 3. Gamme */}
+                              <td>
+                                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(52, 199, 89, 0.2)', color: '#34C759', fontWeight: '700' }}>
+                                  {giftCategory}
+                                </span>
+                              </td>
+
+                              {/* 4. Quantité commandée = 0 un. (Cadeau inclus) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <span style={{ color: '#8E95A5', fontSize: '12px', fontWeight: '700' }}>
+                                    0 un.
+                                  </span>
+                                  <span style={{ fontSize: '9px', color: '#34C759', fontWeight: '800' }}>
+                                    Inclus Promo
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 5. Gratuit (Cartons et unités offertes) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                  <span style={{
+                                    background: 'rgba(52, 199, 89, 0.22)',
+                                    color: '#34C759',
+                                    border: '1px solid rgba(52, 199, 89, 0.5)',
+                                    borderRadius: '7px',
+                                    padding: '4px 10px',
+                                    fontWeight: '900',
+                                    fontSize: '12px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    boxShadow: '0 2px 6px rgba(52, 199, 89, 0.2)'
+                                  }}>
+                                    🎁 {cartons} carton{cartons > 1 ? 's' : ''}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold' }}>
+                                    ({totalGiftUnits} un. offertes)
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 6. Prix U. TTC */}
+                              <td style={{ textAlign: 'right' }}>
+                                {giftProd?.priceTtc ? (
+                                  <div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                                      {giftProd.priceTtc.toFixed(2)} DH
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold' }}>
+                                      0.00 DH
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#34C759', fontWeight: '700', fontSize: '12px' }}>0.00 DH</span>
+                                )}
+                              </td>
+
+                              {/* 7. Remise (%) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span style={{
+                                  background: 'rgba(52, 199, 89, 0.15)',
+                                  color: '#34C759',
+                                  border: '1px solid rgba(52, 199, 89, 0.3)',
+                                  borderRadius: '6px',
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: '900'
+                                }}>
+                                  100%
+                                </span>
+                              </td>
+
+                              {/* 8. Total Net TTC */}
+                              <td style={{ textAlign: 'right', fontWeight: '900', color: '#34C759', fontSize: '13px' }}>
+                                0.00 DH
+                              </td>
+
+                              {/* 9. Actions */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span style={{
+                                  fontSize: '10px',
+                                  background: 'rgba(52, 199, 89, 0.18)',
+                                  color: '#34C759',
+                                  border: '1px solid rgba(52, 199, 89, 0.35)',
+                                  padding: '3px 8px',
+                                  borderRadius: '5px',
+                                  fontWeight: '800'
+                                }}>
+                                  🎁 Offert
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -2835,7 +2964,56 @@ export default function Orders({ openWizardTrigger }) {
                         )}
                       </p>
 
-                      {/* Box Quantité Restante de Produit (Stock Restant Déduit des articles commandés) */}
+                      {/* Carte détaillée des modifications manuelles de remise */}
+                      {(() => {
+                        const manualOverrides = selectedProducts.map((sp, idx) => {
+                          const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+                          const parsedRemise = parsePercent(sp.remisePercent)
+                          if (parsedRemise !== null && promoDiscount > 0 && parsedRemise !== promoDiscount) {
+                            return {
+                              product: sp,
+                              manualRemise: parsedRemise,
+                              promoRemise: promoDiscount
+                            }
+                          }
+                          return null
+                        }).filter(Boolean)
+
+                        if (manualOverrides.length === 0) return null
+
+                        return (
+                          <div style={{
+                            marginTop: '10px',
+                            padding: '10px 14px',
+                            background: 'rgba(255, 149, 0, 0.12)',
+                            border: '1px solid rgba(255, 149, 0, 0.45)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '14px' }}>⚠️</span>
+                              <strong style={{ color: '#FF9500', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                Détail des modifications de remise commerciale (Saisie Manuelle) :
+                              </strong>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
+                              {manualOverrides.map((mo, moIdx) => (
+                                <div key={moIdx} style={{ fontSize: '11px', color: '#F1F5F9', lineHeight: '1.4', paddingLeft: '12px', position: 'relative' }}>
+                                  <span style={{ position: 'absolute', left: '2px', color: '#FF9500', fontWeight: 'bold' }}>•</span>
+                                  <strong style={{ color: '#FFFFFF' }}>{mo.product.productName}</strong>{' '}
+                                  <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>({mo.product.reference})</span> :{' '}
+                                  Remise manuelle de <strong style={{ color: '#FF9500' }}>{mo.manualRemise}%</strong> appliquée au lieu de{' '}
+                                  <strong style={{ color: '#34C759' }}>{mo.promoRemise}%</strong> prévue initialement par les conditions de la promotion.
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Box Quantité Restante de Produit (Stock Restant Déduit des articles commandés + Cadeaux offerts) */}
                       {(() => {
                         const chosenPromo = promoAnalysis.selectedPromoStatus.promo
                         let targetProds = []
@@ -2870,7 +3048,12 @@ export default function Orders({ openWizardTrigger }) {
                           }
                         }
 
-                        if (!targetProds || targetProds.length === 0) return null
+                        // Collect distinct free gifts that are not already in targetProds
+                        const distinctGifts = (promoAnalysis.freeItems || []).filter(fi => 
+                          !targetProds.some(tp => tp.reference === fi.reference || tp.id === fi.productId)
+                        )
+
+                        if ((!targetProds || targetProds.length === 0) && distinctGifts.length === 0) return null
 
                         return (
                           <div style={{
@@ -2891,16 +3074,21 @@ export default function Orders({ openWizardTrigger }) {
                                 </span>
                               </div>
                               <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                Déduction en temps réel selon articles commandés
+                                Déduction en temps réel selon articles commandés & cadeaux offerts
                               </span>
                             </div>
 
+                            {/* Target Products in Cart */}
                             {targetProds.map(tp => {
                               const currentStock = parseInt(tp.stock !== undefined ? tp.stock : 100, 10)
                               const inCartItem = selectedProducts.find(sp => sp.productId === tp.id || sp.reference === tp.reference)
                               const inCartUnits = inCartItem ? (parseInt(inCartItem.qty, 10) || 0) : 0
-                              const remainingStock = Math.max(0, currentStock - inCartUnits)
+                              const freeItemForTp = (promoAnalysis.freeItems || []).find(fi => fi.reference === tp.reference || fi.productId === tp.id)
+                              const freeCartonsForTp = freeItemForTp ? (parseInt(freeItemForTp.qtyGratuit, 10) || 0) : 0
                               const upb = tp.unitsPerBox || getProductUnitsPerCarton(tp) || 1
+                              const freeUnitsForTp = freeCartonsForTp * upb
+                              const totalDeducted = inCartUnits + freeUnitsForTp
+                              const remainingStock = Math.max(0, currentStock - totalDeducted)
                               const remainingCartons = Math.floor(remainingStock / upb)
                               const remainingLooseUnits = remainingStock % upb
 
@@ -2955,7 +3143,86 @@ export default function Orders({ openWizardTrigger }) {
                                     </span>
 
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      (Stock magasin : {currentStock} un.{inCartUnits > 0 ? ` | Dans ce bon : -${inCartUnits} un.` : ''})
+                                      (Stock magasin : {currentStock} un.{inCartUnits > 0 ? ` | Dans ce bon : -${inCartUnits} un.` : ''}{freeUnitsForTp > 0 ? ` + 🎁 -${freeUnitsForTp} un.` : ''})
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+
+                            {/* Distinct Free Gift Products (e.g. DECRASSANT MOTEUR 5en1) */}
+                            {distinctGifts.map((fi, fiIdx) => {
+                              const giftProd = products.find(p => p.reference === fi.reference || p.id === fi.productId)
+                              const upb = giftProd?.unitsPerBox || (giftProd ? getProductUnitsPerCarton(giftProd) : 12) || 12
+                              const cartons = parseInt(fi.qtyGratuit, 10) || 1
+                              const giftUnits = cartons * upb
+                              const currentStock = parseInt(giftProd?.stock !== undefined ? giftProd.stock : 100, 10)
+                              const remainingStock = Math.max(0, currentStock - giftUnits)
+                              const remainingCartons = Math.floor(remainingStock / upb)
+                              const remainingLooseUnits = remainingStock % upb
+
+                              return (
+                                <div
+                                  key={`distinct_gift_stock_${fiIdx}`}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    padding: '7px 10px',
+                                    background: 'rgba(52, 199, 89, 0.08)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(52, 199, 89, 0.25)'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      fontWeight: '900',
+                                      color: '#34C759',
+                                      background: 'rgba(52, 199, 89, 0.2)',
+                                      padding: '2px 7px',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {fi.reference}
+                                    </span>
+                                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#FFFFFF' }}>
+                                      {fi.productName}
+                                    </span>
+                                    <span style={{
+                                      background: '#34C759',
+                                      color: '#0D0F12',
+                                      fontSize: '9px',
+                                      fontWeight: '900',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px'
+                                    }}>
+                                      🎁 CADEAU OFFERT
+                                    </span>
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{
+                                      background: remainingStock > 0 ? 'rgba(52, 199, 89, 0.22)' : 'rgba(255, 69, 58, 0.22)',
+                                      color: remainingStock > 0 ? '#34C759' : '#FF453A',
+                                      border: remainingStock > 0 ? '1px solid rgba(52, 199, 89, 0.45)' : '1px solid rgba(255, 69, 58, 0.45)',
+                                      padding: '3px 10px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '900',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px'
+                                    }}>
+                                      <span>📦</span>
+                                      <span>
+                                        Restant : {remainingStock} un. ({remainingCartons} carton{remainingCartons > 1 ? 's' : ''}{remainingLooseUnits > 0 ? ` + ${remainingLooseUnits} un.` : ''})
+                                      </span>
+                                    </span>
+
+                                    <span style={{ fontSize: '11px', color: '#34C759', fontWeight: '700' }}>
+                                      (Stock magasin : {currentStock} un. | 🎁 Cadeau déduit : -{giftUnits} un. [{cartons} carton{cartons > 1 ? 's' : ''}])
                                     </span>
                                   </div>
                                 </div>
