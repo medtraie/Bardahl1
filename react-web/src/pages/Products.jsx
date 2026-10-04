@@ -217,6 +217,20 @@ export default function Products() {
                   })()}
                 </div>
                 <div>Conditionnement : <strong style={{ color: '#FFFFFF' }}>{p.packaging}</strong> <span style={{ color: '#A1A1AA', fontSize: '11px' }}>({p.unitsPerBox || getProductUnitsPerCarton(p)} un./carton)</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                  <span>Stock disponible :</span>
+                  <span style={{
+                    fontWeight: '800',
+                    color: (p.stock !== undefined ? p.stock : 100) > 0 ? '#34C759' : '#FF453A',
+                    background: (p.stock !== undefined ? p.stock : 100) > 0 ? 'rgba(52, 199, 89, 0.12)' : 'rgba(255, 69, 58, 0.12)',
+                    padding: '1px 7px',
+                    borderRadius: '5px',
+                    border: `1px solid ${(p.stock !== undefined ? p.stock : 100) > 0 ? 'rgba(52, 199, 89, 0.3)' : 'rgba(255, 69, 58, 0.3)'}`,
+                    fontSize: '11px'
+                  }}>
+                    📦 {p.stock !== undefined ? p.stock : 100} unités
+                  </span>
+                </div>
               </div>
             </div>
 

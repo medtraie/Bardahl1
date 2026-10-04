@@ -675,6 +675,68 @@ export function AppProvider({ children }) {
     await dbDeleteProduct(id, targetProd?.reference).catch(e => console.warn('Supabase product delete error:', e))
   }, [localProducts])
 
+  const deductProductsStock = useCallback(async (itemsToDeduct) => {
+    if (!itemsToDeduct || itemsToDeduct.length === 0) return
+    setLocalProducts(prev => {
+      const updated = prev.map(prod => {
+        const matchedItems = itemsToDeduct.filter(it => 
+          (it.productId && (it.productId === prod.id || it.productId === prod.reference)) ||
+          (it.reference && (it.reference === prod.reference || it.reference === prod.id))
+        )
+        if (matchedItems.length > 0) {
+          const totalQtyDeducted = matchedItems.reduce((sum, it) => {
+            const q = parseInt(it.qty, 10) || 0
+            const g = parseInt(it.qtyGratuit, 10) || 0
+            return sum + q + g
+          }, 0)
+          const currentStock = parseInt(prod.stock !== undefined ? prod.stock : 100, 10)
+          const newStock = Math.max(0, currentStock - totalQtyDeducted)
+          const updatedProd = { ...prod, stock: newStock }
+          dbUpdateProduct(updatedProd).catch(e => console.warn('Supabase stock deduction error:', e))
+          return updatedProd
+        }
+        return prod
+      })
+      try {
+        const customOnly = updated.filter(x => x.isCustom || String(x.id).startsWith('prod_') || itemsToDeduct.some(it => it.reference === x.reference || it.productId === x.id))
+        localStorage.setItem('bardahl_custom_products', JSON.stringify(customOnly))
+      } catch (e) {
+        console.warn('Error saving stock in local storage:', e)
+      }
+      return updated
+    })
+  }, [])
+
+  const restoreProductsStock = useCallback(async (itemsToRestore) => {
+    if (!itemsToRestore || itemsToRestore.length === 0) return
+    setLocalProducts(prev => {
+      const updated = prev.map(prod => {
+        const matchedItems = itemsToRestore.filter(it => 
+          (it.productId && (it.productId === prod.id || it.productId === prod.reference)) ||
+          (it.reference && (it.reference === prod.reference || it.reference === prod.id))
+        )
+        if (matchedItems.length > 0) {
+          const totalQtyRestored = matchedItems.reduce((sum, it) => {
+            const q = parseInt(it.qty, 10) || 0
+            const g = parseInt(it.qtyGratuit, 10) || 0
+            return sum + q + g
+          }, 0)
+          const currentStock = parseInt(prod.stock !== undefined ? prod.stock : 100, 10)
+          const newStock = currentStock + totalQtyRestored
+          const updatedProd = { ...prod, stock: newStock }
+          dbUpdateProduct(updatedProd).catch(e => console.warn('Supabase stock restore error:', e))
+          return updatedProd
+        }
+        return prod
+      })
+      try {
+        const customOnly = updated.filter(x => x.isCustom || String(x.id).startsWith('prod_') || itemsToRestore.some(it => it.reference === x.reference || it.productId === x.id))
+        localStorage.setItem('bardahl_custom_products', JSON.stringify(customOnly))
+      } catch (e) {}
+      return updated
+    })
+  }, [])
+
   // ── PROMOTIONS CRUD ──────────────────────────────────────────────────────────
   const addPromotion = useCallback((p) => {
     const newPromo = { ...p, id: `promo_${Date.now()}` }
@@ -841,7 +903,7 @@ export function AppProvider({ children }) {
       theme, setTheme, toggleTheme,
       clients: visibleClients, allClients: clients,
       addClient, updateClient, deleteClient,
-      products: localProducts, addProduct, updateProduct, deleteProduct,
+      products: localProducts, addProduct, updateProduct, deleteProduct, deductProductsStock, restoreProductsStock,
       productFamilies, addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily,
       orders: visibleOrders, allOrders: orders,
       addOrder, updateOrder, deleteOrder, updateOrderStatus,
