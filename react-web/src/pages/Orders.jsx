@@ -2458,9 +2458,9 @@ export default function Orders({ openWizardTrigger }) {
                                   </button>
                                 </div>
 
-                                {/* Symbole carton interactif & réactif : clic ajoute 1 carton (+upb un.) instantanément */}
-                                <div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                {/* Symbole carton interactif & réactif : taille ajustée et centrée (max 106px = largeur identique au stepper) */}
+                                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px', maxWidth: '106px', width: '100%' }}>
                                     {cartons > 1 && (
                                       <button
                                         type="button"
@@ -2473,16 +2473,17 @@ export default function Orders({ openWizardTrigger }) {
                                           background: 'rgba(255, 208, 0, 0.1)',
                                           border: '1px solid rgba(255, 208, 0, 0.3)',
                                           color: 'var(--bardahl-yellow)',
-                                          borderRadius: '5px',
-                                          width: '20px',
+                                          borderRadius: '4px',
+                                          width: '18px',
                                           height: '22px',
-                                          fontSize: '12px',
+                                          fontSize: '11px',
                                           fontWeight: '900',
                                           cursor: 'pointer',
                                           display: 'flex',
                                           alignItems: 'center',
                                           justifyContent: 'center',
-                                          padding: 0
+                                          padding: 0,
+                                          flexShrink: 0
                                         }}
                                       >
                                         -
@@ -2497,19 +2498,22 @@ export default function Orders({ openWizardTrigger }) {
                                       }}
                                       title={`Cliquer pour ajouter +1 carton (+${upb} unités)`}
                                       style={{
+                                        flex: 1,
+                                        height: '22px',
                                         background: 'linear-gradient(135deg, rgba(255, 208, 0, 0.2), rgba(255, 149, 0, 0.15))',
                                         border: '1px solid var(--bardahl-yellow)',
                                         color: 'var(--bardahl-yellow)',
-                                        borderRadius: '6px',
-                                        padding: '3px 8px',
-                                        fontSize: '11px',
+                                        borderRadius: '5px',
+                                        padding: '0 4px',
+                                        fontSize: '10px',
                                         fontWeight: '800',
                                         cursor: 'pointer',
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '5px',
+                                        justifyContent: 'center',
+                                        gap: '3px',
                                         transition: 'all 0.15s ease',
-                                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+                                        whiteSpace: 'nowrap'
                                       }}
                                       onMouseEnter={e => {
                                         e.currentTarget.style.background = 'var(--bardahl-yellow)'
@@ -2520,15 +2524,15 @@ export default function Orders({ openWizardTrigger }) {
                                         e.currentTarget.style.color = 'var(--bardahl-yellow)'
                                       }}
                                     >
-                                      <span style={{ fontSize: '13px' }}>📦</span>
+                                      <span style={{ fontSize: '11px' }}>📦</span>
                                       <span>{cartons} Carton{cartons > 1 ? 's' : ''}</span>
-                                      <span style={{ fontSize: '10px', opacity: 0.9, fontWeight: '900' }}>+1 📦</span>
+                                      <span style={{ fontSize: '9px', opacity: 0.9, fontWeight: '900' }}>+1 📦</span>
                                     </button>
                                   </div>
 
                                   {remainderUnits > 0 && (
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>
-                                      (+{remainderUnits} un. hors carton)
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '9px', marginTop: '1px' }}>
+                                      (+{remainderUnits} un.)
                                     </span>
                                   )}
                                 </div>
@@ -2736,12 +2740,7 @@ export default function Orders({ openWizardTrigger }) {
 
                               {/* 2. Désignation Produit */}
                               <td>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <strong style={{ color: '#FFFFFF', fontSize: '13px' }}>{fi.productName}</strong>
-                                  <span style={{ background: '#34C759', color: '#0D0F12', fontSize: '10px', fontWeight: '900', padding: '1px 6px', borderRadius: '4px' }}>
-                                    🎁 CADEAU
-                                  </span>
-                                </div>
+                                <strong style={{ color: '#FFFFFF', fontSize: '13px', display: 'block' }}>{fi.productName}</strong>
                                 <div style={{ fontSize: '10px', color: '#34C759', marginTop: '2px', fontWeight: '600' }}>
                                   Offert via « {fi.promoName} »
                                 </div>
@@ -2766,9 +2765,9 @@ export default function Orders({ openWizardTrigger }) {
                                 </div>
                               </td>
 
-                              {/* 5. Gratuit (Cartons et unités offertes) */}
+                              {/* 5. Gratuit */}
                               <td style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
                                   <span style={{
                                     background: 'rgba(52, 199, 89, 0.22)',
                                     color: '#34C759',
@@ -2783,9 +2782,6 @@ export default function Orders({ openWizardTrigger }) {
                                     boxShadow: '0 2px 6px rgba(52, 199, 89, 0.2)'
                                   }}>
                                     🎁 {cartons} carton{cartons > 1 ? 's' : ''}
-                                  </span>
-                                  <span style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold' }}>
-                                    ({totalGiftUnits} un. offertes)
                                   </span>
                                 </div>
                               </td>
