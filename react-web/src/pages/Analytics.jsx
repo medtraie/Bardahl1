@@ -5,6 +5,7 @@ import {
   Search, RotateCcw, MapPin, User, ChevronRight, Package, Percent
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -88,7 +89,7 @@ export default function Analytics() {
   const activeFamiliesList = useMemo(() => {
     return (productFamilies && productFamilies.length > 0)
       ? productFamilies.filter(f => f.isActive !== false)
-      : BARDAHL_FAMILIES_METRICS
+      : DEFAULT_BARDAHL_FAMILIES
   }, [productFamilies])
 
   // Filter States
@@ -215,13 +216,10 @@ export default function Analytics() {
     let totalPromoDiscountsDh = 0
     let promoCaTtc = 0
 
-    const familyCartons = {
-      'Additifs & Traitements': 0,
-      'Fluides & LR': 0,
-      'Lubrifiants Auto': 0,
-      'Aérosols & Nettoyants': 0,
-      'Industrie & Graisses': 0
-    }
+    const familyCartons = {}
+    activeFamiliesList.forEach(f => {
+      familyCartons[f.label] = 0
+    })
 
     filteredOrders.forEach(o => {
       if (!o) return
@@ -241,19 +239,11 @@ export default function Analytics() {
             const qty = parseInt(it.quantity || it.qty || 1, 10) || 1
             totalCartonsUnderPromo += qty
 
-            const name = (it.productName || it.name || '').toUpperCase()
-            const cat = (it.category || '').toUpperCase()
-            if (cat.includes('ADDITIF') || name.includes('INJECTEUR') || name.includes('SMOKE') || name.includes('TRAITEMENT')) {
-              familyCartons['Additifs & Traitements'] += qty
-            } else if (cat.includes('FLUIDE') || cat.includes('LR') || name.includes('XCL') || name.includes('REFROIDISSEMENT')) {
-              familyCartons['Fluides & LR'] += qty
-            } else if (cat.includes('LUB') || cat.includes('HUILE') || name.includes('10W40') || name.includes('5W30') || name.includes('XTS')) {
-              familyCartons['Lubrifiants Auto'] += qty
-            } else if (cat.includes('AEROSOL') || cat.includes('NETTOYANT') || name.includes('BRAKE') || name.includes('DEGRIPPANT')) {
-              familyCartons['Aérosols & Nettoyants'] += qty
-            } else {
-              familyCartons['Industrie & Graisses'] += qty
-            }
+            const cat = it.category || it.family || it.productName || it.name || ''
+            const famInfo = getFamilyInfo(cat, activeFamiliesList)
+            const targetLabel = famInfo?.label || activeFamiliesList[0]?.label || 'Autre'
+            
+            familyCartons[targetLabel] = (familyCartons[targetLabel] || 0) + qty
           })
         }
       }
@@ -265,11 +255,12 @@ export default function Analytics() {
       totalCartonsUnderPromo = Math.round(totalCaTtc / 450) || 20
       totalFreeCartons = Math.max(2, Math.round(totalCartonsUnderPromo * 0.08))
       totalPromoDiscountsDh = totalCaTtc * 0.05
-      familyCartons['Lubrifiants Auto'] = Math.round(totalCartonsUnderPromo * 0.45)
-      familyCartons['Additifs & Traitements'] = Math.round(totalCartonsUnderPromo * 0.25)
-      familyCartons['Fluides & LR'] = Math.round(totalCartonsUnderPromo * 0.15)
-      familyCartons['Aérosols & Nettoyants'] = Math.round(totalCartonsUnderPromo * 0.10)
-      familyCartons['Industrie & Graisses'] = Math.round(totalCartonsUnderPromo * 0.05)
+      
+      activeFamiliesList.forEach((f, idx) => {
+        const weights = [0.45, 0.25, 0.15, 0.10, 0.05]
+        const w = weights[idx] || (1 / activeFamiliesList.length)
+        familyCartons[f.label] = Math.round(totalCartonsUnderPromo * w)
+      })
     }
 
     const standardCaTtc = Math.max(0, totalCaTtc - promoCaTtc)
@@ -285,7 +276,7 @@ export default function Analytics() {
       promoSharePercent,
       familyCartons
     }
-  }, [filteredOrders, totalCaTtc])
+  }, [filteredOrders, totalCaTtc, activeFamiliesList])
 
   // 5. Dynamic Top Products Aggregation
   const topProducts = useMemo(() => {
@@ -431,12 +422,17 @@ export default function Analytics() {
   }
 
   const handleInspectSegment = (name) => {
-    const details = segmentDetails[name] || {
-      category: 'Indicateur Commercial Stratégique',
-      color: '#FFD000',
-      value: 'Performance Réseau 2026',
-      description: "Segment commercial opérationnel participant activement à la croissance et à la profitabilité de SADAPS Bardahl Maroc.",
-      actionPlan: "Poursuivre le monitoring des indicateurs et ajuster les actions de stimulation commerciale sur le terrain."
+    let details = segmentDetails[name]
+    if (!details) {
+      const fam = getFamilyInfo(name, activeFamiliesList)
+      const fMetric = familyMetricsData.find(f => f.label === name || f.code === name)
+      details = {
+        category: `Gamme Officielle Bardahl (${fam.code || 'FAM'})`,
+        color: fam.color || '#FFD000',
+        value: fMetric ? `${(fMetric.revenue || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH (${fMetric.pct}% du CA)` : `Gamme Active Bardahl`,
+        description: fam.description || `Famille de produits ${fam.label} configurée dans le système pour le catalogue, les promotions et les analyses décisionnelles.`,
+        actionPlan: `Développer la prospection et l'exposition réseau sur cette gamme de produits Bardahl.`
+      }
     }
     setSelectedSegment({ name, ...details })
   }
@@ -444,36 +440,105 @@ export default function Analytics() {
   // 6. Chart: Évolution Mensuelle du CA par Gamme Bardahl
   const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct']
   
-  const gammeRawDatasets = [
-    {
-      label: 'Lubrifiants Auto (BVM-BVA)',
-      id: 'LUB',
-      data: [180000, 210000, 195000, 235000, 250000, 280000, 290000, 310000, 335000, Math.max(350000, totalCaTtc * 0.42)],
-      color: '#FFD000',
-      gradientStart: 'rgba(255, 208, 0, 0.45)'
-    },
-    {
-      label: 'Additifs & Aérosols',
-      id: 'ADD',
-      data: [110000, 125000, 118000, 140000, 148000, 165000, 172000, 180000, 195000, Math.max(210000, totalCaTtc * 0.26)],
-      color: '#FF9F43',
-      gradientStart: 'rgba(255, 159, 67, 0.45)'
-    },
-    {
-      label: 'Industrie & Graisses',
-      id: 'IND',
-      data: [75000, 88000, 82000, 95000, 102000, 115000, 120000, 128000, 135000, Math.max(145000, totalCaTtc * 0.18)],
-      color: '#FF5252',
-      gradientStart: 'rgba(255, 82, 82, 0.45)'
-    },
-    {
-      label: 'Fluides & LR',
-      id: 'LQD',
-      data: [45000, 52000, 48000, 61000, 58000, 72000, 75000, 80000, 88000, Math.max(98000, totalCaTtc * 0.14)],
-      color: '#0077B6',
-      gradientStart: 'rgba(0, 119, 182, 0.45)'
-    }
-  ]
+  // Dynamic Family Metrics Calculation Engine
+  const familyMetricsData = useMemo(() => {
+    const familyMap = {}
+    const colorPalette = ['#FFD000', '#007AFF', '#00C7BE', '#AF52DE', '#FF9500', '#FF5252', '#34C759', '#FF9F43']
+
+    activeFamiliesList.forEach((f, idx) => {
+      familyMap[f.label] = {
+        id: f.id || f.code || `fam_${idx}`,
+        code: f.code || f.label,
+        label: f.label,
+        icon: f.icon || '🏷️',
+        color: f.color || colorPalette[idx % colorPalette.length],
+        revenue: 0,
+        cartons: 0,
+        monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      }
+    })
+
+    const defaultMonthlyFactors = [0.06, 0.07, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.14, 0.16]
+
+    filteredOrders.forEach(o => {
+      if (!o || !Array.isArray(o.items)) return
+      const oDate = (o.date || o.created_at || '').substring(0, 10)
+      let mIdx = 9 // Default Oct
+      if (oDate.length >= 7) {
+        const mNum = parseInt(oDate.substring(5, 7), 10)
+        if (mNum >= 1 && mNum <= 10) mIdx = mNum - 1
+      }
+
+      o.items.forEach(it => {
+        const catKey = it.category || it.family || it.productName || it.name || ''
+        const famInfo = getFamilyInfo(catKey, activeFamiliesList)
+        const targetLabel = famInfo.label || (activeFamiliesList[0] ? activeFamiliesList[0].label : 'Autre')
+
+        if (!familyMap[targetLabel]) {
+          familyMap[targetLabel] = {
+            id: famInfo.id || targetLabel,
+            code: famInfo.code || targetLabel,
+            label: targetLabel,
+            icon: famInfo.icon || '🏷️',
+            color: famInfo.color || '#FFD000',
+            revenue: 0,
+            cartons: 0,
+            monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          }
+        }
+
+        const itemTotal = parseFloat(it.totalTtc || it.total) || ((parseFloat(it.priceHt || it.price) || 0) * (parseInt(it.quantity || it.qty, 10) || 1) * 1.2)
+        const itemQty = parseInt(it.quantity || it.qty, 10) || 1
+
+        familyMap[targetLabel].revenue += itemTotal
+        familyMap[targetLabel].cartons += itemQty
+        familyMap[targetLabel].monthlyData[mIdx] += itemTotal
+      })
+    })
+
+    const familyList = Object.values(familyMap)
+    const grandTotal = familyList.reduce((sum, f) => sum + f.revenue, 0) || totalCaTtc || 1000000
+
+    const baseWeights = [0.35, 0.25, 0.20, 0.12, 0.08]
+
+    return familyList.map((f, idx) => {
+      const realShare = grandTotal > 0 ? (f.revenue / grandTotal) : 0
+      const fallbackShare = baseWeights[idx] || (1 / familyList.length)
+      const share = realShare > 0 ? realShare : fallbackShare
+      const pct = Math.round(share * 100) || 5
+
+      const monthlyData = monthLabels.map((_, mIdx) => {
+        const val = f.monthlyData[mIdx]
+        if (val > 0) return val
+        const baseMonthly = Math.round(grandTotal * share * defaultMonthlyFactors[mIdx])
+        return Math.max(12000, baseMonthly)
+      })
+
+      return {
+        ...f,
+        pct,
+        monthlyData
+      }
+    })
+  }, [activeFamiliesList, filteredOrders, totalCaTtc])
+
+  const gammeRawDatasets = useMemo(() => {
+    return familyMetricsData.map(f => {
+      const hex = f.color || '#FFD000'
+      const rgba = hex.startsWith('#') && hex.length === 7
+        ? `rgba(${parseInt(hex.slice(1,3),16)}, ${parseInt(hex.slice(3,5),16)}, ${parseInt(hex.slice(5,7),16)}, 0.45)`
+        : 'rgba(255, 208, 0, 0.45)'
+
+      return {
+        label: f.label,
+        id: f.id,
+        code: f.code,
+        data: f.monthlyData,
+        color: f.color,
+        gradientStart: rgba
+      }
+    })
+  }, [familyMetricsData])
 
   const activeGammeDatasets = useMemo(() => {
     const filtered = selectedGammeFilter === 'ALL' 
@@ -730,17 +795,19 @@ export default function Analytics() {
   }
 
   // 11. Chart: Répartition CA par Gamme (%)
-  const donutData = {
-    labels: ['Lubrifiants Auto (BVM-BVA)', 'Additifs & Aérosols', 'Industrie & Graisses', 'Fluides & LR'],
-    datasets: [
-      {
-        data: [42, 26, 18, 14],
-        backgroundColor: ['#FFD000', '#FF9F43', '#FF5252', '#0077B6'],
-        borderColor: '#14171F',
-        borderWidth: 3
-      }
-    ]
-  }
+  const donutData = useMemo(() => {
+    return {
+      labels: familyMetricsData.map(f => f.label),
+      datasets: [
+        {
+          data: familyMetricsData.map(f => f.pct),
+          backgroundColor: familyMetricsData.map(f => f.color),
+          borderColor: '#14171F',
+          borderWidth: 3
+        }
+      ]
+    }
+  }, [familyMetricsData])
 
   const donutOptions = {
     responsive: true,
@@ -1275,15 +1342,10 @@ export default function Analytics() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
-            {[
-              { name: 'Lubrifiants Auto (BVM-BVA)', pct: '42%', color: '#FFD000' },
-              { name: 'Additifs & Aérosols', pct: '26%', color: '#FF9F43' },
-              { name: 'Industrie & Graisses', pct: '18%', color: '#FF5252' },
-              { name: 'Fluides & LR', pct: '14%', color: '#0077B6' }
-            ].map(seg => (
+            {familyMetricsData.map(seg => (
               <button
-                key={seg.name}
-                onClick={() => handleInspectSegment(seg.name)}
+                key={seg.label}
+                onClick={() => handleInspectSegment(seg.label)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1300,9 +1362,9 @@ export default function Analytics() {
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
-                  {seg.name}
+                  {seg.icon} {seg.label}
                 </span>
-                <strong style={{ color: seg.color, marginLeft: '4px' }}>{seg.pct}</strong>
+                <strong style={{ color: seg.color, marginLeft: '4px' }}>{seg.pct}%</strong>
               </button>
             ))}
           </div>
