@@ -4,16 +4,18 @@ import {
   Lock, ShieldCheck, ShieldAlert, Edit3, Trash2, FileText, Download,
   Power, AlertTriangle, Plus, X, LayoutGrid, List, BarChart3, TrendingUp,
   ShoppingCart, Package, Users, Search, Filter, Eye, ChevronRight,
-  ArrowUpRight, Sparkles, CheckCircle, Clock
+  ArrowUpRight, Sparkles, CheckCircle, Clock, Globe
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generatePortfolioByCommercialPdf, generateOrderPdf } from '../utils/pdfGenerator'
-
-const AVAILABLE_SECTORS = [
-  'Casablanca', 'Mohammedia', 'Rabat', 'Salé', 'Kénitra',
-  'Tanger', 'Tétouan', 'Marrakech', 'Agadir', 'Fès',
-  'Meknès', 'Oujda', 'El Jadida', 'Safi', 'Béni Mellal', 'Nador'
-]
+import {
+  DEFAULT_MOROCCAN_REGIONS,
+  getStoredRegions,
+  saveStoredRegions,
+  addCustomRegion,
+  getRegionForCity,
+  getCitiesForRegions
+} from '../data/regionsData'
 
 // Helper to format currency
 const formatMoney = (val) => {
@@ -138,10 +140,13 @@ const calculateCommercialStats = (comm, allOrders = [], allClients = []) => {
 export default function Commercials() {
   const { commercials = [], clients = [], orders = [], addCommercial, updateCommercial, deleteCommercial } = useApp()
 
+  // Geographic Regions State (12 Reference regions + Custom ones)
+  const [availableRegions, setAvailableRegions] = useState(getStoredRegions)
+
   // Display & Filter States
   const [viewMode, setViewMode] = useState('grid') // 'grid' | 'table'
   const [searchTerm, setSearchTerm] = useState('')
-  const [sectorFilter, setSectorFilter] = useState('ALL')
+  const [regionFilter, setRegionFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL') // 'ALL' | 'ACTIVE' | 'INACTIVE'
 
   // Modal States
@@ -150,10 +155,52 @@ export default function Commercials() {
   const [customSectorInput, setCustomSectorInput] = useState('')
   const [selectedCommercialAnalytics, setSelectedCommercialAnalytics] = useState(null)
 
+  // Sub-modal for adding custom region
+  const [showAddRegionModal, setShowAddRegionModal] = useState(false)
+  const [newRegionForm, setNewRegionForm] = useState({ name: '', cities: '', color: '#EAB308' })
+
+  // Helpers to parse commercial regions & cities
+  const parseSectors = (cityString) => {
+    if (!cityString) return ['Casablanca']
+    if (Array.isArray(cityString)) return cityString
+    return cityString.split(',').map(s => s.trim()).filter(Boolean)
+  }
+
+  const parseCommercialRegions = (comm) => {
+    if (!comm) return ['Casablanca-Settat']
+    if (Array.isArray(comm.regions) && comm.regions.length > 0) return comm.regions
+    if (comm.region) return [comm.region]
+
+    // Check localStorage cache
+    try {
+      const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+      if (saved[comm.id]?.regions && saved[comm.id].regions.length > 0) {
+        return saved[comm.id].regions
+      }
+      if (saved[comm.dbId]?.regions && saved[comm.dbId].regions.length > 0) {
+        return saved[comm.dbId].regions
+      }
+    } catch (e) {}
+
+    // Infer from city/sectors
+    const cities = parseSectors(comm.city || comm.sectors)
+    const inferred = Array.from(new Set(cities.map(c => getRegionForCity(c, availableRegions))))
+    return inferred.length > 0 ? inferred : ['Casablanca-Settat']
+  }
+
+  const parseCommercialCities = (comm) => {
+    if (!comm) return ['Casablanca']
+    const cities = parseSectors(comm.city || comm.sectors)
+    if (cities.length > 0) return cities
+    const regs = parseCommercialRegions(comm)
+    return getCitiesForRegions(regs, availableRegions)
+  }
+
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    sectors: ['Casablanca'],
+    regions: ['Casablanca-Settat'],
+    sectors: ['Casablanca', 'Mohammedia', 'Settat'],
     matricule: '',
     phone: '',
     email: '',
@@ -162,12 +209,6 @@ export default function Commercials() {
     current: 0,
     isActive: true
   })
-
-  const parseSectors = (cityString) => {
-    if (!cityString) return ['Casablanca']
-    if (Array.isArray(cityString)) return cityString
-    return cityString.split(',').map(s => s.trim()).filter(Boolean)
-  }
 
   // Calculate stats for all commercials
   const commercialsStats = useMemo(() => {
@@ -196,20 +237,22 @@ export default function Commercials() {
     }
   }, [commercials, orders, commercialsStats])
 
-  // Filtered commercials list
+  // Filtered commercials list by search, region, and status
   const filteredCommercialsStats = useMemo(() => {
     return commercialsStats.filter(stat => {
       const c = stat.commercial
-      const commSectors = parseSectors(c.city || c.sectors)
+      const commRegions = parseCommercialRegions(c)
+      const commSectors = parseCommercialCities(c)
 
       // Status filter
       if (statusFilter === 'ACTIVE' && c.isActive === false) return false
       if (statusFilter === 'INACTIVE' && c.isActive !== false) return false
 
-      // Sector filter
-      if (sectorFilter !== 'ALL') {
-        const hasSector = commSectors.some(s => s.toLowerCase() === sectorFilter.toLowerCase())
-        if (!hasSector) return false
+      // Region filter (COM-01 & COM-02)
+      if (regionFilter !== 'ALL') {
+        const matchesReg = commRegions.some(r => r.toLowerCase().trim() === regionFilter.toLowerCase().trim())
+        const matchesCityReg = commSectors.some(s => getRegionForCity(s, availableRegions).toLowerCase().trim() === regionFilter.toLowerCase().trim())
+        if (!matchesReg && !matchesCityReg) return false
       }
 
       // Search term
@@ -219,20 +262,24 @@ export default function Commercials() {
         const matchMatricule = (c.matricule || '').toLowerCase().includes(q)
         const matchEmail = (c.email || '').toLowerCase().includes(q)
         const matchPhone = (c.phone || '').toLowerCase().includes(q)
+        const matchRegion = commRegions.some(r => r.toLowerCase().includes(q))
         const matchCity = commSectors.some(s => s.toLowerCase().includes(q))
-        if (!matchName && !matchMatricule && !matchEmail && !matchPhone && !matchCity) return false
+        if (!matchName && !matchMatricule && !matchEmail && !matchPhone && !matchRegion && !matchCity) return false
       }
 
       return true
     })
-  }, [commercialsStats, searchTerm, sectorFilter, statusFilter])
+  }, [commercialsStats, searchTerm, regionFilter, statusFilter, availableRegions])
 
   // Add / Edit Handlers
   const handleOpenAddModal = () => {
     setEditingCommercial(null)
+    const defRegions = ['Casablanca-Settat']
+    const defCities = getCitiesForRegions(defRegions, availableRegions)
     setFormData({
       name: '',
-      sectors: ['Casablanca'],
+      regions: defRegions,
+      sectors: defCities.slice(0, 4),
       matricule: `COM-00${commercials.length + 1}`,
       phone: '',
       email: '',
@@ -247,9 +294,12 @@ export default function Commercials() {
 
   const handleOpenEditModal = (comm) => {
     setEditingCommercial(comm)
+    const commRegions = parseCommercialRegions(comm)
+    const commCities = parseCommercialCities(comm)
     setFormData({
       name: comm.name || '',
-      sectors: parseSectors(comm.city || comm.sectors),
+      regions: commRegions,
+      sectors: commCities,
       matricule: comm.matricule || '',
       phone: comm.phone || '',
       email: comm.email || '',
@@ -259,8 +309,40 @@ export default function Commercials() {
       isActive: comm.isActive !== false
     })
     setCustomSectorInput('')
+    setShowModal(true)
   }
 
+  // Toggle Region assignment and automatically associate attached cities (COM-01)
+  const handleToggleRegion = (regName) => {
+    const isSelected = formData.regions.includes(regName)
+    let nextRegions = []
+    if (isSelected) {
+      if (formData.regions.length > 1) {
+        nextRegions = formData.regions.filter(r => r !== regName)
+      } else {
+        nextRegions = formData.regions
+      }
+    } else {
+      nextRegions = [...formData.regions, regName]
+    }
+
+    // Associate cities attached to all selected regions
+    const attachedCities = getCitiesForRegions(nextRegions, availableRegions)
+    // Keep custom cities that don't belong to any region, plus the attached cities
+    const remainingCustom = formData.sectors.filter(s => {
+      const reg = getRegionForCity(s, availableRegions)
+      return nextRegions.includes(reg)
+    })
+    const merged = Array.from(new Set([...remainingCustom, ...attachedCities]))
+
+    setFormData({
+      ...formData,
+      regions: nextRegions,
+      sectors: merged.length > 0 ? merged : attachedCities
+    })
+  }
+
+  // Toggle individual city
   const handleToggleSector = (sector) => {
     const exists = formData.sectors.includes(sector)
     if (exists) {
@@ -268,15 +350,47 @@ export default function Commercials() {
         setFormData({ ...formData, sectors: formData.sectors.filter(s => s !== sector) })
       }
     } else {
-      setFormData({ ...formData, sectors: [...formData.sectors, sector] })
+      const parentRegion = getRegionForCity(sector, availableRegions)
+      const nextRegions = formData.regions.includes(parentRegion) ? formData.regions : [...formData.regions, parentRegion]
+      setFormData({
+        ...formData,
+        regions: nextRegions,
+        sectors: [...formData.sectors, sector]
+      })
     }
   }
 
+  // Add custom city
   const handleAddCustomSector = () => {
     const s = customSectorInput.trim()
     if (s && !formData.sectors.includes(s)) {
-      setFormData({ ...formData, sectors: [...formData.sectors, s] })
+      const parentRegion = getRegionForCity(s, availableRegions)
+      const nextRegions = formData.regions.includes(parentRegion) ? formData.regions : [...formData.regions, parentRegion]
+      setFormData({
+        ...formData,
+        regions: nextRegions,
+        sectors: [...formData.sectors, s]
+      })
       setCustomSectorInput('')
+    }
+  }
+
+  // Add custom region (COM-02: permettre d'ajouter d'autres)
+  const handleSaveNewRegion = (e) => {
+    e.preventDefault()
+    if (!newRegionForm.name.trim()) return
+    const citiesArr = newRegionForm.cities.split(',').map(c => c.trim()).filter(Boolean)
+    const created = addCustomRegion(newRegionForm.name, citiesArr, newRegionForm.color)
+    if (created) {
+      const updated = getStoredRegions()
+      setAvailableRegions(updated)
+      // Automatically add to current commercial if modal is open
+      if (!formData.regions.includes(created.name)) {
+        handleToggleRegion(created.name)
+      }
+      setNewRegionForm({ name: '', cities: '', color: '#EAB308' })
+      setShowAddRegionModal(false)
+      alert(`Nouvelle région "${created.name}" configurée avec succès !`)
     }
   }
 
@@ -312,12 +426,23 @@ export default function Commercials() {
     if (!formData.name || !formData.email) return
 
     const sectorString = formData.sectors.join(', ')
+    const regionString = formData.regions.join(', ')
+    const commId = editingCommercial ? (editingCommercial.dbId || editingCommercial.id) : ('comm_' + Date.now())
+
+    // Persist geographical assignment in local storage cache
+    try {
+      const savedMap = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+      savedMap[commId] = { regions: formData.regions, sectors: formData.sectors }
+      localStorage.setItem('bardahl_commercial_regions', JSON.stringify(savedMap))
+    } catch (err) {}
 
     if (editingCommercial) {
       const updatedComm = {
         ...editingCommercial,
         name: formData.name,
         city: sectorString,
+        region: regionString,
+        regions: formData.regions,
         sectors: formData.sectors,
         matricule: formData.matricule,
         phone: formData.phone,
@@ -329,13 +454,17 @@ export default function Commercials() {
       }
       updateCommercial(updatedComm)
       setEditingCommercial(null)
+      setShowModal(false)
       alert(`Compte commercial de ${updatedComm.name} mis à jour avec succès !`)
     } else {
       const newComm = {
-        id: 'comm_' + Date.now(),
+        id: commId,
+        dbId: commId,
         name: formData.name,
         matricule: formData.matricule || `COM-00${commercials.length + 1}`,
         city: sectorString,
+        region: regionString,
+        regions: formData.regions,
         sectors: formData.sectors,
         phone: formData.phone || '+212 6 61 00 00 00',
         email: formData.email,
@@ -463,7 +592,7 @@ export default function Commercials() {
             <Search style={{ width: '15px', height: '15px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
             <input
               type="text"
-              placeholder="Rechercher par nom, matricule, ville, email..."
+              placeholder="Rechercher par nom, matricule, région, ville, email..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="input-field"
@@ -471,12 +600,12 @@ export default function Commercials() {
             />
           </div>
 
-          {/* Sector Filter */}
-          <div style={{ position: 'relative', minWidth: '185px' }}>
+          {/* Region Filter (COM-01 & COM-02) */}
+          <div style={{ position: 'relative', minWidth: '220px' }}>
             <MapPin style={{ width: '14px', height: '14px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)', pointerEvents: 'none' }} />
             <select
-              value={sectorFilter}
-              onChange={e => setSectorFilter(e.target.value)}
+              value={regionFilter}
+              onChange={e => setRegionFilter(e.target.value)}
               style={{
                 width: '100%',
                 height: '38px',
@@ -498,9 +627,11 @@ export default function Commercials() {
                 backgroundPosition: 'right 10px center'
               }}
             >
-              <option value="ALL" style={{ background: '#14171F', color: '#FFFFFF' }}>Tous les Secteurs</option>
-              {AVAILABLE_SECTORS.map(sec => (
-                <option key={sec} value={sec} style={{ background: '#14171F', color: '#FFFFFF' }}>{sec}</option>
+              <option value="ALL" style={{ background: '#14171F', color: '#FFFFFF' }}>Toutes les Régions ({availableRegions.length})</option>
+              {availableRegions.map(reg => (
+                <option key={reg.id || reg.name} value={reg.name} style={{ background: '#14171F', color: '#FFFFFF' }}>
+                  {reg.name}
+                </option>
               ))}
             </select>
           </div>
@@ -662,25 +793,70 @@ export default function Commercials() {
                     </span>
                   </div>
 
-                  {/* Sectors Badges */}
-                  <div style={{ marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                      {commSectors.map((sec, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            fontSize: '10px',
-                            fontWeight: '700',
-                            padding: '2px 7px',
-                            borderRadius: '6px',
-                            background: 'rgba(255, 208, 0, 0.1)',
-                            color: 'var(--bardahl-yellow)',
-                            border: '1px solid rgba(255, 208, 0, 0.25)'
-                          }}
-                        >
-                          📍 {sec}
-                        </span>
-                      ))}
+                  {/* Régions d'Affectation & Villes Rattachées (COM-01) */}
+                  <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {/* Regions badges */}
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin style={{ width: '11px', height: '11px', color: 'var(--bardahl-yellow)' }} />
+                        Régions ({parseCommercialRegions(c).length}) :
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {parseCommercialRegions(c).map((rName, idx) => {
+                          const regObj = availableRegions.find(r => r.name === rName)
+                          const regColor = regObj?.color || '#FFD000'
+                          return (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: '10.5px',
+                                fontWeight: '800',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: `${regColor}22`,
+                                color: regColor,
+                                border: `1px solid ${regColor}55`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: regColor }} />
+                              {rName}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Villes rattachées */}
+                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '5px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '2px' }}>
+                        Villes couvertes ({parseCommercialCities(c).length}) :
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                        {parseCommercialCities(c).slice(0, 5).map((sec, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              fontSize: '9.5px',
+                              fontWeight: '600',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'rgba(255, 208, 0, 0.08)',
+                              color: '#CBD5E1',
+                              border: '1px solid rgba(255, 208, 0, 0.18)'
+                            }}
+                          >
+                            {sec}
+                          </span>
+                        ))}
+                        {parseCommercialCities(c).length > 5 && (
+                          <span style={{ fontSize: '9px', color: 'var(--bardahl-yellow)', fontWeight: '700', alignSelf: 'center' }}>
+                            +{parseCommercialCities(c).length - 5} autres
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -852,7 +1028,7 @@ export default function Commercials() {
                 <tr>
                   <th style={{ minWidth: '190px' }}>Commercial</th>
                   <th style={{ minWidth: '90px' }}>Statut</th>
-                  <th style={{ minWidth: '150px' }}>Secteurs Assignés</th>
+                  <th style={{ minWidth: '220px' }}>Régions & Villes Assignées</th>
                   <th style={{ minWidth: '100px', textAlign: 'center' }}>Factures</th>
                   <th style={{ minWidth: '140px' }}>CA Réalisé (TTC)</th>
                   <th style={{ minWidth: '220px' }}>Produit Plus Vendu (Top Vente)</th>
@@ -865,7 +1041,8 @@ export default function Commercials() {
                 {filteredCommercialsStats.map(stat => {
                   const c = stat.commercial
                   const isCommActive = c.isActive !== false
-                  const commSectors = parseSectors(c.city || c.sectors)
+                  const commRegions = parseCommercialRegions(c)
+                  const commCities = parseCommercialCities(c)
 
                   return (
                     <tr key={c.id} style={{ opacity: isCommActive ? 1 : 0.75 }}>
@@ -920,30 +1097,44 @@ export default function Commercials() {
                         </button>
                       </td>
 
-                      {/* Secteurs */}
+                      {/* Régions & Villes Assignées */}
                       <td>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '200px' }}>
-                          {commSectors.slice(0, 3).map((sec, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                fontSize: '10px',
-                                fontWeight: '700',
-                                padding: '2px 6px',
-                                borderRadius: '5px',
-                                background: 'rgba(255, 208, 0, 0.1)',
-                                color: 'var(--bardahl-yellow)',
-                                border: '1px solid rgba(255, 208, 0, 0.25)'
-                              }}
-                            >
-                              {sec}
-                            </span>
-                          ))}
-                          {commSectors.length > 3 && (
-                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '700', alignSelf: 'center' }}>
-                              +{commSectors.length - 3}
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '240px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                            {commRegions.map((rName, idx) => {
+                              const regObj = availableRegions.find(r => r.name === rName)
+                              const regColor = regObj?.color || '#FFD000'
+                              return (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    fontSize: '9.5px',
+                                    fontWeight: '800',
+                                    padding: '2px 6px',
+                                    borderRadius: '5px',
+                                    background: `${regColor}22`,
+                                    color: regColor,
+                                    border: `1px solid ${regColor}55`,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                >
+                                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: regColor }} />
+                                  {rName}
+                                </span>
+                              )
+                            })}
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                            <span style={{ fontWeight: '600' }}>Villes:</span>
+                            {commCities.slice(0, 3).map((city, idx) => (
+                              <span key={idx} style={{ color: '#E2E8F0' }}>{city}{idx < Math.min(commCities.length, 3) - 1 ? ',' : ''}</span>
+                            ))}
+                            {commCities.length > 3 && (
+                              <span style={{ color: 'var(--bardahl-yellow)', fontWeight: '700' }}>+{commCities.length - 3}</span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -1442,56 +1633,117 @@ export default function Commercials() {
                 </div>
               </div>
 
-              {/* Multi-Sectors Assignment */}
-              <div style={{ background: '#14171F', padding: '12px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
-                <label style={{ fontSize: '12px', color: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px', fontWeight: '800' }}>
-                  <MapPin style={{ width: '14px', height: '14px' }} /> Secteurs & Villes Disponibles (Sélection Multiple) :
-                </label>
+              {/* Multi-Regions & Attached Cities Assignment (COM-01 & COM-02) */}
+              <div style={{ background: '#14171F', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-card)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800' }}>
+                    <Globe style={{ width: '15px', height: '15px' }} /> Régions de Travail Affectées (COM-01) :
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRegionModal(true)}
+                    className="btn-secondary"
+                    style={{ fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    title="Ajouter une nouvelle région de travail"
+                  >
+                    <Plus style={{ width: '12px', height: '12px', color: 'var(--bardahl-yellow)' }} /> Nouvelle Région
+                  </button>
+                </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                  {AVAILABLE_SECTORS.map(sec => {
-                    const isSelected = formData.sectors.includes(sec)
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                  {availableRegions.map(reg => {
+                    const isSelected = formData.regions.includes(reg.name)
+                    const regColor = reg.color || '#FFD000'
                     return (
                       <button
-                        key={sec}
+                        key={reg.id || reg.name}
                         type="button"
-                        onClick={() => handleToggleSector(sec)}
+                        onClick={() => handleToggleRegion(reg.name)}
                         style={{
-                          padding: '4px 10px',
+                          padding: '5px 10px',
                           borderRadius: '8px',
                           fontSize: '11px',
                           fontWeight: '700',
                           cursor: 'pointer',
-                          background: isSelected ? 'var(--bardahl-yellow)' : '#0D0F12',
-                          color: isSelected ? '#0D0F12' : 'var(--text-secondary)',
-                          border: isSelected ? '1px solid var(--bardahl-yellow)' : '1px solid var(--border-card)'
+                          background: isSelected ? `${regColor}25` : '#0D0F12',
+                          color: isSelected ? '#FFFFFF' : 'var(--text-secondary)',
+                          border: isSelected ? `1.5px solid ${regColor}` : '1px solid var(--border-card)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        {isSelected ? `✓ ${sec}` : sec}
+                        <span style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: regColor,
+                          boxShadow: isSelected ? `0 0 6px ${regColor}` : 'none'
+                        }} />
+                        {reg.name}
+                        {isSelected && <span style={{ color: regColor, fontWeight: '900' }}>✓</span>}
                       </button>
                     )
                   })}
                 </div>
 
-                {/* Add Custom Sector */}
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    value={customSectorInput}
-                    onChange={e => setCustomSectorInput(e.target.value)}
-                    placeholder="Autre secteur / ville..."
-                    className="input-field"
-                    style={{ fontSize: '11px', padding: '6px 10px' }}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSector(); } }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddCustomSector}
-                    className="btn-secondary"
-                    style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                  >
-                    <Plus style={{ width: '14px', height: '14px' }} /> Ajouter
-                  </button>
+                {/* Villes rattachées aux régions */}
+                <div style={{ background: '#0D0F12', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', fontWeight: '700' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <MapPin style={{ width: '12px', height: '12px', color: 'var(--bardahl-yellow)' }} />
+                      Villes & Secteurs rattachés ({formData.sectors.length}) :
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#94A3B8' }}>Cliquer pour activer/retirer une ville</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', maxHeight: '110px', overflowY: 'auto', marginBottom: '8px', padding: '2px' }}>
+                    {formData.sectors.map(sec => (
+                      <span
+                        key={sec}
+                        onClick={() => handleToggleSector(sec)}
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: '600',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(255, 208, 0, 0.12)',
+                          color: '#FFFFFF',
+                          border: '1px solid rgba(255, 208, 0, 0.3)',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                        title="Cliquer pour retirer cette ville"
+                      >
+                        {sec}
+                        <span style={{ color: '#FF6B6B', fontSize: '11px', fontWeight: '800' }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Add Custom Sector */}
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      type="text"
+                      value={customSectorInput}
+                      onChange={e => setCustomSectorInput(e.target.value)}
+                      placeholder="Ajouter une ville spécifique manuellement..."
+                      className="input-field"
+                      style={{ fontSize: '11px', padding: '6px 10px', flex: 1 }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomSector(); } }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomSector}
+                      className="btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                    >
+                      <Plus style={{ width: '13px', height: '13px' }} /> Ajouter Ville
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1525,6 +1777,102 @@ export default function Commercials() {
                 </button>
                 <button type="submit" className="btn-bardahl" style={{ padding: '8px 16px', fontSize: '12px' }}>
                   <CheckCircle2 style={{ width: '16px', height: '16px' }} /> {editingCommercial ? 'Enregistrer Modifications' : 'Créer Compte Commercial'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────── SUB-MODAL : AJOUTER NOUVELLE RÉGION DE TRAVAIL (COM-02) ──────── */}
+      {showAddRegionModal && (
+        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '500px', width: '92%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255, 208, 0, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Globe style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '16px', fontWeight: '900', color: '#FFFFFF', margin: 0 }}>
+                    Nouvelle Région de Travail
+                  </h2>
+                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>
+                    Configuration géographique (COM-02)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddRegionModal(false)}
+                className="btn-secondary"
+                style={{ padding: '6px', borderRadius: '8px' }}
+              >
+                <X style={{ width: '16px', height: '16px' }} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNewRegion} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                  Nom de la Région *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newRegionForm.name}
+                  onChange={e => setNewRegionForm({ ...newRegionForm, name: e.target.value })}
+                  className="input-field"
+                  placeholder="Ex: Région Atlas & Mines..."
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                  Villes rattachées (séparées par des virgules) :
+                </label>
+                <textarea
+                  rows="3"
+                  value={newRegionForm.cities}
+                  onChange={e => setNewRegionForm({ ...newRegionForm, cities: e.target.value })}
+                  className="input-field"
+                  placeholder="Ex: Midelt, Rich, Imilchil, Zaida..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                  Couleur du badge :
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={newRegionForm.color}
+                    onChange={e => setNewRegionForm({ ...newRegionForm, color: e.target.value })}
+                    style={{ width: '42px', height: '36px', borderRadius: '6px', border: '1px solid var(--border-card)', background: 'transparent', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Couleur visuelle sur les cartes et graphiques ({newRegionForm.color})
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px', paddingTop: '12px', borderTop: '1px solid var(--border-card)' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddRegionModal(false)}
+                  className="btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '12px' }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="btn-bardahl"
+                  style={{ padding: '8px 16px', fontSize: '12px' }}
+                >
+                  <CheckCircle2 style={{ width: '16px', height: '16px' }} /> Enregistrer Région
                 </button>
               </div>
             </form>

@@ -264,4 +264,44 @@ class OrderRepository(
             )
         }
     }
+
+    suspend fun updateOrder(order: Order) {
+        val entity = OrderEntity(
+            id = order.id,
+            orderNumber = order.orderNumber,
+            commercialId = order.commercialId,
+            commercialName = order.commercialName,
+            clientId = order.clientId,
+            clientName = order.clientName,
+            orderDate = order.orderDate,
+            status = order.status.name,
+            totalHt = order.totalHt,
+            totalDiscount = order.totalDiscount,
+            totalTva = order.totalTva,
+            totalTtc = order.totalTtc,
+            observations = order.observations,
+            isSynced = false
+        )
+        val items = order.items.map { i ->
+            OrderItemEntity(
+                id = i.id,
+                orderId = order.id,
+                productId = i.productId,
+                productName = i.productName,
+                productReference = i.productReference,
+                quantity = i.quantity,
+                unitPriceTtc = i.unitPriceTtc,
+                discountPercentage = i.discountPercentage,
+                tvaRate = i.tvaRate
+            )
+        }
+        orderDao.insertOrder(entity)
+        orderDao.deleteOrderItems(order.id)
+        orderDao.insertOrderItems(items)
+
+        val success = supabaseService.updateOrder(order)
+        if (success) {
+            orderDao.updateOrderStatus(order.id, order.status.name, true)
+        }
+    }
 }

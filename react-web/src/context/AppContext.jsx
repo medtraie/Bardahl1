@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { allProductsData } from '../data/productsData'
 import { defaultPromotions } from '../data/promotionsData'
 import { DEFAULT_BARDAHL_FAMILIES, setGlobalProductFamilies } from '../data/familiesData'
+import { getRegionForCity } from '../data/regionsData'
 import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
@@ -13,11 +14,26 @@ import {
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
+export const ADMIN_COMMERCIAL_ID = 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c'
+export const ADMIN_COMMERCIAL_NAME = 'Créé par Administrateur'
+
 const AppContext = createContext()
 
 // ─── Row converters: Supabase row → App object ────────────────────────────────
 
 function rowToCommercial(row) {
+  const sectors = (row.city || '').split(',').map(s => s.trim()).filter(Boolean)
+  const regionsSet = new Set()
+  sectors.forEach(s => {
+    const reg = getRegionForCity(s)
+    if (reg) regionsSet.add(reg)
+  })
+  const regions = Array.from(regionsSet)
+  if (regions.length === 0 && row.city) {
+    const fallbackReg = getRegionForCity(row.city)
+    if (fallbackReg) regions.push(fallbackReg)
+  }
+
   return {
     id: row.id,
     dbId: row.id,
@@ -26,6 +42,8 @@ function rowToCommercial(row) {
     password: row.password || '123456',
     matricule: row.matricule || '',
     city: row.city || '',
+    sectors: sectors.length > 0 ? sectors : [row.city || 'Casablanca'],
+    regions: regions.length > 0 ? regions : ['Casablanca-Settat'],
     phone: row.phone || '',
     target: row.target_monthly_sales || 150000,
     current: row.current_month_sales || 0,
@@ -135,8 +153,20 @@ function rowToOrder(row, extras = {}) {
     commercialDbId: row.commercial_id,
     clientDbId: row.client_id,
     // Enriched from extras, parsedObs, or joined data
-    commercialName: extras.commercialName || parsedObs.commercialName || '',
-    commercialEmail: extras.commercialEmail || parsedObs.commercialEmail || '',
+    commercialName: (
+      row.commercial_id === ADMIN_COMMERCIAL_ID ||
+      parsedObs.commercialEmail === 'bardahl@gmail.com' ||
+      extras.commercialEmail === 'bardahl@gmail.com' ||
+      (parsedObs.commercialName && (parsedObs.commercialName.toLowerCase().includes('direction') || parsedObs.commercialName.toLowerCase().includes('admin'))) ||
+      (extras.commercialName && (extras.commercialName.toLowerCase().includes('direction') || extras.commercialName.toLowerCase().includes('admin')))
+    ) ? ADMIN_COMMERCIAL_NAME : (extras.commercialName || parsedObs.commercialName || ''),
+    commercialEmail: (
+      row.commercial_id === ADMIN_COMMERCIAL_ID ||
+      parsedObs.commercialEmail === 'bardahl@gmail.com' ||
+      extras.commercialEmail === 'bardahl@gmail.com' ||
+      (parsedObs.commercialName && (parsedObs.commercialName.toLowerCase().includes('direction') || parsedObs.commercialName.toLowerCase().includes('admin'))) ||
+      (extras.commercialName && (extras.commercialName.toLowerCase().includes('direction') || extras.commercialName.toLowerCase().includes('admin')))
+    ) ? 'bardahl@gmail.com' : (extras.commercialEmail || parsedObs.commercialEmail || ''),
     clientName: extras.clientName || parsedObs.clientName || '',
     clientIce: extras.clientIce || parsedObs.clientIce || '',
     clientCity: extras.clientCity || parsedObs.clientCity || '',
@@ -159,7 +189,13 @@ function rowToOrder(row, extras = {}) {
 export function AppProvider({ children }) {
   // ONLY session stored locally
   const [currentUser, setCurrentUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('bardahl_session') || 'null') }
+    try {
+      const sess = JSON.parse(localStorage.getItem('bardahl_session') || 'null')
+      if (sess && (sess.email || '').toLowerCase() === 'bardahl@gmail.com') {
+        return { ...sess, commercialDbId: ADMIN_COMMERCIAL_ID }
+      }
+      return sess
+    }
     catch { return null }
   })
 
@@ -343,7 +379,19 @@ export function AppProvider({ children }) {
         // Enrich with commercial & client names
         const comm = appComms.find(c => c.dbId === r.commercial_id)
         const client = appClients.find(c => c.dbId === r.client_id)
-        if (comm) { order.commercialName = comm.name; order.commercialEmail = comm.email }
+        const isAdminOrder = (
+          r.commercial_id === ADMIN_COMMERCIAL_ID ||
+          order.commercialEmail === 'bardahl@gmail.com' ||
+          (order.commercialName && (order.commercialName.toLowerCase().includes('admin') || order.commercialName.toLowerCase().includes('direction')))
+        )
+        if (isAdminOrder) {
+          order.commercialName = ADMIN_COMMERCIAL_NAME
+          order.commercialEmail = 'bardahl@gmail.com'
+          order.commercialDbId = ADMIN_COMMERCIAL_ID
+        } else if (comm) {
+          order.commercialName = comm.name
+          order.commercialEmail = comm.email
+        }
         if (client) order.clientName = client.companyName
         return order
       })
@@ -412,7 +460,13 @@ export function AppProvider({ children }) {
 
     // Admin login
     if (email === 'bardahl@gmail.com') {
-      const user = { name: 'Direction Bardahl', email, role: 'ADMIN', initials: 'DB' }
+      const user = {
+        name: 'Direction Bardahl',
+        email,
+        role: 'ADMIN',
+        initials: 'DB',
+        commercialDbId: ADMIN_COMMERCIAL_ID,
+      }
       setCurrentUser(user)
       return user
     }
@@ -510,12 +564,17 @@ export function AppProvider({ children }) {
 
   // ── ORDERS CRUD ──────────────────────────────────────────────────────────────
   const addOrder = useCallback(async (o) => {
-    let commDbId = o.commercialDbId || currentUser?.commercialDbId
+    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
+    let commDbId = o.commercialDbId || (isCurrentUserAdmin ? ADMIN_COMMERCIAL_ID : currentUser?.commercialDbId)
     if (!commDbId) {
-      const matchedComm = commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())
-        || (o.commercialName ? commercials.find(cm => cm.name.toLowerCase().includes(o.commercialName.toLowerCase())) : null)
-        || commercials[0]
-      commDbId = matchedComm?.dbId || matchedComm?.id
+      if (isCurrentUserAdmin) {
+        commDbId = ADMIN_COMMERCIAL_ID
+      } else {
+        const matchedComm = commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())
+          || (o.commercialName ? commercials.find(cm => cm.name.toLowerCase().includes(o.commercialName.toLowerCase())) : null)
+          || commercials[0]
+        commDbId = matchedComm?.dbId || matchedComm?.id
+      }
     }
 
     const clientRecord = clients.find(c =>
@@ -528,6 +587,13 @@ export function AppProvider({ children }) {
       return null
     }
 
+    const finalCommName = (isCurrentUserAdmin || commDbId === ADMIN_COMMERCIAL_ID)
+      ? ADMIN_COMMERCIAL_NAME
+      : (o.commercialName || currentUser?.name || 'Commercial Bardahl')
+    const finalCommEmail = (isCurrentUserAdmin || commDbId === ADMIN_COMMERCIAL_ID)
+      ? 'bardahl@gmail.com'
+      : (o.commercialEmail || currentUser?.email || 'commercial@bardahl.ma')
+
     const orderPayload = {
       ...o,
       commercialDbId: commDbId,
@@ -536,8 +602,8 @@ export function AppProvider({ children }) {
       clientIce: clientRecord?.ice || o.clientIce || '',
       clientCity: clientRecord?.city || o.clientCity || '',
       clientPhone: clientRecord?.phone || o.clientPhone || '',
-      commercialName: o.commercialName || currentUser?.name || 'Direction Bardahl',
-      commercialEmail: o.commercialEmail || currentUser?.email || 'bardahl@gmail.com'
+      commercialName: finalCommName,
+      commercialEmail: finalCommEmail
     }
 
     const row = await dbAddOrder(orderPayload)

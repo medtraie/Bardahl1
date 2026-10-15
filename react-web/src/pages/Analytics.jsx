@@ -32,41 +32,18 @@ ChartJS.register(
   Filler
 )
 
-// Moroccan Economic Regions
-export const MOROCCAN_REGIONS = [
-  { id: 'CASA_SETTAT', name: 'Grand Casablanca - Settat', color: '#FFD000', defaultCount: 750 },
-  { id: 'RABAT_SALE_KENITRA', name: 'Rabat - Salé - Kénitra', color: '#2EC4B6', defaultCount: 1640 },
-  { id: 'TANGER_TETOUAN', name: 'Tanger - Tétouan - Al Hoceïma', color: '#9B51E0', defaultCount: 185 },
-  { id: 'MARRAKECH_SAFI', name: 'Marrakech - Safi', color: '#FF5252', defaultCount: 140 },
-  { id: 'SOUSS_MASSA', name: 'Souss - Massa', color: '#0077B6', defaultCount: 110 },
-  { id: 'FES_MEKNES', name: 'Fès - Meknès', color: '#F59E0B', defaultCount: 95 },
-  { id: 'ORIENTAL', name: "L'Oriental", color: '#10B981', defaultCount: 65 }
-]
+import { getStoredRegions, getRegionForCity } from '../data/regionsData'
+
+// Moroccan Economic Regions (COM-01 & COM-02: 12 Régions de référence + personnalisées)
+export const MOROCCAN_REGIONS = getStoredRegions().map(r => ({
+  id: r.id,
+  name: r.name,
+  color: r.color,
+  defaultCount: 0
+}))
 
 export function getClientMoroccanRegion(city = '', region = '') {
-  const text = `${region || ''} ${city || ''}`.toLowerCase()
-  if (text.includes('casa') || text.includes('settat') || text.includes('mohammedia') || text.includes('berrechid') || text.includes('jadida')) {
-    return 'Grand Casablanca - Settat'
-  }
-  if (text.includes('rabat') || text.includes('salé') || text.includes('sale') || text.includes('kénitra') || text.includes('kenitra') || text.includes('témara') || text.includes('temara') || text.includes('khémisset')) {
-    return 'Rabat - Salé - Kénitra'
-  }
-  if (text.includes('tanger') || text.includes('tétouan') || text.includes('tetouan') || text.includes('larache') || text.includes('hoceima')) {
-    return 'Tanger - Tétouan - Al Hoceïma'
-  }
-  if (text.includes('marrakech') || text.includes('safi') || text.includes('essaouira') || text.includes('kelâa') || text.includes('kelaa')) {
-    return 'Marrakech - Safi'
-  }
-  if (text.includes('agadir') || text.includes('inezgane') || text.includes('taroudant') || text.includes('tiznit') || text.includes('souss')) {
-    return 'Souss - Massa'
-  }
-  if (text.includes('fès') || text.includes('fes') || text.includes('meknès') || text.includes('meknes') || text.includes('taza') || text.includes('ifrane')) {
-    return 'Fès - Meknès'
-  }
-  if (text.includes('oujda') || text.includes('nador') || text.includes('berkane') || text.includes('oriental')) {
-    return "L'Oriental"
-  }
-  return 'Grand Casablanca - Settat'
+  return getRegionForCity(region || city)
 }
 
 export const BARDAHL_FAMILIES_METRICS = [

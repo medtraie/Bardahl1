@@ -146,22 +146,24 @@ object PromotionEngine {
             val qty = item.quantity
             val lineTotal = item.unitPriceTtc * qty
             val meta = productMap[item.productId] ?: productMap[item.productReference]
+            val upb = meta?.unitsPerBox ?: (if (item.unitsPerBox > 0) item.unitsPerBox else 12)
+            val eligibleCartons = qty / upb
             val family = (meta?.categoryId ?: "AUTRES").uppercase()
 
             val fStat = familyStats.getOrPut(family) { ItemStat() }
-            fStat.totalCartons += qty
+            fStat.totalCartons += eligibleCartons
             fStat.totalAmountTtc += lineTotal
             fStat.indices.add(idx)
 
             val pKey = item.productId.ifEmpty { item.productReference }
             val pStat = productStats.getOrPut(pKey) { ItemStat() }
-            pStat.totalCartons += qty
+            pStat.totalCartons += eligibleCartons
             pStat.totalAmountTtc += lineTotal
             pStat.indices.add(idx)
 
             if (item.productReference.isNotEmpty() && item.productReference != pKey) {
                 val refStat = productStats.getOrPut(item.productReference) { ItemStat() }
-                refStat.totalCartons += qty
+                refStat.totalCartons += eligibleCartons
                 refStat.totalAmountTtc += lineTotal
                 refStat.indices.add(idx)
             }
@@ -336,35 +338,41 @@ object PromotionEngine {
                 if (cp.promo.freeItemType == FreeItemType.SAME_PRODUCT) {
                     val srcItem = if (cp.applicableIndices.isNotEmpty()) items[cp.applicableIndices.first()] else null
                     if (srcItem != null) {
+                        val upb = productMap[srcItem.productId]?.unitsPerBox ?: (if (srcItem.unitsPerBox > 0) srcItem.unitsPerBox else 12)
+                        val freeUnits = cp.freeQuantity * upb
                         freeItems.add(
                             OrderItem(
                                 productId = srcItem.productId,
                                 productName = srcItem.productName,
                                 productReference = srcItem.productReference,
                                 quantity = 0,
-                                freeQuantity = cp.freeQuantity,
+                                freeQuantity = freeUnits,
                                 unitPriceTtc = 0.0,
+                                unitsPerBox = upb,
                                 promoTag = "Cadeau: ${cp.promo.name}"
                             )
                         )
-                        giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de ${srcItem.productName} (Même réf)"
+                        giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de ${srcItem.productName} ($freeUnits un.)"
                     }
                 } else {
                     val giftMeta = productMap[cp.promo.freeProductId] ?: productMap[cp.promo.freeProductRef]
                     val giftRef = cp.promo.freeProductRef ?: giftMeta?.reference ?: "PROMO-GIFT"
                     val giftName = cp.promo.freeProductName ?: giftMeta?.name ?: "Produit Cadeau Offert"
+                    val upb = giftMeta?.unitsPerBox ?: 12
+                    val freeUnits = cp.freeQuantity * upb
                     freeItems.add(
                         OrderItem(
                             productId = cp.promo.freeProductId ?: giftMeta?.id ?: "gift",
                             productName = giftName,
                             productReference = giftRef,
                             quantity = 0,
-                            freeQuantity = cp.freeQuantity,
+                            freeQuantity = freeUnits,
                             unitPriceTtc = 0.0,
+                            unitsPerBox = upb,
                             promoTag = "Cadeau: ${cp.promo.name}"
                         )
                     )
-                    giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de $giftName (Réf $giftRef)"
+                    giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de $giftName ($freeUnits un.)"
                 }
             }
 

@@ -1,12 +1,15 @@
-import React, { useState } from 'react'
-import { Search, UserPlus, MapPin, Phone, Building, Hash, ShieldCheck, Edit3, Trash2, Eye, FileText, Download, TrendingUp, DollarSign, ShoppingBag, CheckCircle2, Filter } from 'lucide-react'
+import React, { useState, useMemo } from 'react'
+import { Search, UserPlus, MapPin, Phone, Building, Hash, ShieldCheck, Edit3, Trash2, Eye, FileText, Download, TrendingUp, DollarSign, ShoppingBag, CheckCircle2, Filter, Globe } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateClientPdf, generateOrderPdf, generatePortfolioByCommercialPdf } from '../utils/pdfGenerator'
+import { getStoredRegions, getRegionForCity, getCitiesForRegions } from '../data/regionsData'
 
 export default function Clients() {
   const { clients, orders, commercials = [], addClient, updateClient, deleteClient } = useApp()
+  const availableRegions = useMemo(() => getStoredRegions(), [])
   const [search, setSearch] = useState('')
   const [selectedCommFilter, setSelectedCommFilter] = useState('ALL')
+  const [selectedRegionFilter, setSelectedRegionFilter] = useState('ALL')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingClient, setEditingClient] = useState(null)
   const [selectedDetailClient, setSelectedDetailClient] = useState(null)
@@ -14,7 +17,7 @@ export default function Clients() {
   const PAGE_SIZE = 60
   
   const [formData, setFormData] = useState({
-    companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: ''
+    companyName: '', ice: '', rc: '', address: '', city: 'Casablanca', phone: '', type: 'Grossiste', region: 'Casablanca-Settat', codeClient: '', commercialDbId: ''
   })
 
   const filteredClients = clients.filter(c => {
@@ -30,7 +33,11 @@ export default function Clients() {
       (c.commercialName && c.commercialName === selectedCommFilter) ||
       Boolean(commercials.find(cm => (cm.id === selectedCommFilter || cm.dbId === selectedCommFilter) && cm.name === c.commercialName))
 
-    return matchesSearch && matchesComm
+    const clientRegion = c.region || getRegionForCity(c.city, availableRegions)
+    const matchesRegion = selectedRegionFilter === 'ALL' ||
+      clientRegion.toLowerCase().trim() === selectedRegionFilter.toLowerCase().trim()
+
+    return matchesSearch && matchesComm && matchesRegion
   })
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE))
@@ -38,12 +45,13 @@ export default function Clients() {
 
   const handleOpenAddModal = () => {
     const defaultCommId = selectedCommFilter !== 'ALL' ? selectedCommFilter : (commercials[0]?.dbId || commercials[0]?.id || '')
-    setFormData({ companyName: '', ice: '', rc: '', address: '', city: '', phone: '', type: 'Grossiste', region: '', codeClient: '', commercialDbId: defaultCommId })
+    setFormData({ companyName: '', ice: '', rc: '', address: '', city: 'Casablanca', phone: '', type: 'Grossiste', region: 'Casablanca-Settat', codeClient: '', commercialDbId: defaultCommId })
     setShowAddModal(true)
   }
 
   const handleOpenEditModal = (client) => {
     setEditingClient(client)
+    const resolvedRegion = client.region || getRegionForCity(client.city, availableRegions)
     setFormData({
       companyName: client.companyName || '',
       ice: client.ice || '',
@@ -52,7 +60,7 @@ export default function Clients() {
       city: client.city || '',
       phone: client.phone || '',
       type: client.type || 'Grossiste',
-      region: client.region || '',
+      region: resolvedRegion,
       codeClient: client.codeClient || '',
       commercialDbId: client.commercialDbId || ''
     })
@@ -146,6 +154,23 @@ export default function Clients() {
 
           <div style={{ position: 'relative' }}>
             <select
+              value={selectedRegionFilter}
+              onChange={(e) => { setSelectedRegionFilter(e.target.value); setCurrentPage(1); }}
+              className="input-field"
+              style={{ fontSize: '13px', minWidth: '180px' }}
+              title="Filtrer par région géographique"
+            >
+              <option value="ALL">Toutes les Régions ({availableRegions.length})</option>
+              {availableRegions.map(reg => (
+                <option key={reg.id || reg.name} value={reg.name}>
+                  {reg.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <select
               value={selectedCommFilter}
               onChange={(e) => { setSelectedCommFilter(e.target.value); setCurrentPage(1); }}
               className="input-field"
@@ -183,12 +208,36 @@ export default function Clients() {
       <div className="clients-grid">
         {paginatedClients.map(c => {
           const { totalCaTtc, totalOrders } = getClientFinancials(c)
+          const clientRegion = c.region || getRegionForCity(c.city, availableRegions)
+          const regObj = availableRegions.find(r => r.name.toLowerCase().trim() === clientRegion.toLowerCase().trim())
+          const regColor = regObj?.color || '#FFD000'
+
           return (
             <div key={c.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>{c.companyName}</h3>
-                  <span className="badge-status VALIDATED" style={{ fontSize: '10px' }}>{c.type || 'Grossiste'}</span>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <span
+                      style={{
+                        fontSize: '9.5px',
+                        fontWeight: '800',
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        background: `${regColor}22`,
+                        color: regColor,
+                        border: `1px solid ${regColor}55`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px'
+                      }}
+                      title={`Région: ${clientRegion}`}
+                    >
+                      <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: regColor }} />
+                      {clientRegion}
+                    </span>
+                    <span className="badge-status VALIDATED" style={{ fontSize: '10px' }}>{c.type || 'Grossiste'}</span>
+                  </div>
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: '12px 0' }}>
@@ -203,7 +252,6 @@ export default function Clients() {
                     <MapPin style={{ width: '14px', height: '14px', color: 'var(--bardahl-yellow)' }} />
                     <span>
                       {c.address}{c.city ? `, ${c.city}` : ''}
-                      {c.region && <> (<strong style={{ color: '#FFFFFF' }}>{c.region}</strong>)</>}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -475,14 +523,27 @@ export default function Clients() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Région</label>
-                  <input
-                    type="text"
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Région (COM-01 & COM-02)</label>
+                  <select
                     value={formData.region}
-                    onChange={e => setFormData({...formData, region: e.target.value})}
+                    onChange={e => {
+                      const newReg = e.target.value
+                      const regCities = getCitiesForRegions([newReg], availableRegions)
+                      const isCityInReg = regCities.includes(formData.city)
+                      setFormData({
+                        ...formData,
+                        region: newReg,
+                        city: isCityInReg ? formData.city : (regCities[0] || formData.city)
+                      })
+                    }}
                     className="input-field"
-                    placeholder="Ex: Casablanca-Settat"
-                  />
+                  >
+                    {availableRegions.map(reg => (
+                      <option key={reg.id || reg.name} value={reg.name}>
+                        {reg.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -521,14 +582,28 @@ export default function Clients() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Ville</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>Ville rattachée</label>
                   <input
                     type="text"
+                    list="client-cities-list"
                     value={formData.city}
-                    onChange={e => setFormData({...formData, city: e.target.value})}
+                    onChange={e => {
+                      const newCity = e.target.value
+                      const detectedReg = getRegionForCity(newCity, availableRegions)
+                      setFormData({
+                        ...formData,
+                        city: newCity,
+                        region: detectedReg || formData.region
+                      })
+                    }}
                     className="input-field"
-                    placeholder="Casablanca"
+                    placeholder="Ex: Casablanca, Rabat, Marrakech..."
                   />
+                  <datalist id="client-cities-list">
+                    {getCitiesForRegions(formData.region ? [formData.region] : availableRegions.map(r => r.name), availableRegions).map(city => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 

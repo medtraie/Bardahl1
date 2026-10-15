@@ -97,14 +97,28 @@ export function renderOrderPage(doc, order) {
   const rows = itemsList.map(i => {
     const ref = i.reference || i.productReference || i.code || '34131'
     const name = i.productName || i.name || i.product_name || 'Produit Bardahl'
-    const qty = parseInt(i.qty || i.quantity || 1, 10)
+
+    // CMD-03: Respect 0 quantity for pure gift lines (do not fallback to 1)
+    const rawQty = (i.qty !== undefined && i.qty !== null) ? i.qty : ((i.quantity !== undefined && i.quantity !== null) ? i.quantity : 0)
+    let qty = parseInt(rawQty, 10)
+    if (isNaN(qty) || qty < 0) qty = 0
+
     const qtyGratuit = parseInt(i.qtyGratuit || i.freeQuantity || i.freeQty || 0, 10)
-    const priceTtc = parseFloat(i.priceTtc || i.unitPriceTtc || i.unit_price || i.price || 0)
+    let priceTtc = parseFloat(i.priceTtc || i.unitPriceTtc || i.unit_price || i.price || 0)
     const remisePercent = parseFloat(i.remisePercent || i.remise || i.discountPercent || 0)
+
+    // CMD-03: Sur une ligne de produit uniquement offert (ou cadeau promo/échantillon):
+    // La quantité achetée doit être égale à 0, le prix unitaire et le total à 0,00 DH TTC
+    const isPureGift = (qty === 0 || priceTtc === 0 || String(i.promoTag || '').includes('Offert') || String(i.promoTag || '').includes('Cadeau')) && qtyGratuit > 0
+    if (isPureGift) {
+      qty = 0
+      priceTtc = 0
+    }
+
     const lineGross = (priceTtc * qty)
     const lineNet = lineGross * (1 - remisePercent / 100)
     const gratuitText = qtyGratuit > 0 ? `+${qtyGratuit} Offert` : '-'
-    const remiseText = remisePercent > 0 ? `${remisePercent}%` : '-'
+    const remiseText = isPureGift ? '-' : (remisePercent > 0 ? `${remisePercent}%` : '-')
 
     return [
       ref,

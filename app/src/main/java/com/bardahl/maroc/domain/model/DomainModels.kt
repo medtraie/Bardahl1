@@ -61,6 +61,7 @@ data class Client(
     val phone: String,
     val email: String,
     val clientType: ClientType = ClientType.DETAIL,
+    val region: String = "Casablanca-Settat",
     val latitude: Double? = null,
     val longitude: Double? = null,
     val isActive: Boolean = true
@@ -89,7 +90,13 @@ data class Product(
     val stockQuantity: Int = 100,
     val imageUrl: String? = null,
     val isActive: Boolean = true
-)
+) {
+    val unitsPerBox: Int
+        get() {
+            val match = Regex("""^(\d+)\s*[xX]""").find(packaging.trim())
+            return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 12
+        }
+}
 
 data class OrderItem(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -102,7 +109,10 @@ data class OrderItem(
     val unitPriceTtc: Double,
     val discountPercentage: Double = 0.0,
     val promoTag: String = "",
-    val tvaRate: Double = 20.0
+    val tvaRate: Double = 20.0,
+    val unitsPerBox: Int = 12,
+    val initialQuantity: Int = quantity,
+    val initialFreeQuantity: Int = freeQuantity
 ) {
     val totalTtc: Double
         get() = (unitPriceTtc * quantity) * (1.0 - (discountPercentage / 100.0))

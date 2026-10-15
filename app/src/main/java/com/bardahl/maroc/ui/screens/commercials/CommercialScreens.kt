@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bardahl.maroc.data.MoroccanRegion
+import com.bardahl.maroc.data.MoroccanRegionsRepository
 import com.bardahl.maroc.data.remote.SupabaseService
 import com.bardahl.maroc.domain.model.Commercial
 import com.bardahl.maroc.ui.components.*
@@ -47,6 +49,7 @@ data class CommercialData(
     val matricule: String,
     val address: String,
     val city: String,
+    val regions: List<String> = listOf("Casablanca-Settat"),
     val sectors: List<String> = listOf("Casablanca"),
     val isActive: Boolean = true,
     val lastLogin: String = "Aujourd'hui",
@@ -66,9 +69,9 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
     var commercials by remember {
         mutableStateOf(
             listOf(
-                CommercialData("c1", "Mohammed", "amine", "mohammed@bardahl.ma", "123", "+212 6 61 22 33 44", "COM-1", "Zone Industrielle", "Casablanca, Mohammedia", listOf("Casablanca", "Mohammedia"), true, "Aujourd'hui", 2, 150000.0, 148500.0),
-                CommercialData("c2", "Amiaach", "", "amiaach@bardahl.ma", "123", "+212 6 62 44 55 66", "COM-02", "Centre Ville", "Rabat, Salé, Kénitra", listOf("Rabat", "Salé", "Kénitra"), true, "Hier", 1, 120000.0, 95000.0),
-                CommercialData("c3", "Bahjaji", "", "bahjaji@bardahl.ma", "123", "+212 6 63 77 88 99", "COM-3", "Guéliz", "Marrakech, Agadir", listOf("Marrakech", "Agadir"), true, "Il y a 2j", 0, 100000.0, 82000.0)
+                CommercialData("c1", "Mohammed", "amine", "mohammed@bardahl.ma", "123", "+212 6 61 22 33 44", "COM-1", "Zone Industrielle", "Casablanca, Mohammedia", listOf("Casablanca-Settat"), listOf("Casablanca", "Mohammedia"), true, "Aujourd'hui", 2, 150000.0, 148500.0),
+                CommercialData("c2", "Amiaach", "", "amiaach@bardahl.ma", "123", "+212 6 62 44 55 66", "COM-02", "Centre Ville", "Rabat, Salé, Kénitra", listOf("Rabat-Salé-Kénitra"), listOf("Rabat", "Salé", "Kénitra"), true, "Hier", 1, 120000.0, 95000.0),
+                CommercialData("c3", "Bahjaji", "", "bahjaji@bardahl.ma", "123", "+212 6 63 77 88 99", "COM-3", "Guéliz", "Marrakech, Agadir", listOf("Marrakech-Safi", "Souss-Massa"), listOf("Marrakech", "Agadir"), true, "Il y a 2j", 0, 100000.0, 82000.0)
             )
         )
     }
@@ -87,6 +90,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                         val first = nameParts.firstOrNull() ?: c.name
                         val last = if (nameParts.size > 1) nameParts.subList(1, nameParts.size).joinToString(" ") else ""
                         val sectorList = c.city.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        val inferredRegions = sectorList.map { MoroccanRegionsRepository.getRegionForCity(it) }.distinct().ifEmpty { listOf("Casablanca-Settat") }
 
                         CommercialData(
                             id = c.id,
@@ -98,6 +102,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             matricule = c.matricule,
                             city = c.city,
                             address = c.city,
+                            regions = inferredRegions,
                             sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
                             isActive = c.isActive,
                             totalOrders = orderCount,
@@ -114,17 +119,25 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
     }
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedRegionFilter by remember { mutableStateOf("ALL") }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingCommercial by remember { mutableStateOf<CommercialData?>(null) }
     var resettingPassCommercial by remember { mutableStateOf<CommercialData?>(null) }
     var commercialToSafeDelete by remember { mutableStateOf<CommercialData?>(null) }
 
-    val filteredCommercials = commercials.filter {
-        it.fullName.contains(searchQuery, ignoreCase = true) ||
-        it.matricule.contains(searchQuery, ignoreCase = true) ||
-        it.city.contains(searchQuery, ignoreCase = true) ||
-        it.email.contains(searchQuery, ignoreCase = true) ||
-        it.sectors.any { s -> s.contains(searchQuery, ignoreCase = true) }
+    val filteredCommercials = commercials.filter { comm ->
+        val matchesSearch = comm.fullName.contains(searchQuery, ignoreCase = true) ||
+            comm.matricule.contains(searchQuery, ignoreCase = true) ||
+            comm.city.contains(searchQuery, ignoreCase = true) ||
+            comm.email.contains(searchQuery, ignoreCase = true) ||
+            comm.sectors.any { s -> s.contains(searchQuery, ignoreCase = true) } ||
+            comm.regions.any { r -> r.contains(searchQuery, ignoreCase = true) }
+
+        val matchesRegion = selectedRegionFilter == "ALL" ||
+            comm.regions.any { it.equals(selectedRegionFilter, ignoreCase = true) } ||
+            comm.sectors.any { MoroccanRegionsRepository.getRegionForCity(it).equals(selectedRegionFilter, ignoreCase = true) }
+
+        matchesSearch && matchesRegion
     }
 
     Scaffold(
@@ -162,7 +175,45 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                 leadingIcon = Icons.Default.Search
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // COM-01 & COM-02: Region Filter Chips Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = selectedRegionFilter == "ALL",
+                    onClick = { selectedRegionFilter = "ALL" },
+                    label = { Text("Toutes Régions", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = BardahlYellow,
+                        selectedLabelColor = BardahlBlack,
+                        containerColor = DarkSurface,
+                        labelColor = TextPrimaryDark
+                    )
+                )
+
+                MoroccanRegionsRepository.getAllRegions().forEach { reg ->
+                    val isSel = selectedRegionFilter.equals(reg.name, ignoreCase = true)
+                    FilterChip(
+                        selected = isSel,
+                        onClick = { selectedRegionFilter = if (isSel) "ALL" else reg.name },
+                        label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = reg.color,
+                            selectedLabelColor = BardahlBlack,
+                            containerColor = DarkSurface,
+                            labelColor = TextPrimaryDark
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -443,7 +494,33 @@ fun CommercialCardFull(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Assigned Multi-Sectors Tags
+            // Assigned Multi-Regions Badges (COM-01)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Public, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(14.dp))
+                commercial.regions.forEach { regName ->
+                    val regObj = MoroccanRegionsRepository.getAllRegions().find { it.name.equals(regName, ignoreCase = true) }
+                    val regColor = regObj?.color ?: BardahlYellow
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(regColor.copy(alpha = 0.18f))
+                            .border(1.dp, regColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(regName, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = regColor)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Attached Cities covered
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -451,16 +528,16 @@ fun CommercialCardFull(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = TextSecondaryDark, modifier = Modifier.size(13.dp))
                 commercial.sectors.forEach { sec ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(BardahlYellow.copy(alpha = 0.12f))
-                            .border(1.dp, BardahlYellow.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(DarkBackground)
+                            .border(1.dp, BardahlCardBorder, RoundedCornerShape(5.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text(sec, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                        Text(sec, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = TextPrimaryDark)
                     }
                 }
             }
@@ -558,7 +635,10 @@ fun AddEditCommercialDialog(
     var password by remember { mutableStateOf(initialData?.password ?: "123") }
     var phone by remember { mutableStateOf(initialData?.phone ?: "") }
     var matricule by remember { mutableStateOf(initialData?.matricule ?: "COM-00${(4..99).random()}") }
-    var selectedSectors by remember { mutableStateOf(initialData?.sectors ?: listOf("Casablanca")) }
+    var selectedRegions by remember { mutableStateOf(initialData?.regions ?: listOf("Casablanca-Settat")) }
+    var selectedSectors by remember { mutableStateOf(initialData?.sectors ?: listOf("Casablanca", "Mohammedia", "Settat")) }
+    var customCityInput by remember { mutableStateOf("") }
+    var showAddCustomRegionDialog by remember { mutableStateOf(false) }
     var targetSalesStr by remember { mutableStateOf(initialData?.targetSales?.toString() ?: "150000") }
     var isAccountActive by remember { mutableStateOf(initialData?.isActive ?: true) }
 
@@ -578,33 +658,115 @@ fun AddEditCommercialDialog(
                 BardahlTextField(phone, { phone = it }, "Téléphone")
                 BardahlTextField(matricule, { matricule = it }, "Matricule")
 
-                // Multi-Sector Selector
-                Text("Secteurs & Villes Assignés (Sélection Multiple) :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                // COM-01 & COM-02: Multi-Region Assignment
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Régions de Travail (COM-01) :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                    TextButton(
+                        onClick = { showAddCustomRegionDialog = true },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("+ Région", fontSize = 11.sp, color = BardahlYellow, fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    AVAILABLE_MOROCCO_SECTORS.forEach { sec ->
-                        val isSelected = selectedSectors.contains(sec)
+                    MoroccanRegionsRepository.getAllRegions().forEach { reg ->
+                        val isSelected = selectedRegions.contains(reg.name)
                         FilterChip(
                             selected = isSelected,
                             onClick = {
-                                selectedSectors = if (isSelected) {
-                                    if (selectedSectors.size > 1) selectedSectors - sec else selectedSectors
+                                val nextRegs = if (isSelected) {
+                                    if (selectedRegions.size > 1) selectedRegions - reg.name else selectedRegions
                                 } else {
-                                    selectedSectors + sec
+                                    selectedRegions + reg.name
                                 }
+                                selectedRegions = nextRegs
+                                // Auto-associate attached cities
+                                val attached = MoroccanRegionsRepository.getCitiesForRegions(nextRegs)
+                                val keepCustom = selectedSectors.filter { s ->
+                                    val r = MoroccanRegionsRepository.getRegionForCity(s)
+                                    nextRegs.contains(r)
+                                }
+                                selectedSectors = (keepCustom + attached).distinct()
                             },
-                            label = { Text(sec, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = BardahlYellow,
+                                selectedContainerColor = reg.color,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkBackground,
                                 labelColor = TextPrimaryDark
                             )
                         )
+                    }
+                }
+
+                // COM-01: Attached Cities Display
+                Text("Villes rattachées (${selectedSectors.size}) :", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextSecondaryDark)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    selectedSectors.forEach { sec ->
+                        AssistChip(
+                            onClick = {
+                                if (selectedSectors.size > 1) {
+                                    selectedSectors = selectedSectors - sec
+                                }
+                            },
+                            label = { Text("$sec ×", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = BardahlYellow.copy(alpha = 0.12f),
+                                labelColor = BardahlYellow
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.3f))
+                        )
+                    }
+                }
+
+                // Custom City Quick Add
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        BardahlTextField(
+                            value = customCityInput,
+                            onValueChange = { customCityInput = it },
+                            label = "Ajouter ville spécifique..."
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val c = customCityInput.trim()
+                            if (c.isNotBlank() && !selectedSectors.contains(c)) {
+                                val parentReg = MoroccanRegionsRepository.getRegionForCity(c)
+                                if (!selectedRegions.contains(parentReg)) {
+                                    selectedRegions = selectedRegions + parentReg
+                                }
+                                selectedSectors = selectedSectors + c
+                                customCityInput = ""
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.height(44.dp)
+                    ) {
+                        Text("Ajouter", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -628,6 +790,7 @@ fun AddEditCommercialDialog(
                                 matricule = matricule,
                                 city = selectedSectors.joinToString(", "),
                                 address = selectedSectors.joinToString(", "),
+                                regions = selectedRegions,
                                 sectors = selectedSectors,
                                 targetSales = target,
                                 currentSales = initialData?.currentSales ?: 0.0,
@@ -644,6 +807,45 @@ fun AddEditCommercialDialog(
             }
         }
     )
+
+    // COM-02: Dialog to Add Custom Region
+    if (showAddCustomRegionDialog) {
+        var newRegName by remember { mutableStateOf("") }
+        var newRegCities by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddCustomRegionDialog = false },
+            containerColor = DarkSurface,
+            title = { Text("Ajouter Nouvelle Région (COM-02)", color = TextPrimaryDark, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BardahlTextField(newRegName, { newRegName = it }, "Nom de la Région *")
+                    BardahlTextField(newRegCities, { newRegCities = it }, "Villes rattachées (séparées par virgule)")
+                }
+            },
+            confirmButton = {
+                BardahlButton(
+                    text = "CRÉER RÉGION",
+                    onClick = {
+                        if (newRegName.isNotBlank()) {
+                            val citiesList = newRegCities.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                            val created = MoroccanRegionsRepository.addCustomRegion(newRegName, citiesList)
+                            if (!selectedRegions.contains(created.name)) {
+                                selectedRegions = selectedRegions + created.name
+                                selectedSectors = (selectedSectors + created.cities).distinct()
+                            }
+                            showAddCustomRegionDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCustomRegionDialog = false }) {
+                    Text("Annuler", color = TextSecondaryDark)
+                }
+            }
+        )
+    }
 }
 
 @Composable

@@ -67,6 +67,9 @@ interface OrderDao {
 
     @Query("DELETE FROM local_orders WHERE id = :orderId")
     suspend fun deleteOrder(orderId: String)
+
+    @Query("DELETE FROM local_order_items WHERE orderId = :orderId")
+    suspend fun deleteOrderItems(orderId: String)
 }
 
 @Dao

@@ -22,7 +22,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.unit.sp
+import com.bardahl.maroc.data.MoroccanRegion
+import com.bardahl.maroc.data.MoroccanRegionsRepository
 import com.bardahl.maroc.domain.model.Client
 import com.bardahl.maroc.domain.model.ClientType
 import com.bardahl.maroc.domain.model.Order
@@ -60,6 +63,7 @@ fun ClientListScreen(
     var editingClient by remember { mutableStateOf<Client?>(null) }
     var deletingClient by remember { mutableStateOf<Client?>(null) }
     var selectedDetailClient by remember { mutableStateOf<Client?>(null) }
+    var selectedRegionFilter by remember { mutableStateOf("ALL") }
 
     // Role-based client filtering matching Web app
     val userCommId = currentUser?.id ?: ""
@@ -69,14 +73,19 @@ fun ClientListScreen(
         clients.filter { it.commercialId == userCommId }
     }
 
-    val filteredClients = remember(visibleClients, searchQuery) {
-        if (searchQuery.isBlank()) visibleClients
-        else visibleClients.filter {
-            it.companyName.contains(searchQuery, ignoreCase = true) ||
-            it.ice.contains(searchQuery) ||
-            it.ifCode.contains(searchQuery, ignoreCase = true) ||
-            it.city.contains(searchQuery, ignoreCase = true) ||
-            it.address.contains(searchQuery, ignoreCase = true)
+    val filteredClients = remember(visibleClients, searchQuery, selectedRegionFilter) {
+        visibleClients.filter { client ->
+            val clientRegion = client.region.ifBlank { MoroccanRegionsRepository.getRegionForCity(client.city) }
+            val matchesRegion = selectedRegionFilter == "ALL" || clientRegion.equals(selectedRegionFilter, ignoreCase = true)
+            val matchesSearch = searchQuery.isBlank() || (
+                client.companyName.contains(searchQuery, ignoreCase = true) ||
+                client.ice.contains(searchQuery) ||
+                client.ifCode.contains(searchQuery, ignoreCase = true) ||
+                client.city.contains(searchQuery, ignoreCase = true) ||
+                client.address.contains(searchQuery, ignoreCase = true) ||
+                clientRegion.contains(searchQuery, ignoreCase = true)
+            )
+            matchesRegion && matchesSearch
         }
     }
 
@@ -116,7 +125,45 @@ fun ClientListScreen(
                 leadingIcon = Icons.Default.Search
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // COM-01 & COM-02: Region Filter Chips Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = selectedRegionFilter == "ALL",
+                    onClick = { selectedRegionFilter = "ALL" },
+                    label = { Text("Toutes Régions", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = BardahlYellow,
+                        selectedLabelColor = BardahlBlack,
+                        containerColor = DarkSurface,
+                        labelColor = TextPrimaryDark
+                    )
+                )
+
+                MoroccanRegionsRepository.getAllRegions().forEach { reg ->
+                    val isSel = selectedRegionFilter.equals(reg.name, ignoreCase = true)
+                    FilterChip(
+                        selected = isSel,
+                        onClick = { selectedRegionFilter = if (isSel) "ALL" else reg.name },
+                        label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = reg.color,
+                            selectedLabelColor = BardahlBlack,
+                            containerColor = DarkSurface,
+                            labelColor = TextPrimaryDark
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (filteredClients.isEmpty()) {
                 Box(
@@ -268,19 +315,43 @@ fun ClientCardItem(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(BardahlYellow.copy(alpha = 0.15f))
-                        .border(1.dp, BardahlYellow.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = client.clientType.label,
-                        fontSize = 11.sp,
-                        color = BardahlYellow,
-                        fontWeight = FontWeight.Bold
-                    )
+                    val clientRegion = client.region.ifBlank { MoroccanRegionsRepository.getRegionForCity(client.city) }
+                    val regObj = MoroccanRegionsRepository.getAllRegions().find { it.name.equals(clientRegion, ignoreCase = true) }
+                    val regColor = regObj?.color ?: BardahlYellow
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(regColor.copy(alpha = 0.15f))
+                            .border(1.dp, regColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = clientRegion,
+                            fontSize = 10.sp,
+                            color = regColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BardahlYellow.copy(alpha = 0.15f))
+                            .border(1.dp, BardahlYellow.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = client.clientType.label,
+                            fontSize = 11.sp,
+                            color = BardahlYellow,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
@@ -666,7 +737,8 @@ fun ClientFormDialog(
     var ice by remember { mutableStateOf(client?.ice ?: "") }
     var rc by remember { mutableStateOf(client?.rc ?: "") }
     var address by remember { mutableStateOf(client?.address ?: "") }
-    var city by remember { mutableStateOf(client?.city ?: "") }
+    var region by remember { mutableStateOf(client?.region?.ifBlank { "Casablanca-Settat" } ?: "Casablanca-Settat") }
+    var city by remember { mutableStateOf(client?.city ?: "Casablanca") }
     var phone by remember { mutableStateOf(client?.phone ?: "") }
     var email by remember { mutableStateOf(client?.email ?: "") }
     var selectedType by remember { mutableStateOf(client?.clientType ?: ClientType.GARAGE) }
@@ -693,8 +765,50 @@ fun ClientFormDialog(
                 BardahlTextField(ifCode, { ifCode = it }, "Code Client (IF Code)")
                 BardahlTextField(ice, { ice = it }, "N° ICE (15 chiffres) *")
                 BardahlTextField(rc, { rc = it }, "N° Registre Commerce (RC)")
+
+                // COM-01 & COM-02: Region Selector
+                Text("Région de Travail (COM-01) :", fontSize = 12.sp, color = BardahlYellow, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    MoroccanRegionsRepository.getAllRegions().forEach { reg ->
+                        val isSelected = region.equals(reg.name, ignoreCase = true)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                region = reg.name
+                                if (!reg.cities.any { it.equals(city, ignoreCase = true) }) {
+                                    city = reg.cities.firstOrNull() ?: city
+                                }
+                            },
+                            label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = reg.color,
+                                selectedLabelColor = BardahlBlack,
+                                containerColor = DarkBackground,
+                                labelColor = TextPrimaryDark
+                            )
+                        )
+                    }
+                }
+
                 BardahlTextField(address, { address = it }, "Adresse Complète")
-                BardahlTextField(city, { city = it }, "Ville")
+
+                BardahlTextField(
+                    value = city,
+                    onValueChange = {
+                        city = it
+                        val detected = MoroccanRegionsRepository.getRegionForCity(it)
+                        if (detected.isNotBlank()) {
+                            region = detected
+                        }
+                    },
+                    label = "Ville rattachée"
+                )
+
                 BardahlTextField(phone, { phone = it }, "Téléphone Contact")
                 BardahlTextField(email, { email = it }, "Email")
 
@@ -732,9 +846,10 @@ fun ClientFormDialog(
                             ice = ice.trim(),
                             rc = rc.trim(),
                             ifCode = ifCode.trim(),
-                            patente = client?.patente ?: "",
+                            patente = region.trim().ifBlank { client?.patente ?: "Casablanca-Settat" },
                             address = address.trim().ifBlank { "Casablanca" },
                             city = city.trim().ifBlank { "Casablanca" },
+                            region = region.trim().ifBlank { "Casablanca-Settat" },
                             phone = phone.trim().ifBlank { "+212 5 22 00 00 00" },
                             email = email.trim(),
                             clientType = selectedType

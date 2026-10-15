@@ -197,8 +197,15 @@ object PdfGenerator {
                 canvas.drawText(item.productName, 95f, currentY, textPaint)
             }
 
+            // CMD-03: Sur une ligne de produit offert uniquement, la quantité achetée doit être égale à 0,
+            // prix unitaire et total à 0,00 DH, et gratuité conservée
+            val isGiftOnly = (item.quantity == 0 || item.unitPriceTtc == 0.0 || item.promoTag.contains("Offert", ignoreCase = true) || item.promoTag.contains("Cadeau", ignoreCase = true)) && item.freeQuantity > 0
+            val displayQty = if (isGiftOnly) 0 else item.quantity
+            val displayPrice = if (isGiftOnly) 0.0 else item.unitPriceTtc
+            val displayTotal = if (isGiftOnly) 0.0 else item.totalTtc
+
             // Quantity Facturée
-            canvas.drawText("${item.quantity}", 300f, currentY, textPaint)
+            canvas.drawText("${displayQty}", 300f, currentY, textPaint)
 
             // Gratuité (Offert)
             val freeStr = if (item.freeQuantity > 0) "+${item.freeQuantity} Offert" else "-"
@@ -211,10 +218,10 @@ object PdfGenerator {
             textPaint.isFakeBoldText = false
 
             // Unit Price TTC
-            canvas.drawText(String.format("%.2f DH", item.unitPriceTtc), 395f, currentY, textPaint)
+            canvas.drawText(String.format("%.2f DH", displayPrice), 395f, currentY, textPaint)
 
             // Total Line TTC
-            canvas.drawText(String.format("%.2f DH", item.totalTtc), 485f, currentY, textPaint)
+            canvas.drawText(String.format("%.2f DH", displayTotal), 485f, currentY, textPaint)
 
             // Row Separator Line
             paint.color = Color.parseColor("#EDF2F7")

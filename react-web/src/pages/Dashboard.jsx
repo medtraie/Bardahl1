@@ -25,24 +25,36 @@ export default function Dashboard({ setActiveTab, onNewOrderClick }) {
   const todayStr = new Date().toISOString().substring(0, 10)
   const todayOrdersCount = orders.filter(o => o.date && o.date.startsWith(todayStr)).length
 
-  // Monthly Sales Chart Data dynamically computed from real orders
-  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août']
-  const monthlyData = [0, 0, 0, 0, 0, 0, 0, 0]
+  // DASH-01: Monthly Sales Chart Data dynamically computed from real orders across the full 12 months
+  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
+  const monthlyData = new Array(12).fill(0)
 
   orders.forEach(o => {
-    if (o.date) {
-      const monthNum = parseInt(o.date.split('-')[1], 10) // 1-indexed
-      if (monthNum >= 1 && monthNum <= 8) {
+    const rawDate = o.date || o.orderDate || o.order_date || o.created_at
+    if (rawDate) {
+      let monthNum = null
+      if (typeof rawDate === 'string') {
+        const clean = rawDate.split('T')[0]
+        if (clean.includes('-')) {
+          const parts = clean.split('-')
+          if (parts[0].length === 4) {
+            monthNum = parseInt(parts[1], 10)
+          } else if (parts[2] && parts[2].length === 4) {
+            monthNum = parseInt(parts[1], 10)
+          }
+        } else if (clean.includes('/')) {
+          const parts = clean.split('/')
+          monthNum = parseInt(parts[1], 10)
+        }
+      } else if (rawDate instanceof Date) {
+        monthNum = rawDate.getMonth() + 1
+      }
+
+      if (monthNum && monthNum >= 1 && monthNum <= 12) {
         monthlyData[monthNum - 1] += (parseFloat(o.totalTtc) || 0)
       }
     }
   })
-
-  // If this month (Août) has current orders but no specific date, assign totalCaTtc
-  const currentMonthIdx = Math.min(new Date().getMonth(), 7)
-  if (monthlyData.reduce((a, b) => a + b, 0) === 0 && totalCaTtc > 0) {
-    monthlyData[currentMonthIdx] = totalCaTtc
-  }
 
   const chartData = {
     labels: monthLabels,

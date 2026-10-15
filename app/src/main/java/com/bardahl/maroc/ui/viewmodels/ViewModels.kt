@@ -285,10 +285,32 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
         }
     }
 
+    private val _editingOrder = MutableStateFlow<Order?>(null)
+    val editingOrder: StateFlow<Order?> = _editingOrder.asStateFlow()
+
+    fun setEditingOrder(order: Order?) {
+        _editingOrder.value = order
+    }
+
     fun createOrder(order: Order) {
         viewModelScope.launch {
             _orders.value = listOf(order) + _orders.value.filter { it.orderNumber != order.orderNumber }
             orderRepository.saveOrder(order)
+            try {
+                val remote = orderRepository.fetchRemoteOrdersDirectly()
+                val merged = (listOf(order) + remote).distinctBy { it.orderNumber }
+                _orders.value = merged
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateOrder(order: Order) {
+        viewModelScope.launch {
+            _orders.value = _orders.value.map { if (it.orderNumber == order.orderNumber || it.id == order.id) order else it }
+            orderRepository.updateOrder(order)
+            _editingOrder.value = null
             try {
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
                 val merged = (listOf(order) + remote).distinctBy { it.orderNumber }

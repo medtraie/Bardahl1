@@ -209,7 +209,9 @@ export default function Orders({ openWizardTrigger }) {
     const matchesStatus = statusFilter === 'ALL' || 
       (statusFilter === 'EN_ATTENTE' ? (o.status === 'EN_ATTENTE' || o.status === 'DRAFT') : o.status === statusFilter)
     const matchesCommercial = commercialFilter === 'ALL' ||
-      (o.commercialName && o.commercialName.trim().toLowerCase() === commercialFilter.trim().toLowerCase())
+      (commercialFilter === 'Administrateur'
+        ? (o.commercialDbId === 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c' || (o.commercialName && (o.commercialName.toLowerCase().includes('admin') || o.commercialName.toLowerCase().includes('direction'))) || (o.commercialEmail || '').toLowerCase() === 'bardahl@gmail.com')
+        : (o.commercialName && o.commercialName.trim().toLowerCase() === commercialFilter.trim().toLowerCase()))
     return matchesSearch && matchesStatus && matchesCommercial
   })
 
@@ -277,17 +279,49 @@ export default function Orders({ openWizardTrigger }) {
     setSelectedPromoId('AUTO')
     setCommercialPromoChoices({})
     setCustomBatchRemise('')
-    setSelectedProducts(order.items ? order.items.map(i => ({
-      productId: i.productId || i.reference,
-      productName: i.productName || i.name,
-      reference: i.reference || i.code,
-      category: i.category || '',
-      priceTtc: parseFloat(i.priceTtc || i.unitPriceTtc || 0),
-      qty: parseInt(i.qty || i.quantity || 1, 10),
-      qtyGratuit: parseInt(i.qtyGratuit || i.freeQty || 0, 10),
-      promoTag: i.promoTag || '',
-      remisePercent: parseFloat(i.remisePercent || i.remise || 0)
-    })) : [])
+
+    // CMD-01 & CMD-02: Separate distinct gifts and attach unitsPerBox and packaging
+    const rawItems = order.items || []
+    const distinctGiftLines = rawItems.filter(i => {
+      const q = parseInt(i.qty !== undefined ? i.qty : (i.quantity !== undefined ? i.quantity : 0), 10)
+      const p = parseFloat(i.priceTtc || i.unitPriceTtc || 0)
+      const g = parseInt(i.qtyGratuit || i.freeQty || 0, 10)
+      const tag = String(i.promoTag || '')
+      return (q === 0 || p === 0) && (g > 0 || tag.includes('Offert') || tag.includes('Cadeau'))
+    })
+    const purchasedLines = rawItems.filter(i => !distinctGiftLines.includes(i))
+
+    const formattedProducts = purchasedLines.map(i => {
+      const catalogProd = products.find(p =>
+        (p.id && (p.id === i.productId || p.id === i.id)) ||
+        (p.reference && (p.reference === i.reference || p.reference === i.code)) ||
+        (p.name && (p.name === i.productName || p.name === i.name))
+      )
+      const upb = parseInt(i.unitsPerBox || catalogProd?.unitsPerBox || (catalogProd ? getProductUnitsPerCarton(catalogProd) : 12) || 12, 10) || 12
+      const packaging = i.packaging || catalogProd?.packaging || ''
+      const category = i.category || catalogProd?.category || catalogProd?.categoryId || 'Bardahl'
+      const priceTtc = parseFloat(i.priceTtc !== undefined ? i.priceTtc : (i.unitPriceTtc || catalogProd?.priceTtc || 0))
+      const unitQty = parseInt(i.qty !== undefined ? i.qty : (i.quantity !== undefined ? i.quantity : 1), 10)
+      const recordedFreeUnits = parseInt(i.qtyGratuit !== undefined ? i.qtyGratuit : (i.freeQty || 0), 10)
+
+      return {
+        productId: i.productId || catalogProd?.id || i.reference,
+        productName: i.productName || catalogProd?.name || i.name,
+        reference: i.reference || catalogProd?.reference || i.code,
+        category,
+        packaging,
+        unitsPerBox: upb,
+        priceTtc,
+        qty: unitQty,
+        initialQty: unitQty,
+        qtyGratuit: recordedFreeUnits,
+        initialFreeUnits: recordedFreeUnits,
+        promoTag: i.promoTag || '',
+        remisePercent: parseFloat(i.remisePercent || i.remise || 0)
+      }
+    })
+
+    setSelectedProducts(formattedProducts)
     setShowOrderWizard(true)
   }
 
@@ -383,7 +417,8 @@ export default function Orders({ openWizardTrigger }) {
 
     // Build editable rows from order.items
     const lines = (order.items || []).map((it, idx) => {
-      const q = parseInt(it.qty || it.quantity || 1, 10)
+      const rawQ = (it.qty !== undefined && it.qty !== null) ? it.qty : ((it.quantity !== undefined && it.quantity !== null) ? it.quantity : 0)
+      const q = parseInt(rawQ, 10)
       const pu = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
       const currentRemise = (it.remisePercent !== undefined && it.remisePercent !== null)
         ? parseFloat(it.remisePercent)
@@ -495,14 +530,16 @@ export default function Orders({ openWizardTrigger }) {
       })
 
       const newTotalDiscount = updatedItems.reduce((sum, it) => {
-        const q = parseInt(it.qty || it.quantity || 1, 10)
+        const rawQ = (it.qty !== undefined && it.qty !== null) ? it.qty : ((it.quantity !== undefined && it.quantity !== null) ? it.quantity : 0)
+        const q = parseInt(rawQ, 10)
         const p = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
         const r = parseFloat(it.remisePercent) || 0
         return sum + ((q * p) * (r / 100))
       }, 0)
 
       const gross = updatedItems.reduce((sum, it) => {
-        const q = parseInt(it.qty || it.quantity || 1, 10)
+        const rawQ = (it.qty !== undefined && it.qty !== null) ? it.qty : ((it.quantity !== undefined && it.quantity !== null) ? it.quantity : 0)
+        const q = parseInt(rawQ, 10)
         const p = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
         return sum + (q * p)
       }, 0)
@@ -637,17 +674,48 @@ export default function Orders({ openWizardTrigger }) {
 
   const handleQtyChange = (index, newQty) => {
     const val = parseInt(newQty, 10)
-    if (isNaN(val) || val <= 0) {
-      setSelectedProducts(prev => prev.filter((_, i) => i !== index))
+    if (isNaN(val) || val < 0) return
+    if (val === 0) {
+      setSelectedProducts(prev => {
+        const item = prev[index]
+        // LIG-03: Si une ligne correspond uniquement à un produit offert manuellement, la quantité achetée doit être égale à 0
+        if (item && (parseInt(item.qtyGratuit, 10) > 0 || parseInt(item.manualGratuit, 10) > 0)) {
+          return prev.map((p, i) => i === index ? { ...p, qty: 0, promoTag: p.promoTag || 'Gratuité 100% (Échantillon)' } : p)
+        }
+        return prev.filter((_, i) => i !== index)
+      })
     } else {
-      // Les promotions et gratuités se recalculent automatiquement via le hook promoAnalysis
       setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qty: val } : p))
     }
   }
 
+  const handleRemoveLine = (index) => {
+    setSelectedProducts(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // PRIX-01: Modification autorisée du prix unitaire directement dans la ligne de commande
+  const handlePriceChange = (index, newPrice) => {
+    const cleanStr = String(newPrice).replace(',', '.')
+    const parsed = parseFloat(cleanStr)
+    setSelectedProducts(prev => prev.map((p, i) => {
+      if (i !== index) return p
+      return {
+        ...p,
+        priceTtc: !isNaN(parsed) && parsed >= 0 ? parsed : p.priceTtc,
+        customPriceStr: newPrice
+      }
+    }))
+  }
+
+  // LIG-03: Le commercial peut également modifier la quantité gratuite lorsqu'elle est saisie manuellement
+  const handleManualGratuitChange = (index, newGratuit) => {
+    const val = Math.max(0, parseInt(newGratuit, 10) || 0)
+    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: val, manualGratuit: val } : p))
+  }
+
   const handleQtyGratuitChange = (index, newGratuit) => {
     const val = Math.max(0, parseInt(newGratuit, 10) || 0)
-    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: val } : p))
+    setSelectedProducts(prev => prev.map((p, i) => i === index ? { ...p, qtyGratuit: val, manualGratuit: val } : p))
   }
 
   const handleTogglePromoLine = (index, promoType) => {
@@ -706,13 +774,33 @@ export default function Orders({ openWizardTrigger }) {
   const totalHt = netTotalTtc / 1.20
   const totalTva = netTotalTtc - totalHt
 
+  // CMD-01, CMD-02, LIG-01, LIG-03: Total free items expressed strictly in UNITS
+  const wizardMode = editingOrder ? 'edit' : 'create'
   const userFreeItemsCount = selectedProducts.reduce((sum, item) => {
     const freeItem = (promoAnalysis.freeItems || []).find(fi => fi.reference === item.reference || fi.productId === item.productId)
-    return sum + (freeItem ? (parseInt(freeItem.qtyGratuit, 10) || 0) : 0)
+    const earnedFreeCartons = freeItem ? (parseInt(freeItem.qtyGratuit, 10) || 0) : 0
+    const upb = item.unitsPerBox || 1
+    if (earnedFreeCartons > 0) {
+      return sum + (earnedFreeCartons * upb)
+    } else if (item.manualGratuit !== undefined && item.manualGratuit !== null) {
+      return sum + (parseInt(item.manualGratuit, 10) || 0)
+    } else if (wizardMode === 'edit' && item.initialQty === item.qty && item.initialFreeUnits > 0) {
+      return sum + item.initialFreeUnits
+    } else if (item.qtyGratuit > 0) {
+      return sum + item.qtyGratuit
+    }
+    return sum
   }, 0)
+
   const promoDistinctFreeItemsCount = (promoAnalysis.freeItems || [])
     .filter(fi => !selectedProducts.some(sp => sp.reference === fi.reference || sp.productId === fi.productId))
-    .reduce((sum, item) => sum + (parseInt(item.qtyGratuit, 10) || 0), 0)
+    .reduce((sum, item) => {
+      const giftProd = products.find(p => p.reference === item.reference || p.id === item.productId)
+      const upb = giftProd?.unitsPerBox || (giftProd ? getProductUnitsPerCarton(giftProd) : 12) || 12
+      const cartons = parseInt(item.qtyGratuit, 10) || 0
+      return sum + (cartons * upb)
+    }, 0)
+
   const totalFreeItemsCount = userFreeItemsCount + promoDistinctFreeItemsCount
 
   const handleSaveOrderSubmit = () => {
@@ -727,7 +815,10 @@ export default function Orders({ openWizardTrigger }) {
 
     const client = clients.find(c => c.id === selectedClient)
 
-    // Build combined items list strictly respecting promotion rules without manual gratuit override
+    // Build combined items list strictly respecting promotion rules (LIG-01, LIG-02, LIG-03)
+    // LIG-01: Auto promo gift strictly overrides and cannot be modified manually.
+    // LIG-03: When no promo applies, commercial can specify free quantity manually.
+    // If a line is exclusively a free gift/sample, purchased qty = 0.
     const combinedItems = [
       ...selectedProducts.map((sp, idx) => {
         const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
@@ -735,13 +826,29 @@ export default function Orders({ openWizardTrigger }) {
         const finalPct = parsedRemise !== null ? parsedRemise : promoDiscount
         const freeItemForSp = (promoAnalysis.freeItems || []).find(fi => fi.reference === sp.reference || fi.productId === sp.productId)
         const earnedFreeCartons = freeItemForSp ? (parseInt(freeItemForSp.qtyGratuit, 10) || 0) : 0
-        const earnedFreeUnits = earnedFreeCartons * (sp.unitsPerBox || 1)
+        const upb = sp.unitsPerBox || 1
+
+        let earnedFreeUnits = 0
+        let isAutoGift = false
+        if (earnedFreeCartons > 0) {
+          earnedFreeUnits = earnedFreeCartons * upb
+          isAutoGift = true
+        } else if (sp.manualGratuit !== undefined && sp.manualGratuit !== null) {
+          earnedFreeUnits = parseInt(sp.manualGratuit, 10) || 0
+        } else if (wizardMode === 'edit' && sp.initialQty === sp.qty && sp.initialFreeUnits > 0) {
+          earnedFreeUnits = sp.initialFreeUnits
+        } else if (sp.qtyGratuit > 0) {
+          earnedFreeUnits = sp.qtyGratuit
+        }
+
         return {
           ...sp,
           qtyGratuit: earnedFreeUnits,
           remisePercent: finalPct,
           promoDiscountPercent: promoDiscount,
-          promoTag: earnedFreeCartons > 0 ? (freeItemForSp.promoName || sp.promoTag) : sp.promoTag
+          promoTag: earnedFreeUnits > 0 
+            ? (isAutoGift ? (freeItemForSp?.promoName || 'Article Offert Promo') : (sp.promoTag || 'Cadeau / Offert manuel')) 
+            : sp.promoTag
         }
       }),
       ...(promoAnalysis.freeItems || [])
@@ -816,12 +923,14 @@ export default function Orders({ openWizardTrigger }) {
       setAppliedAvoirCompensation(null)
       alert(`Bon de commande ${updatedOrder.orderNumber} modifié et enregistré avec succès !`)
     } else {
+      const isUserAdmin = isAdmin || currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
       const newOrder = {
         id: 'o_' + Date.now(),
         orderNumber: activeOrderNumber,
         date: new Date().toISOString().substring(0, 10),
-        commercialName: currentUser?.name || "Mohammed amine",
-        commercialEmail: currentUser?.email || "mohammed@bardahl.ma",
+        commercialDbId: isUserAdmin ? 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c' : (currentUser?.commercialDbId || undefined),
+        commercialName: isUserAdmin ? 'Créé par Administrateur' : (currentUser?.name || "Commercial Bardahl"),
+        commercialEmail: isUserAdmin ? 'bardahl@gmail.com' : (currentUser?.email || "commercial@bardahl.ma"),
         clientName: client ? client.companyName : "Client Bardahl",
         paymentMethod: paymentMethod,
         modeExpedition: modeExpedition,
@@ -1063,7 +1172,8 @@ export default function Orders({ openWizardTrigger }) {
                   style={{ padding: '10px' }}
                 >
                   <option value="ALL">Tous les Représentants</option>
-                  {commercials.map(c => (
+                  <option value="Administrateur">🛡️ Créé par Administrateur</option>
+                  {commercials.filter(c => c.id !== 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c' && !c.name.toLowerCase().includes('admin')).map(c => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
                 </select>
@@ -1211,31 +1321,59 @@ export default function Orders({ openWizardTrigger }) {
                           </div>
                         </td>
                         <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                          <span style={{
-                            fontSize: '12px',
-                            color: 'rgba(255, 255, 255, 0.85)',
-                            fontWeight: '600',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                          }}>
-                            <span style={{
-                              width: '22px',
-                              height: '22px',
-                              borderRadius: '50%',
-                              background: 'rgba(255, 255, 255, 0.08)',
-                              border: '1px solid rgba(255, 255, 255, 0.16)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '10px',
-                              fontWeight: '800',
-                              color: 'var(--bardahl-yellow)'
-                            }}>
-                              {(o.commercialName || 'C')[0].toUpperCase()}
-                            </span>
-                            {o.commercialName}
-                          </span>
+                          {(() => {
+                            const isAdminOrder = (
+                              o.commercialDbId === 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c' ||
+                              (o.commercialEmail || '').toLowerCase() === 'bardahl@gmail.com' ||
+                              (o.commercialName && (o.commercialName.toLowerCase().includes('admin') || o.commercialName.toLowerCase().includes('direction')))
+                            )
+                            if (isAdminOrder) {
+                              return (
+                                <span style={{
+                                  fontSize: '11.5px',
+                                  color: 'var(--bardahl-yellow)',
+                                  fontWeight: '800',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  background: 'rgba(255, 208, 0, 0.12)',
+                                  border: '1px solid rgba(255, 208, 0, 0.35)',
+                                  padding: '4px 10px',
+                                  borderRadius: '8px'
+                                }}>
+                                  <span style={{ fontSize: '13px' }}>🛡️</span>
+                                  Créé par Administrateur
+                                </span>
+                              )
+                            }
+                            return (
+                              <span style={{
+                                fontSize: '12px',
+                                color: 'rgba(255, 255, 255, 0.85)',
+                                fontWeight: '600',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}>
+                                <span style={{
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '50%',
+                                  background: 'rgba(255, 255, 255, 0.08)',
+                                  border: '1px solid rgba(255, 255, 255, 0.16)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '10px',
+                                  fontWeight: '800',
+                                  color: 'var(--bardahl-yellow)'
+                                }}>
+                                  {(o.commercialName || 'C')[0].toUpperCase()}
+                                </span>
+                                {o.commercialName}
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                           {renderPaymentBadge(o.paymentMethod)}
@@ -2424,7 +2562,10 @@ export default function Orders({ openWizardTrigger }) {
                                 <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: '1px solid rgba(255, 208, 0, 0.4)', borderRadius: '8px', padding: '2px' }}>
                                   <button
                                     type="button"
-                                    onClick={() => handleQtyChange(idx, Math.max(1, (parseInt(item.qty, 10) || 1) - 1))}
+                                    onClick={() => {
+                                      const minAllowed = ((item.manualGratuit && item.manualGratuit > 0) || (item.qtyGratuit && item.qtyGratuit > 0)) ? 0 : 1
+                                      handleQtyChange(idx, Math.max(minAllowed, (parseInt(item.qty, 10) || 0) - 1))
+                                    }}
                                     style={{ width: '28px', height: '28px', background: 'transparent', border: 'none', color: 'var(--bardahl-yellow)', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     title="Diminuer d'une unité"
                                   >
@@ -2432,7 +2573,7 @@ export default function Orders({ openWizardTrigger }) {
                                   </button>
                                   <input
                                     type="number"
-                                    min="1"
+                                    min={((item.manualGratuit && item.manualGratuit > 0) || (item.qtyGratuit && item.qtyGratuit > 0)) ? "0" : "1"}
                                     value={item.qty}
                                     onChange={e => handleQtyChange(idx, e.target.value)}
                                     style={{
@@ -2538,14 +2679,16 @@ export default function Orders({ openWizardTrigger }) {
                                 </div>
                               </td>
 
-                              {/* Colonne GRATUIT : stricte application de l'offre sélectionnée sans modification manuelle */}
+                              {/* Colonne GRATUIT : LIG-01 (Promo auto verrouillée) & LIG-03 (Gratuit manuel modifiable) */}
                               <td style={{ textAlign: 'center' }}>
                                 {(() => {
                                   const freeItem = (promoAnalysis.freeItems || []).find(fi => fi.reference === item.reference || fi.productId === item.productId)
-                                  const freeCartons = freeItem ? (parseInt(freeItem.qtyGratuit, 10) || 0) : 0
-                                  const freeUnits = freeCartons * upb
+                                  const autoCartons = freeItem ? (parseInt(freeItem.qtyGratuit, 10) || 0) : 0
+                                  const hasAutoGift = autoCartons > 0
 
-                                  if (freeCartons > 0) {
+                                  if (hasAutoGift) {
+                                    // LIG-01: Calculé automatiquement par la promo, non saisissable manuellement
+                                    const freeUnits = autoCartons * upb
                                     return (
                                       <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                                         <span style={{
@@ -2561,12 +2704,12 @@ export default function Orders({ openWizardTrigger }) {
                                           gap: '5px',
                                           boxShadow: '0 2px 6px rgba(52, 199, 89, 0.15)'
                                         }}
-                                        title={`Gratuité calculée automatiquement via l'offre ${freeItem.promoName || ''}`}
+                                        title={`LIG-01: Gratuité calculée automatiquement via l'offre ${freeItem?.promoName || ''} (non modifiable manuellement)`}
                                         >
-                                          🎁 {freeCartons} carton{freeCartons > 1 ? 's' : ''}
+                                          🔒 🎁 {autoCartons} carton{autoCartons > 1 ? 's' : ''}
                                         </span>
                                         <span style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold' }}>
-                                          ({freeUnits} un. offert{freeUnits > 1 ? 'es' : 'e'})
+                                          ({freeUnits} un. auto)
                                         </span>
                                       </div>
                                     )
@@ -2601,34 +2744,114 @@ export default function Orders({ openWizardTrigger }) {
                                     )
                                   }
 
+                                  // LIG-03: Produit sans cadeau promo -> Le commercial peut modifier la quantité gratuite manuellement
+                                  const currentManualGratuit = item.manualGratuit !== undefined ? item.manualGratuit : (item.qtyGratuit || 0)
                                   return (
-                                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-                                      <span style={{
-                                        color: '#8E95A5',
-                                        fontSize: '12px',
-                                        fontWeight: '800',
-                                        background: 'rgba(255, 255, 255, 0.03)',
-                                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                                        padding: '4px 14px',
-                                        borderRadius: '6px'
+                                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                                      <div style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        background: currentManualGratuit > 0 ? 'rgba(52, 199, 89, 0.12)' : '#0D0F12',
+                                        border: currentManualGratuit > 0 ? '1px solid rgba(52, 199, 89, 0.5)' : '1px solid var(--border-card)',
+                                        borderRadius: '8px',
+                                        padding: '2px'
                                       }}>
-                                        0
-                                      </span>
-                                      <span style={{ fontSize: '9px', color: selectedPromoId === 'NONE' ? 'var(--text-secondary)' : '#FF9500', marginTop: '2px' }}>
-                                        {selectedPromoId === 'NONE' ? 'Sans promo' : 'Condition non atteinte'}
-                                      </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleManualGratuitChange(idx, Math.max(0, (parseInt(currentManualGratuit, 10) || 0) - 1))}
+                                          style={{ width: '24px', height: '24px', background: 'transparent', border: 'none', color: currentManualGratuit > 0 ? '#34C759' : 'var(--text-secondary)', fontSize: '14px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          title="Diminuer la gratuité manuelle"
+                                        >
+                                          -
+                                        </button>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={currentManualGratuit}
+                                          onChange={e => handleManualGratuitChange(idx, e.target.value)}
+                                          style={{
+                                            width: '38px',
+                                            height: '24px',
+                                            textAlign: 'center',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: currentManualGratuit > 0 ? '#34C759' : '#8E95A5',
+                                            fontWeight: '800',
+                                            fontSize: '12px',
+                                            outline: 'none'
+                                          }}
+                                          title="LIG-03: Gratuité saisie manuellement (unités)"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleManualGratuitChange(idx, (parseInt(currentManualGratuit, 10) || 0) + 1)}
+                                          style={{ width: '24px', height: '24px', background: 'transparent', border: 'none', color: '#34C759', fontSize: '14px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          title="Augmenter la gratuité manuelle"
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                      
+                                      {item.qty > 0 ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            handleManualGratuitChange(idx, item.qty)
+                                            handleQtyChange(idx, 0)
+                                          }}
+                                          style={{
+                                            fontSize: '9px',
+                                            color: 'var(--bardahl-yellow)',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            textDecoration: 'underline',
+                                            cursor: 'pointer',
+                                            padding: 0
+                                          }}
+                                          title="Passer cette ligne en 100% offert / échantillon (qty=0)"
+                                        >
+                                          Offrir 100%
+                                        </button>
+                                      ) : (
+                                        <span style={{ fontSize: '9px', color: '#34C759', fontWeight: 'bold' }}>
+                                          Échantillon (0 DH)
+                                        </span>
+                                      )}
                                     </div>
                                   )
                                 })()}
                               </td>
 
-                              <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontSize: '12px' }}>
-                                {item.priceTtc.toFixed(2)} DH
+                              {/* PRIX-01: Modification autorisée du prix de vente unitaire directement dans la ligne */}
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={item.customPriceStr !== undefined ? item.customPriceStr : item.priceTtc}
+                                    onChange={e => handlePriceChange(idx, e.target.value)}
+                                    style={{
+                                      width: '65px',
+                                      height: '26px',
+                                      textAlign: 'right',
+                                      background: '#0D0F12',
+                                      border: '1px solid rgba(255, 208, 0, 0.4)',
+                                      borderRadius: '6px',
+                                      color: '#FFFFFF',
+                                      fontWeight: '800',
+                                      fontSize: '12px',
+                                      padding: '0 4px',
+                                      outline: 'none'
+                                    }}
+                                    title="PRIX-01: Prix unitaire TTC modifiable directement par le commercial"
+                                  />
+                                  <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>DH</span>
+                                </div>
                               </td>
 
                               {/* § 8 & § 9 & § 18.4 : Remise Commerciale (%) acceptant les décimales avec virgule ou point + Alerte manuelle vs promo */}
                               <td style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0D0F12', border: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 6px' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', background: currentRemise > 0 ? '1px solid #007AFF' : '1px solid var(--border-card)', borderRadius: '8px', padding: '2px 6px' }}>
                                   <input
                                     type="text"
                                     inputMode="decimal"
@@ -2689,7 +2912,7 @@ export default function Orders({ openWizardTrigger }) {
                                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                                   <button
                                     type="button"
-                                    onClick={() => handleQtyChange(idx, 0)}
+                                    onClick={() => handleRemoveLine(idx)}
                                     style={{
                                       color: '#FF453A',
                                       background: 'rgba(255, 69, 58, 0.1)',
@@ -2791,7 +3014,7 @@ export default function Orders({ openWizardTrigger }) {
                                 {giftProd?.priceTtc ? (
                                   <div>
                                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
-                                      {giftProd.priceTtc.toFixed(2)} DH
+                                      {(parseFloat(giftProd.priceTtc) || 0).toFixed(2)} DH
                                     </div>
                                     <div style={{ fontSize: '10px', color: '#34C759', fontWeight: 'bold' }}>
                                       0.00 DH
@@ -2915,7 +3138,7 @@ export default function Orders({ openWizardTrigger }) {
                             )}
                             {ap.voucherAmount > 0 && (
                               <span style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#FF9500', border: '1px solid rgba(255, 149, 0, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
-                                Bon : -{ap.voucherAmount.toFixed(2)} DH
+                                Bon : -{(parseFloat(ap.voucherAmount) || 0).toFixed(2)} DH
                               </span>
                             )}
                           </div>
@@ -3242,7 +3465,7 @@ export default function Orders({ openWizardTrigger }) {
                           )}
                           {promoAnalysis.appliedPromotions[0].voucherAmount > 0 && (
                             <span style={{ background: 'rgba(255, 149, 0, 0.2)', color: '#FF9500', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
-                              Bon Immédiat : -{promoAnalysis.appliedPromotions[0].voucherAmount.toFixed(2)} DH
+                              Bon Immédiat : -{(parseFloat(promoAnalysis.appliedPromotions[0]?.voucherAmount) || 0).toFixed(2)} DH
                             </span>
                           )}
                         </div>

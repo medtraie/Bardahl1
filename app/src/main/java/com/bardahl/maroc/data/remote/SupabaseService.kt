@@ -90,6 +90,13 @@ class SupabaseService(
                             "industriel" -> ClientType.INDUSTRIEL
                             else -> ClientType.GARAGE
                         }
+                        val rawPatente = obj.optString("patente", "")
+                        val cityStr = obj.optString("city", "Casablanca")
+                        val resolvedRegion = if (rawPatente.isNotBlank() && rawPatente != "0" && rawPatente != "-") {
+                            rawPatente
+                        } else {
+                            com.bardahl.maroc.data.MoroccanRegionsRepository.getRegionForCity(cityStr)
+                        }
                         list.add(
                             Client(
                                 id = obj.getString("id"),
@@ -98,9 +105,10 @@ class SupabaseService(
                                 ice = obj.optString("ice", "000000000000000"),
                                 rc = obj.optString("rc", ""),
                                 ifCode = obj.optString("if_code", ""),
-                                patente = obj.optString("patente", ""),
+                                patente = rawPatente,
                                 address = obj.optString("address", "Casablanca"),
-                                city = obj.optString("city", "Casablanca"),
+                                city = cityStr,
+                                region = resolvedRegion,
                                 phone = obj.optString("phone", "+212 5 22 00 00 00"),
                                 email = obj.optString("email", ""),
                                 clientType = cType
@@ -134,7 +142,7 @@ class SupabaseService(
                 put("ice", client.ice)
                 put("rc", client.rc)
                 put("if_code", client.ifCode)
-                put("patente", client.patente)
+                put("patente", client.region.ifBlank { client.patente })
                 put("address", client.address)
                 put("city", client.city)
                 put("phone", client.phone)
@@ -158,7 +166,7 @@ class SupabaseService(
                 put("ice", client.ice)
                 put("rc", client.rc)
                 put("if_code", client.ifCode)
-                put("patente", client.patente)
+                put("patente", client.region.ifBlank { client.patente })
                 put("address", client.address)
                 put("city", client.city)
                 put("phone", client.phone)
@@ -363,8 +371,19 @@ class SupabaseService(
                         parsedRemarque = obs
                     }
 
+                    val isAdminOrder = commId == "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" ||
+                            customCommName.contains("Admin", ignoreCase = true) ||
+                            customCommName.contains("Direction", ignoreCase = true) ||
+                            obs.contains("bardahl@gmail.com", ignoreCase = true)
+
                     val clientName = if (customClientName.isNotBlank()) customClientName else clientObj?.companyName ?: "Client Bardahl"
-                    val commName = if (customCommName.isNotBlank()) customCommName else commObj?.name ?: "Commercial Bardahl"
+                    val commName = if (isAdminOrder) {
+                        "Créé par Administrateur"
+                    } else if (customCommName.isNotBlank()) {
+                        customCommName
+                    } else {
+                        commObj?.name ?: "Commercial Bardahl"
+                    }
 
                     val totalFreeUnits = parsedItems.sumOf { it.freeQuantity }
 
@@ -372,7 +391,7 @@ class SupabaseService(
                         Order(
                             id = obj.getString("id"),
                             orderNumber = obj.optString("order_number", "BC-2026-0000"),
-                            commercialId = commId,
+                            commercialId = if (isAdminOrder) "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" else commId,
                             commercialName = commName,
                             clientId = cId,
                             clientName = clientName,
@@ -408,7 +427,13 @@ class SupabaseService(
         try {
             // 1. Resolve valid commercial UUID
             var commId = order.commercialId.trim()
-            if (commId.isBlank() || commId == "11111111-1111-1111-1111-111111111111" || !commId.contains("-")) {
+            val isAdmin = commId == "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" ||
+                    order.commercialName.contains("Admin", ignoreCase = true) ||
+                    order.commercialName.contains("Direction", ignoreCase = true)
+
+            if (isAdmin) {
+                commId = "e7fa1dfe-4bfc-49fb-82a6-142e4724942c"
+            } else if (commId.isBlank() || commId == "11111111-1111-1111-1111-111111111111" || !commId.contains("-")) {
                 val comms = fetchCommercials()
                 commId = comms.find { it.name.contains(order.commercialName, ignoreCase = true) }?.id
                     ?: comms.firstOrNull()?.id
@@ -441,6 +466,7 @@ class SupabaseService(
                 itemsJsonArr.put(itemObj)
             }
 
+            val finalCommName = if (isAdmin) "Créé par Administrateur" else order.commercialName
             val obsJson = JSONObject().apply {
                 put("items", itemsJsonArr)
                 put("paymentMethod", order.paymentMethod)
@@ -450,7 +476,10 @@ class SupabaseService(
                 put("remisePercent", order.remisePercent)
                 put("remiseMontant", order.remiseMontant)
                 put("voucherDiscount", order.voucherDiscount)
-                put("commercialName", order.commercialName)
+                put("commercialName", finalCommName)
+                if (isAdmin) {
+                    put("commercialEmail", "bardahl@gmail.com")
+                }
                 put("clientName", order.clientName)
             }
 
@@ -460,6 +489,81 @@ class SupabaseService(
                 put("client_id", cId)
                 put("status", order.status.name.lowercase())
                 put("order_date", order.orderDate.take(10))
+                put("total_ht", order.totalHt)
+                put("total_discount", order.totalDiscount)
+                put("total_tva", order.totalTva)
+                put("total_ttc", order.totalTtc)
+                put("observations", obsJson.toString())
+                put("is_synced", true)
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            val code = conn.responseCode
+            return@withContext code in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun updateOrder(order: Order): Boolean = withContext(Dispatchers.IO) {
+        try {
+            var commId = order.commercialId.trim()
+            val isAdmin = commId == "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" ||
+                    order.commercialName.contains("Admin", ignoreCase = true) ||
+                    order.commercialName.contains("Direction", ignoreCase = true)
+
+            if (isAdmin) {
+                commId = "e7fa1dfe-4bfc-49fb-82a6-142e4724942c"
+            }
+
+            var cId = order.clientId.trim()
+            if (cId.isBlank() || cId.startsWith("c") || !cId.contains("-")) {
+                val clients = fetchClients()
+                val matchedClient = clients.find { it.companyName.equals(order.clientName, ignoreCase = true) || it.id == cId }
+                cId = matchedClient?.id ?: clients.firstOrNull()?.id ?: "443e06e8-8eff-4dbd-86f1-7fae0f4f936c"
+            }
+
+            val conn = getConnection("orders?order_number=eq.${order.orderNumber}", "PATCH")
+            conn.doOutput = true
+
+            val itemsJsonArr = JSONArray()
+            order.items.forEach { item ->
+                val itemObj = JSONObject().apply {
+                    put("productId", item.productId)
+                    put("productName", item.productName)
+                    put("reference", item.productReference)
+                    put("qty", item.quantity)
+                    put("qtyGratuit", item.freeQuantity)
+                    put("priceTtc", item.unitPriceTtc)
+                    put("promoTag", item.promoTag)
+                }
+                itemsJsonArr.put(itemObj)
+            }
+
+            val finalCommName = if (isAdmin) "Créé par Administrateur" else order.commercialName
+            val obsJson = JSONObject().apply {
+                put("items", itemsJsonArr)
+                put("paymentMethod", order.paymentMethod)
+                put("modeExpedition", order.modeExpedition)
+                put("remarque", order.remarque)
+                put("promoNote", order.promoNote)
+                put("remisePercent", order.remisePercent)
+                put("remiseMontant", order.remiseMontant)
+                put("voucherDiscount", order.voucherDiscount)
+                put("commercialName", finalCommName)
+                put("totalFreeItems", order.totalFreeItems)
+                if (isAdmin) {
+                    put("commercialEmail", "bardahl@gmail.com")
+                }
+                put("clientName", order.clientName)
+            }
+
+            val statusStr = if (order.status == OrderStatus.VALIDATED) "validated" else "draft"
+            val json = JSONObject().apply {
+                put("commercial_id", commId)
+                put("client_id", cId)
+                put("status", statusStr)
                 put("total_ht", order.totalHt)
                 put("total_discount", order.totalDiscount)
                 put("total_tva", order.totalTva)
