@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { allProductsData } from '../data/productsData'
 import { defaultPromotions } from '../data/promotionsData'
 import { DEFAULT_BARDAHL_FAMILIES, setGlobalProductFamilies } from '../data/familiesData'
-import { getRegionForCity } from '../data/regionsData'
+import { getRegionForCity, getStoredRegions } from '../data/regionsData'
 import {
   dbGetCommercials, dbAddCommercial, dbUpdateCommercial, dbDeleteCommercial,
   dbGetClients,     dbAddClient,      dbUpdateClient,      dbDeleteClient,
@@ -22,17 +22,51 @@ const AppContext = createContext()
 // ─── Row converters: Supabase row → App object ────────────────────────────────
 
 function rowToCommercial(row) {
-  const sectors = (row.city || '').split(',').map(s => s.trim()).filter(Boolean)
-  const regionsSet = new Set()
-  sectors.forEach(s => {
-    const reg = getRegionForCity(s)
-    if (reg) regionsSet.add(reg)
-  })
-  const regions = Array.from(regionsSet)
-  if (regions.length === 0 && row.city) {
-    const fallbackReg = getRegionForCity(row.city)
-    if (fallbackReg) regions.push(fallbackReg)
+  let sectors = []
+  let explicitRegions = []
+  const rawCity = row.city || ''
+
+  if (rawCity.includes('| Régions:')) {
+    const parts = rawCity.split('| Régions:')
+    sectors = parts[0].split(',').map(s => s.trim()).filter(Boolean)
+    explicitRegions = parts[1].split(',').map(r => r.trim()).filter(Boolean)
+  } else if (rawCity.includes('[Régions:')) {
+    const match = rawCity.match(/\[Régions:(.*?)\]/)
+    if (match) {
+      explicitRegions = match[1].split(',').map(r => r.trim()).filter(Boolean)
+      sectors = rawCity.replace(/\[Régions:.*?\]/, '').split(',').map(s => s.trim()).filter(Boolean)
+    }
+  } else {
+    sectors = rawCity.split(',').map(s => s.trim()).filter(Boolean)
   }
+
+  // Check localStorage cache if explicit regions not in city string
+  if (explicitRegions.length === 0 && typeof localStorage !== 'undefined') {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+      const entry = saved[row.id] || (row.matricule ? saved[row.matricule] : null)
+      if (entry?.regions && entry.regions.length > 0) {
+        explicitRegions = entry.regions
+      }
+    } catch (e) {}
+  }
+
+  const regions = explicitRegions.length > 0
+    ? explicitRegions
+    : (() => {
+        const stored = typeof getStoredRegions === 'function' ? getStoredRegions() : null
+        const regionsSet = new Set()
+        sectors.forEach(s => {
+          const reg = getRegionForCity(s, stored)
+          if (reg) regionsSet.add(reg)
+        })
+        const inferred = Array.from(regionsSet)
+        if (inferred.length === 0 && rawCity) {
+          const fallbackReg = getRegionForCity(rawCity, stored)
+          if (fallbackReg) inferred.push(fallbackReg)
+        }
+        return inferred.length > 0 ? inferred : ['Casablanca-Settat']
+      })()
 
   return {
     id: row.id,
@@ -43,7 +77,7 @@ function rowToCommercial(row) {
     matricule: row.matricule || '',
     city: row.city || '',
     sectors: sectors.length > 0 ? sectors : [row.city || 'Casablanca'],
-    regions: regions.length > 0 ? regions : ['Casablanca-Settat'],
+    regions: regions,
     phone: row.phone || '',
     target: row.target_monthly_sales || 150000,
     current: row.current_month_sales || 0,
@@ -180,6 +214,7 @@ function rowToOrder(row, extras = {}) {
     avoirOrderNumber: extras.avoirOrderNumber || parsedObs.avoirOrderNumber || '',
     totalFreeItems: parseInt(extras.totalFreeItems || parsedObs.totalFreeItems || totalFreeItems, 10),
     appliedPromotions: extras.appliedPromotions || parsedObs.appliedPromotions || [],
+    hasAnormalPrice: extras.hasAnormalPrice !== undefined ? !!extras.hasAnormalPrice : (parsedObs.hasAnormalPrice || false),
     items: items,
   }
 }
@@ -491,18 +526,55 @@ export function AppProvider({ children }) {
 
   // ── COMMERCIALS CRUD ────────────────────────────────────────────────────────
   const addCommercial = useCallback(async (c) => {
-    const row = await dbAddCommercial(c)
+    const rawSectors = Array.isArray(c.sectors) && c.sectors.length > 0 ? c.sectors : (c.city ? c.city.split('|')[0].split(',') : ['Casablanca'])
+    const sectorClean = rawSectors.map(s => s.trim()).filter(Boolean)
+    const regionsClean = Array.isArray(c.regions) && c.regions.length > 0 ? c.regions : (c.region ? c.region.split(',') : ['Casablanca-Settat'])
+    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')}`
+
+    const row = await dbAddCommercial({ ...c, city: cityPayload })
     if (!row) return null
-    const appComm = rowToCommercial(row)
+    const appComm = {
+      ...rowToCommercial(row),
+      regions: regionsClean,
+      sectors: sectorClean
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+      saved[row.id] = { regions: regionsClean, sectors: sectorClean }
+      if (c.matricule) saved[c.matricule] = { regions: regionsClean, sectors: sectorClean }
+      localStorage.setItem('bardahl_commercial_regions', JSON.stringify(saved))
+    } catch (e) {}
+
     setCommercials(prev => [...prev, appComm])
     return appComm
   }, [])
 
   const updateCommercial = useCallback(async (c) => {
-    const row = await dbUpdateCommercial(c)
-    if (!row) return null
-    const appComm = rowToCommercial(row)
-    setCommercials(prev => prev.map(x => x.id === row.id ? appComm : x))
+    const targetId = c.id || c.dbId
+    const rawSectors = Array.isArray(c.sectors) && c.sectors.length > 0 ? c.sectors : (c.city ? c.city.split('|')[0].split(',') : ['Casablanca'])
+    const sectorClean = rawSectors.map(s => s.trim()).filter(Boolean)
+    const regionsClean = Array.isArray(c.regions) && c.regions.length > 0 ? c.regions : (c.region ? c.region.split(',') : ['Casablanca-Settat'])
+    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')}`
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+      saved[targetId] = { regions: regionsClean, sectors: sectorClean }
+      if (c.matricule) saved[c.matricule] = { regions: regionsClean, sectors: sectorClean }
+      localStorage.setItem('bardahl_commercial_regions', JSON.stringify(saved))
+    } catch (e) {}
+
+    const row = await dbUpdateCommercial({ ...c, id: targetId, city: cityPayload })
+    if (!row) {
+      const fallbackComm = { ...c, id: targetId, regions: regionsClean, sectors: sectorClean }
+      setCommercials(prev => prev.map(x => (x.id === targetId || x.dbId === targetId) ? fallbackComm : x))
+      return fallbackComm
+    }
+    const appComm = {
+      ...rowToCommercial(row),
+      regions: regionsClean,
+      sectors: sectorClean
+    }
+    setCommercials(prev => prev.map(x => (x.id === row.id || x.dbId === row.id || x.id === targetId) ? appComm : x))
     return appComm
   }, [])
 
@@ -603,7 +675,8 @@ export function AppProvider({ children }) {
       clientCity: clientRecord?.city || o.clientCity || '',
       clientPhone: clientRecord?.phone || o.clientPhone || '',
       commercialName: finalCommName,
-      commercialEmail: finalCommEmail
+      commercialEmail: finalCommEmail,
+      hasAnormalPrice: !!o.hasAnormalPrice
     }
 
     const row = await dbAddOrder(orderPayload)
@@ -623,6 +696,7 @@ export function AppProvider({ children }) {
       avoirOrderNumber: o.avoirOrderNumber || '',
       totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
       appliedPromotions: o.appliedPromotions || [],
+      hasAnormalPrice: !!o.hasAnormalPrice,
       commercialName: orderPayload.commercialName,
       commercialEmail: orderPayload.commercialEmail,
       clientName: orderPayload.clientName,
@@ -654,6 +728,7 @@ export function AppProvider({ children }) {
       avoirOrderNumber: o.avoirOrderNumber || '',
       totalFreeItems: parseInt(o.totalFreeItems, 10) || 0,
       appliedPromotions: o.appliedPromotions || [],
+      hasAnormalPrice: !!o.hasAnormalPrice,
       commercialName: o.commercialName || '',
       commercialEmail: o.commercialEmail || '',
       clientName: o.clientName || '',

@@ -265,7 +265,24 @@ fun OrderCardDetailed(
                     Text(order.orderNumber, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimaryDark)
                     Text(order.orderDate, fontSize = 11.sp, color = TextSecondaryDark)
                 }
-                StatusBadge(order.status)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val isAnormal = order.hasAnormalPrice || order.items.any { it.isPriceModified }
+                    if (isAnormal) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x33FF453A))
+                                .border(1.dp, Color(0xFFFF453A), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("⚠️ Anormal", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF453A))
+                        }
+                    }
+                    StatusBadge(order.status)
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -448,10 +465,12 @@ fun OrderCreateScreen(
             selectedItems = purchasedLines.map { item ->
                 val meta = products.find { it.id == item.productId || it.reference == item.productReference }
                 val upb = meta?.unitsPerBox ?: (if (item.unitsPerBox > 0) item.unitsPerBox else 12)
+                val isModified = item.isPriceModified || (meta != null && Math.abs(item.unitPriceTtc - meta.unitPriceTtc) > 0.05)
                 item.copy(
                     unitsPerBox = upb,
                     initialQuantity = item.quantity,
-                    initialFreeQuantity = item.freeQuantity
+                    initialFreeQuantity = item.freeQuantity,
+                    isPriceModified = isModified
                 )
             }
         }
@@ -1589,6 +1608,17 @@ fun OrderCreateScreen(
                         } else ""
                         val finalPromoNote = autoPromoSummary
 
+                        // PRIX-01: Anormal price detection
+                        val isPriceAnormal = combinedItems.any { item ->
+                            if (item.quantity <= 0 && item.freeQuantity > 0) return@any false
+                            val catProd = products.find { it.id == item.productId || it.reference == item.productReference }
+                            if (catProd != null) {
+                                Math.abs(item.unitPriceTtc - catProd.unitPriceTtc) > 0.05
+                            } else {
+                                item.isPriceModified
+                            }
+                        }
+
                         if (isEditMode && orderToEdit != null) {
                             val updatedOrder = orderToEdit!!.copy(
                                 clientName = selectedClient!!.companyName,
@@ -1605,7 +1635,8 @@ fun OrderCreateScreen(
                                 totalHt = totalHt,
                                 totalDiscount = totalDiscountAmount,
                                 totalTva = totalTva,
-                                totalTtc = netTotalTtc
+                                totalTtc = netTotalTtc,
+                                hasAnormalPrice = isPriceAnormal
                             )
                             orderViewModel.updateOrder(updatedOrder)
                             Toast.makeText(context, "Bon de Commande ${updatedOrder.orderNumber} modifié avec succès!", Toast.LENGTH_LONG).show()
@@ -1632,7 +1663,8 @@ fun OrderCreateScreen(
                                 totalHt = totalHt,
                                 totalDiscount = totalDiscountAmount,
                                 totalTva = totalTva,
-                                totalTtc = netTotalTtc
+                                totalTtc = netTotalTtc,
+                                hasAnormalPrice = isPriceAnormal
                             )
                             orderViewModel.createOrder(newOrder)
 
@@ -2084,8 +2116,11 @@ fun OrderCreateScreen(
                         onClick = {
                             val parsed = tempPriceInput.replace(',', '.').toDoubleOrNull()
                             if (parsed != null && parsed >= 0.0) {
+                                val catProd = products.find { it.id == currentTargetItem.productId || it.reference == currentTargetItem.productReference }
+                                val origPrice = catProd?.unitPriceTtc ?: currentTargetItem.unitPriceTtc
+                                val modified = Math.abs(parsed - origPrice) > 0.05
                                 selectedItems = selectedItems.mapIndexed { i, itm ->
-                                    if (i == targetIdx) itm.copy(unitPriceTtc = parsed) else itm
+                                    if (i == targetIdx) itm.copy(unitPriceTtc = parsed, isPriceModified = modified) else itm
                                 }
                             }
                             itemIndexToEditPrice = null

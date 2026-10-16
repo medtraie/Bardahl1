@@ -80,6 +80,24 @@ export default function Orders({ openWizardTrigger }) {
     return <span className={`badge-status ${s}`}>{s}</span>
   }
 
+  const isOrderPriceAnormal = (order, catalogProducts = []) => {
+    if (!order) return false
+    if (order.hasAnormalPrice) return true
+    const items = order.items || []
+    return items.some(it => {
+      const qty = (it.qty !== undefined && it.qty !== null) ? it.qty : ((it.quantity !== undefined && it.quantity !== null) ? it.quantity : 0)
+      const price = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
+      if (qty <= 0) return false
+      if (it.isPriceModified) return true
+      const catProd = (catalogProducts || []).find(p => p.id === it.productId || p.reference === it.reference || p.reference === it.productReference)
+      if (catProd && (catProd.priceTtc || catProd.unitPriceTtc)) {
+        const catPrice = parseFloat(catProd.priceTtc || catProd.unitPriceTtc)
+        return Math.abs(price - catPrice) > 0.05
+      }
+      return false
+    })
+  }
+
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '-'
     const clean = String(dateStr).substring(0, 10)
@@ -699,10 +717,15 @@ export default function Orders({ openWizardTrigger }) {
     const parsed = parseFloat(cleanStr)
     setSelectedProducts(prev => prev.map((p, i) => {
       if (i !== index) return p
+      const catProd = products.find(cp => cp.id === p.productId || cp.reference === p.reference)
+      const standardPrice = catProd ? parseFloat(catProd.priceTtc || catProd.unitPriceTtc || 0) : p.priceTtc
+      const isModified = !isNaN(parsed) && Math.abs(parsed - standardPrice) > 0.05
       return {
         ...p,
         priceTtc: !isNaN(parsed) && parsed >= 0 ? parsed : p.priceTtc,
-        customPriceStr: newPrice
+        customPriceStr: newPrice,
+        isPriceModified: isModified,
+        originalPriceTtc: standardPrice
       }
     }))
   }
@@ -885,6 +908,19 @@ export default function Orders({ openWizardTrigger }) {
       consumeClientCompensation(appliedAvoirCompensation.id, activeOrderNumber)
     }
 
+    // Detect abnormal unit price modification (PRIX-01)
+    const hasAnormalPrice = combinedItems.some(item => {
+      const q = (item.qty !== undefined && item.qty !== null) ? item.qty : ((item.quantity !== undefined && item.quantity !== null) ? item.quantity : 0)
+      if (q <= 0) return false // pure sample or free promotion item
+      if (item.isPriceModified) return true
+      const catProd = products.find(cp => cp.id === item.productId || cp.reference === item.reference)
+      if (catProd && (catProd.priceTtc || catProd.unitPriceTtc)) {
+        const catPrice = parseFloat(catProd.priceTtc || catProd.unitPriceTtc)
+        return Math.abs(parseFloat(item.priceTtc) - catPrice) > 0.05
+      }
+      return false
+    })
+
     if (editingOrder) {
       const updatedOrder = {
         ...editingOrder,
@@ -906,6 +942,7 @@ export default function Orders({ openWizardTrigger }) {
         totalTtc: netTotalTtc,
         totalFreeItems: totalFreeItemsCount,
         appliedPromotions: promoAnalysis.appliedPromotions,
+        hasAnormalPrice: hasAnormalPrice,
         items: combinedItems
       }
 
@@ -948,6 +985,7 @@ export default function Orders({ openWizardTrigger }) {
         totalTtc: netTotalTtc,
         totalFreeItems: totalFreeItemsCount,
         appliedPromotions: promoAnalysis.appliedPromotions,
+        hasAnormalPrice: hasAnormalPrice,
         items: combinedItems
       }
 
@@ -1389,7 +1427,30 @@ export default function Orders({ openWizardTrigger }) {
                           </span>
                         </td>
                         <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                          {renderOrderStatusBadge(o.status)}
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            {renderOrderStatusBadge(o.status)}
+                            {isOrderPriceAnormal(o, products) && (
+                              <span
+                                title="⚠️ Alerte : Le prix de vente unitaire d'un ou plusieurs produits a été modifié par le commercial"
+                                style={{
+                                  fontSize: '9.5px',
+                                  fontWeight: '900',
+                                  padding: '2px 7px',
+                                  borderRadius: '5px',
+                                  background: 'rgba(255, 69, 58, 0.16)',
+                                  color: '#FF453A',
+                                  border: '1px solid rgba(255, 69, 58, 0.45)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  letterSpacing: '0.4px',
+                                  textTransform: 'uppercase'
+                                }}
+                              >
+                                <span>⚠️</span> Anormal
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                           <div style={{

@@ -1,5 +1,6 @@
 package com.bardahl.maroc.data.remote
 
+import com.bardahl.maroc.data.MoroccanRegionsRepository
 import com.bardahl.maroc.domain.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -200,8 +201,31 @@ class SupabaseService(
                 val list = mutableListOf<Commercial>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
-                    val sectorStr = obj.optString("city", "Casablanca")
+                    val rawCityStr = obj.optString("city", "Casablanca")
+                    var sectorStr = rawCityStr
+                    var regionList = emptyList<String>()
+
+                    if (rawCityStr.contains("| Régions:")) {
+                        val parts = rawCityStr.split("| Régions:")
+                        sectorStr = parts[0].trim()
+                        regionList = parts[1].split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    } else if (rawCityStr.contains("[Régions:")) {
+                        val match = Regex("""\[Régions:(.*?)\]""").find(rawCityStr)
+                        if (match != null) {
+                            regionList = match.groupValues[1].split(",").map { it.trim() }.filter { it.isNotBlank() }
+                            sectorStr = rawCityStr.replace(Regex("""\[Régions:.*?\]"""), "").trim()
+                        }
+                    }
+
                     val sectorList = sectorStr.split(",").map { it.trim() }.filter { it.isNotBlank() }
+
+                    // Register custom regions found into MoroccanRegionsRepository if not present
+                    regionList.forEach { rName ->
+                        if (MoroccanRegionsRepository.getAllRegions().none { it.name.equals(rName, ignoreCase = true) }) {
+                            MoroccanRegionsRepository.addCustomRegion(rName, sectorList)
+                        }
+                    }
+
                     list.add(
                         Commercial(
                             id = obj.getString("id"),
@@ -216,7 +240,8 @@ class SupabaseService(
                             currentMonthSales = obj.optDouble("current_month_sales", 0.0),
                             totalOrdersCount = obj.optInt("total_orders_count", 0),
                             isActive = obj.optBoolean("is_active", true),
-                            sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca")
+                            sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
+                            regions = regionList
                         )
                     )
                 }
@@ -232,6 +257,11 @@ class SupabaseService(
         try {
             val conn = getConnection("commercials", "POST")
             conn.doOutput = true
+            val cityPayload = if (commercial.regions.isNotEmpty()) {
+                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")}"
+            } else {
+                commercial.city
+            }
             val json = JSONObject().apply {
                 put("id", commercial.id)
                 put("name", commercial.name)
@@ -239,7 +269,7 @@ class SupabaseService(
                 put("password", commercial.password)
                 put("phone", commercial.phone)
                 put("matricule", commercial.matricule)
-                put("city", commercial.city)
+                put("city", cityPayload)
                 put("target_monthly_sales", commercial.targetMonthlySales)
                 put("current_month_sales", commercial.currentMonthSales)
                 put("total_orders_count", commercial.totalOrdersCount)
@@ -256,13 +286,18 @@ class SupabaseService(
         try {
             val conn = getConnection("commercials?id=eq.${commercial.id}", "PATCH")
             conn.doOutput = true
+            val cityPayload = if (commercial.regions.isNotEmpty()) {
+                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")}"
+            } else {
+                commercial.city
+            }
             val json = JSONObject().apply {
                 put("name", commercial.name)
                 put("email", commercial.email)
                 put("password", commercial.password)
                 put("phone", commercial.phone)
                 put("matricule", commercial.matricule)
-                put("city", commercial.city)
+                put("city", cityPayload)
                 put("target_monthly_sales", commercial.targetMonthlySales)
             }
             conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
@@ -386,6 +421,7 @@ class SupabaseService(
                     }
 
                     val totalFreeUnits = parsedItems.sumOf { it.freeQuantity }
+                    val hasAnormal = obs.trim().startsWith("{") && obs.trim().endsWith("}") && JSONObject(obs.trim()).optBoolean("hasAnormalPrice", false)
 
                     list.add(
                         Order(
@@ -411,7 +447,8 @@ class SupabaseService(
                             totalTva = obj.optDouble("total_tva", 0.0),
                             totalTtc = obj.optDouble("total_ttc", 0.0),
                             observations = obs,
-                            isSynced = true
+                            isSynced = true,
+                            hasAnormalPrice = hasAnormal
                         )
                     )
                 }
@@ -481,6 +518,7 @@ class SupabaseService(
                     put("commercialEmail", "bardahl@gmail.com")
                 }
                 put("clientName", order.clientName)
+                put("hasAnormalPrice", order.hasAnormalPrice)
             }
 
             val json = JSONObject().apply {
@@ -557,6 +595,7 @@ class SupabaseService(
                     put("commercialEmail", "bardahl@gmail.com")
                 }
                 put("clientName", order.clientName)
+                put("hasAnormalPrice", order.hasAnormalPrice)
             }
 
             val statusStr = if (order.status == OrderStatus.VALIDATED) "validated" else "draft"

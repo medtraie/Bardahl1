@@ -91,6 +91,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                         val last = if (nameParts.size > 1) nameParts.subList(1, nameParts.size).joinToString(" ") else ""
                         val sectorList = c.city.split(",").map { it.trim() }.filter { it.isNotBlank() }
                         val inferredRegions = sectorList.map { MoroccanRegionsRepository.getRegionForCity(it) }.distinct().ifEmpty { listOf("Casablanca-Settat") }
+                        val finalRegions = if (c.regions.isNotEmpty()) c.regions else inferredRegions
 
                         CommercialData(
                             id = c.id,
@@ -102,7 +103,7 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             matricule = c.matricule,
                             city = c.city,
                             address = c.city,
-                            regions = inferredRegions,
+                            regions = finalRegions,
                             sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
                             isActive = c.isActive,
                             totalOrders = orderCount,
@@ -292,7 +293,8 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             currentMonthSales = newComm.currentSales,
                             totalOrdersCount = newComm.totalOrders,
                             isActive = newComm.isActive,
-                            sectors = newComm.sectors
+                            sectors = newComm.sectors,
+                            regions = newComm.regions
                         )
                     )
                 }
@@ -324,7 +326,8 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                             currentMonthSales = updatedComm.currentSales,
                             totalOrdersCount = updatedComm.totalOrders,
                             isActive = updatedComm.isActive,
-                            sectors = updatedComm.sectors
+                            sectors = updatedComm.sectors,
+                            regions = updatedComm.regions
                         )
                     )
                 }

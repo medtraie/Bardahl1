@@ -45,7 +45,8 @@ data class Commercial(
     val currentMonthSales: Double = 0.0,
     val totalOrdersCount: Int = 0,
     val isActive: Boolean = true,
-    val sectors: List<String> = emptyList()
+    val sectors: List<String> = emptyList(),
+    val regions: List<String> = emptyList()
 )
 
 data class Client(
@@ -112,7 +113,8 @@ data class OrderItem(
     val tvaRate: Double = 20.0,
     val unitsPerBox: Int = 12,
     val initialQuantity: Int = quantity,
-    val initialFreeQuantity: Int = freeQuantity
+    val initialFreeQuantity: Int = freeQuantity,
+    val isPriceModified: Boolean = false
 ) {
     val totalTtc: Double
         get() = (unitPriceTtc * quantity) * (1.0 - (discountPercentage / 100.0))
@@ -144,7 +146,8 @@ data class Order(
     val totalTtc: Double = 0.0,
     val signatureUrl: String? = null,
     val observations: String? = null,
-    val isSynced: Boolean = true
+    val isSynced: Boolean = true,
+    val hasAnormalPrice: Boolean = false
 )
 
 enum class PromotionType(val label: String) {

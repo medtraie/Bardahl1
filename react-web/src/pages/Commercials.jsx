@@ -163,34 +163,53 @@ export default function Commercials() {
   const parseSectors = (cityString) => {
     if (!cityString) return ['Casablanca']
     if (Array.isArray(cityString)) return cityString
-    return cityString.split(',').map(s => s.trim()).filter(Boolean)
+    let str = String(cityString)
+    if (str.includes('| Régions:')) {
+      str = str.split('| Régions:')[0].trim()
+    }
+    return str.split(',').map(s => s.trim()).filter(Boolean)
   }
 
   const parseCommercialRegions = (comm) => {
     if (!comm) return ['Casablanca-Settat']
-    if (Array.isArray(comm.regions) && comm.regions.length > 0) return comm.regions
-    if (comm.region) return [comm.region]
 
-    // Check localStorage cache
+    // 1. Check formatted city string containing | Régions:
+    if (typeof comm.city === 'string' && comm.city.includes('| Régions:')) {
+      const parts = comm.city.split('| Régions:')
+      const parsed = parts[1].split(',').map(r => r.trim()).filter(Boolean)
+      if (parsed.length > 0) return parsed
+    }
+
+    // 2. Check localStorage cache
     try {
       const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
-      if (saved[comm.id]?.regions && saved[comm.id].regions.length > 0) {
-        return saved[comm.id].regions
-      }
-      if (saved[comm.dbId]?.regions && saved[comm.dbId].regions.length > 0) {
-        return saved[comm.dbId].regions
+      const entry = saved[comm.id] || saved[comm.dbId] || (comm.matricule ? saved[comm.matricule] : null)
+      if (entry?.regions && entry.regions.length > 0) {
+        return entry.regions
       }
     } catch (e) {}
 
-    // Infer from city/sectors
-    const cities = parseSectors(comm.city || comm.sectors)
+    // 3. Check explicit comm.regions array
+    if (Array.isArray(comm.regions) && comm.regions.length > 0) return comm.regions
+    if (comm.region) {
+      const parsed = String(comm.region).split(',').map(r => r.trim()).filter(Boolean)
+      if (parsed.length > 0) return parsed
+    }
+
+    // 4. Infer from city/sectors
+    const cities = parseCommercialCities(comm)
     const inferred = Array.from(new Set(cities.map(c => getRegionForCity(c, availableRegions))))
     return inferred.length > 0 ? inferred : ['Casablanca-Settat']
   }
 
   const parseCommercialCities = (comm) => {
     if (!comm) return ['Casablanca']
-    const cities = parseSectors(comm.city || comm.sectors)
+    if (Array.isArray(comm.sectors) && comm.sectors.length > 0) return comm.sectors
+    let rawCity = comm.city || ''
+    if (rawCity.includes('| Régions:')) {
+      rawCity = rawCity.split('| Régions:')[0].trim()
+    }
+    const cities = parseSectors(rawCity)
     if (cities.length > 0) return cities
     const regs = parseCommercialRegions(comm)
     return getCitiesForRegions(regs, availableRegions)
@@ -294,6 +313,8 @@ export default function Commercials() {
 
   const handleOpenEditModal = (comm) => {
     setEditingCommercial(comm)
+    const stored = getStoredRegions()
+    setAvailableRegions(stored)
     const commRegions = parseCommercialRegions(comm)
     const commCities = parseCommercialCities(comm)
     setFormData({
@@ -313,7 +334,7 @@ export default function Commercials() {
   }
 
   // Toggle Region assignment and automatically associate attached cities (COM-01)
-  const handleToggleRegion = (regName) => {
+  const handleToggleRegion = (regName, customRegList = availableRegions) => {
     const isSelected = formData.regions.includes(regName)
     let nextRegions = []
     if (isSelected) {
@@ -327,10 +348,10 @@ export default function Commercials() {
     }
 
     // Associate cities attached to all selected regions
-    const attachedCities = getCitiesForRegions(nextRegions, availableRegions)
+    const attachedCities = getCitiesForRegions(nextRegions, customRegList)
     // Keep custom cities that don't belong to any region, plus the attached cities
     const remainingCustom = formData.sectors.filter(s => {
-      const reg = getRegionForCity(s, availableRegions)
+      const reg = getRegionForCity(s, customRegList)
       return nextRegions.includes(reg)
     })
     const merged = Array.from(new Set([...remainingCustom, ...attachedCities]))
@@ -385,12 +406,10 @@ export default function Commercials() {
       const updated = getStoredRegions()
       setAvailableRegions(updated)
       // Automatically add to current commercial if modal is open
-      if (!formData.regions.includes(created.name)) {
-        handleToggleRegion(created.name)
-      }
+      handleToggleRegion(created.name, updated)
       setNewRegionForm({ name: '', cities: '', color: '#EAB308' })
       setShowAddRegionModal(false)
-      alert(`Nouvelle région "${created.name}" configurée avec succès !`)
+      alert(`Nouvelle région "${created.name}" configurée et affectée avec succès !`)
     }
   }
 
@@ -428,11 +447,15 @@ export default function Commercials() {
     const sectorString = formData.sectors.join(', ')
     const regionString = formData.regions.join(', ')
     const commId = editingCommercial ? (editingCommercial.dbId || editingCommercial.id) : ('comm_' + Date.now())
+    const fullCityString = `${sectorString} | Régions: ${regionString}`
 
     // Persist geographical assignment in local storage cache
     try {
       const savedMap = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
       savedMap[commId] = { regions: formData.regions, sectors: formData.sectors }
+      if (formData.matricule) {
+        savedMap[formData.matricule] = { regions: formData.regions, sectors: formData.sectors }
+      }
       localStorage.setItem('bardahl_commercial_regions', JSON.stringify(savedMap))
     } catch (err) {}
 
@@ -440,7 +463,7 @@ export default function Commercials() {
       const updatedComm = {
         ...editingCommercial,
         name: formData.name,
-        city: sectorString,
+        city: fullCityString,
         region: regionString,
         regions: formData.regions,
         sectors: formData.sectors,
@@ -462,7 +485,7 @@ export default function Commercials() {
         dbId: commId,
         name: formData.name,
         matricule: formData.matricule || `COM-00${commercials.length + 1}`,
-        city: sectorString,
+        city: fullCityString,
         region: regionString,
         regions: formData.regions,
         sectors: formData.sectors,
