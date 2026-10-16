@@ -44,6 +44,21 @@ data class PromotionResult(
 
 object PromotionEngine {
 
+    fun normalizeFamily(raw: String?): String {
+        if (raw.isNullOrBlank()) return "AUTRES"
+        val u = raw.uppercase().trim()
+        return when {
+            u.contains("A0000000-0000-0000-0000-000000000002") || u.contains("GRAISSE") || u.contains("IND_GRAISSE") || (u.contains("IND") && !u.contains("AEROSOL")) -> "IND_GRAISSES"
+            u.contains("1FC40C43-AB74-41BC-919E-2268B742CB9A") || u.contains("ADDITIF") || u.contains("TRAITEMENT") || u.contains("SUMOLUB") -> "ADDITIFS"
+            u.contains("A0000000-0000-0000-0000-000000000001") || u.contains("LUB_AUTO") || u.contains("HUILE") || u.contains("AUTO") -> "LUB_AUTO"
+            u.contains("A0000000-0000-0000-0000-000000000003") || u.contains("IND_AEROSOL") || u.contains("AEROSOL") || u.contains("NETTOYANT") -> "IND_AEROSOLS"
+            u.contains("A0000000-0000-0000-0000-000000000005") || u.contains("A0000000-0000-0000-0000-000000000006") || u.contains("FLUIDE") || u.contains("LR") -> "FLUIDES_LR"
+            u.contains("98A08F5A-C31B-496D-AD6B-44FD676B38AE") || u.contains("MOTO") -> "LUBRIFIANTS_MOTO"
+            u.contains("397C5A02-FA1A-49F8-A05A-757AFAA00D01") || u.contains("LAVE") -> "LAVE_GLACE"
+            else -> u
+        }
+    }
+
     val defaultPromotions: List<Promotion> = listOf(
         Promotion(
             id = "promo_1",
@@ -148,12 +163,16 @@ object PromotionEngine {
             val meta = productMap[item.productId] ?: productMap[item.productReference]
             val upb = meta?.unitsPerBox ?: (if (item.unitsPerBox > 0) item.unitsPerBox else 12)
             val eligibleCartons = qty / upb
-            val family = (meta?.categoryId ?: "AUTRES").uppercase()
+            val rawFamily = (meta?.categoryId ?: "AUTRES").uppercase()
+            val normFamily = normalizeFamily(rawFamily)
 
-            val fStat = familyStats.getOrPut(family) { ItemStat() }
-            fStat.totalCartons += eligibleCartons
-            fStat.totalAmountTtc += lineTotal
-            fStat.indices.add(idx)
+            val fKeys = setOf(rawFamily, normFamily).filter { it.isNotBlank() }
+            fKeys.forEach { fKey ->
+                val fStat = familyStats.getOrPut(fKey) { ItemStat() }
+                fStat.totalCartons += eligibleCartons
+                fStat.totalAmountTtc += lineTotal
+                fStat.indices.add(idx)
+            }
 
             val pKey = item.productId.ifEmpty { item.productReference }
             val pStat = productStats.getOrPut(pKey) { ItemStat() }
@@ -176,7 +195,8 @@ object PromotionEngine {
             if (chosen != null) {
                 val currentVal = if (chosen.targetType == PromoTargetType.FAMILY) {
                     val fam = (chosen.targetFamily ?: "").uppercase()
-                    val st = familyStats[fam]
+                    val normFam = normalizeFamily(fam)
+                    val st = familyStats[normFam] ?: familyStats[fam]
                     if (chosen.type == PromotionType.TYPE_4) st?.totalAmountTtc ?: 0.0 else (st?.totalCartons ?: 0).toDouble()
                 } else {
                     val pKey = chosen.targetProductId ?: chosen.targetProductRef ?: ""
@@ -185,7 +205,8 @@ object PromotionEngine {
                 }
 
                 val minThreshold = if (chosen.tiers.isNotEmpty()) {
-                    chosen.tiers.minOf { it.threshold }.toDouble()
+                    val validTiers = chosen.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 }
+                    if (validTiers.isNotEmpty()) validTiers.minOf { it.threshold }.toDouble() else chosen.tiers.minOf { it.threshold }.toDouble()
                 } else {
                     chosen.threshold
                 }
@@ -224,11 +245,20 @@ object PromotionEngine {
 
             if (promo.targetType == PromoTargetType.FAMILY) {
                 val targetFam = (promo.targetFamily ?: "").uppercase()
-                val stat = familyStats[targetFam]
+                val normTargetFam = normalizeFamily(targetFam)
+                val stat = familyStats[normTargetFam] ?: familyStats[targetFam]
                 if (stat != null) {
                     if (promo.type == PromotionType.TYPE_4) {
                         currentVal = stat.totalAmountTtc
-                        if (currentVal >= promo.threshold) {
+                        if (promo.tiers.isNotEmpty()) {
+                            val sortedTiers = promo.tiers.sortedByDescending { it.threshold }
+                            val matched = sortedTiers.firstOrNull { currentVal >= it.threshold }
+                            if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0)) {
+                                isEligible = true
+                                appliedTier = matched
+                                applicableIndices = stat.indices
+                            }
+                        } else if (currentVal >= promo.threshold) {
                             isEligible = true
                             applicableIndices = stat.indices
                         }
@@ -237,7 +267,7 @@ object PromotionEngine {
                         if (promo.tiers.isNotEmpty()) {
                             val sortedTiers = promo.tiers.sortedByDescending { it.threshold }
                             val matched = sortedTiers.firstOrNull { currentVal >= it.threshold }
-                            if (matched != null) {
+                            if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0)) {
                                 isEligible = true
                                 appliedTier = matched
                                 applicableIndices = stat.indices

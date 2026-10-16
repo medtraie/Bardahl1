@@ -518,8 +518,17 @@ fun OrderCreateScreen(
                 (promo.targetProductRef != null && p.name.contains(promo.targetProductRef!!, ignoreCase = true))
             }
         } else {
-            products.find { p ->
-                (p.categoryId ?: "").equals(promo.targetFamily ?: "", ignoreCase = true)
+            val targetFam = PromotionEngine.normalizeFamily(promo.targetFamily)
+            val existingItem = selectedItems.find { item ->
+                val meta = products.find { it.id == item.productId || it.reference == item.productReference }
+                PromotionEngine.normalizeFamily(meta?.categoryId) == targetFam
+            }
+            if (existingItem != null) {
+                products.find { it.id == existingItem.productId || it.reference == existingItem.productReference }
+            } else {
+                products.find { p ->
+                    PromotionEngine.normalizeFamily(p.categoryId) == targetFam
+                }
             }
         } ?: products.find { p ->
             promo.name.contains(p.name, ignoreCase = true) || (p.reference.isNotBlank() && promo.name.contains(p.reference, ignoreCase = true))
@@ -527,18 +536,34 @@ fun OrderCreateScreen(
 
         val upb = targetProduct?.unitsPerBox ?: 12
 
-        // Required quantity in UNITS (CMD-02: promo thresholds are in cartons, convert to units)
-        val requiredCartons = if (promo.tiers.isNotEmpty()) {
-            promo.tiers.first().threshold.toInt().coerceAtLeast(1)
-        } else if (promo.threshold > 0) {
-            if (promo.type == PromotionType.TYPE_4 && targetProduct != null && targetProduct.unitPriceTtc > 0) {
-                kotlin.math.ceil(promo.threshold / targetProduct.unitPriceTtc).toInt().coerceAtLeast(1)
+        // Required quantity in UNITS
+        val targetThreshold: Double = if (promo.tiers.isNotEmpty()) {
+            val valid = promo.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 }
+            if (valid.isNotEmpty()) {
+                if (valid.first().min > 0.0) valid.first().min else valid.first().threshold.toDouble()
             } else {
-                promo.threshold.toInt().coerceAtLeast(1)
+                if (promo.tiers.first().min > 0.0) promo.tiers.first().min else promo.tiers.first().threshold.toDouble()
             }
-        } else 10
+        } else {
+            promo.threshold
+        }
 
-        val requiredUnits = if (promo.type == PromotionType.TYPE_4) requiredCartons else (requiredCartons * upb)
+        val requiredUnits = if (promo.type == PromotionType.TYPE_4) {
+            val price = targetProduct?.unitPriceTtc ?: 100.0
+            val targetFam = PromotionEngine.normalizeFamily(promo.targetFamily)
+            val currentFamAmt = selectedItems.sumOf { item ->
+                val meta = products.find { it.id == item.productId || it.reference == item.productReference }
+                if (PromotionEngine.normalizeFamily(meta?.categoryId) == targetFam) {
+                    item.unitPriceTtc * item.quantity
+                } else 0.0
+            }
+            val missing = maxOf(0.0, targetThreshold - currentFamAmt)
+            val needed = if (missing > 0.0) missing else targetThreshold
+            kotlin.math.ceil(needed / if (price > 0) price else 100.0).toInt().coerceAtLeast(1)
+        } else {
+            val reqCartons = targetThreshold.toInt().coerceAtLeast(1)
+            reqCartons * upb
+        }
 
         // Free quantity in UNITS (CMD-01: convert free cartons to free units)
         val freeCartons = if (promo.type == PromotionType.TYPE_2) {
@@ -560,7 +585,7 @@ fun OrderCreateScreen(
             if (existingIdx >= 0) {
                 selectedItems = selectedItems.mapIndexed { idx, itm ->
                     if (idx == existingIdx) {
-                        val newQty = maxOf(itm.quantity, requiredUnits)
+                        val newQty = if (promo.type == PromotionType.TYPE_4) itm.quantity + requiredUnits else maxOf(itm.quantity, requiredUnits)
                         val newFree = if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.SAME_PRODUCT) maxOf(itm.freeQuantity, freeUnits) else itm.freeQuantity
                         itm.copy(quantity = newQty, freeQuantity = newFree, unitsPerBox = upb, promoTag = promo.name)
                     } else itm
@@ -583,18 +608,16 @@ fun OrderCreateScreen(
                 if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.DIFFERENT_PRODUCT && freeUnits > 0) {
                     val freeProd = products.find { it.id == promo.freeProductId || it.reference == promo.freeProductRef }
                     if (freeProd != null) {
-                        val giftUpb = freeProd.unitsPerBox
-                        val distinctFreeUnits = freeCartons * giftUpb
                         updatedList.add(
                             OrderItem(
                                 productId = freeProd.id,
                                 productName = freeProd.name,
                                 productReference = freeProd.reference,
                                 quantity = 0,
-                                freeQuantity = distinctFreeUnits,
-                                unitPriceTtc = freeProd.unitPriceTtc,
-                                unitsPerBox = giftUpb,
-                                promoTag = "🎁 Cadeau Offert (${promo.name})"
+                                freeQuantity = freeUnits,
+                                unitPriceTtc = 0.0,
+                                unitsPerBox = freeProd.unitsPerBox,
+                                promoTag = "Cadeau: ${promo.name}"
                             )
                         )
                     }
@@ -1306,6 +1329,16 @@ fun OrderCreateScreen(
                                         fontSize = 11.sp,
                                         color = TextPrimaryDark
                                     )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Button(
+                                        onClick = { applyPromotionToOrder(status.promo) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("⚡ Activer l'offre automatiquement", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }

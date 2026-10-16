@@ -89,6 +89,23 @@ export const getFamilyInfo = (categoryOrFamily, familiesList = null) => {
   
   const c = String(categoryOrFamily).toUpperCase().trim()
 
+  // Supabase Category UUID mappings
+  const knownUuidMap = {
+    'A0000000-0000-0000-0000-000000000001': 'LUB_AUTO',
+    'A0000000-0000-0000-0000-000000000002': 'IND_GRAISSES',
+    'A0000000-0000-0000-0000-000000000003': 'IND_AEROSOLS',
+    'A0000000-0000-0000-0000-000000000004': 'IND_GRAISSES',
+    'A0000000-0000-0000-0000-000000000005': 'FLUIDES_LR',
+    'A0000000-0000-0000-0000-000000000006': 'FLUIDES_LR',
+    '1FC40C43-AB74-41BC-919E-2268B742CB9A': 'ADDITIFS',
+    '98A08F5A-C31B-496D-AD6B-44FD676B38AE': 'LUBRIFIANTS_MOTO',
+    '397C5A02-FA1A-49F8-A05A-757AFAA00D01': 'LAVE_GLACE'
+  }
+  if (knownUuidMap[c]) {
+    const f = families.find(f => f.code === knownUuidMap[c])
+    if (f) return f
+  }
+
   // 1. Recherche par correspondance exacte de code, label ou id
   const exact = families.find(f => 
     (f.code && f.code.toUpperCase() === c) || 
@@ -100,24 +117,28 @@ export const getFamilyInfo = (categoryOrFamily, familiesList = null) => {
   if (exact) return exact
 
   // 2. Recherche par mots-clés métiers historiques Bardahl
-  if (c.includes('ADDITIF') || c.includes('TRAITEMENT') || c.includes('INJECTEUR')) {
+  if (c.includes('GRAISSE') || c.includes('IND_GRAISSE') || c.includes('ALIM') || c.includes('MAINTENANCE') || (c.includes('IND') && !c.includes('AEROSOL'))) {
+    const f = families.find(f => f.code === 'IND_GRAISSES')
+    if (f) return f
+  }
+  if (c.includes('ADDITIF') || c.includes('TRAITEMENT') || c.includes('INJECTEUR') || c.includes('SUMOLUB')) {
     const f = families.find(f => f.code === 'ADDITIFS')
     if (f) return f
   }
   if (c.includes('FLUIDE') || c.includes('LR') || c.includes('REFROIDISSEMENT') || c.includes('LAVE')) {
-    const f = families.find(f => f.code === 'FLUIDES_LR')
+    const f = families.find(f => f.code === 'FLUIDES_LR') || families.find(f => f.code === 'LAVE_GLACE')
     if (f) return f
   }
-  if (c.includes('LUB') || c.includes('HUILE') || c.includes('AUTO') || c.includes('MOTO') || c.includes('10W40') || c.includes('5W30')) {
+  if (c.includes('MOTO')) {
+    const f = families.find(f => f.code === 'LUBRIFIANTS_MOTO')
+    if (f) return f
+  }
+  if (c.includes('LUB') || c.includes('HUILE') || c.includes('AUTO') || c.includes('10W40') || c.includes('5W30') || c.includes('5W40')) {
     const f = families.find(f => f.code === 'LUB_AUTO')
     if (f) return f
   }
   if (c.includes('AEROSOL') || c.includes('NETTOYANT') || c.includes('DEGRIPPANT') || c.includes('FREIN')) {
     const f = families.find(f => f.code === 'IND_AEROSOLS')
-    if (f) return f
-  }
-  if (c.includes('GRAISSE') || c.includes('IND') || c.includes('ALIM') || c.includes('MAINTENANCE')) {
-    const f = families.find(f => f.code === 'IND_GRAISSES')
     if (f) return f
   }
 

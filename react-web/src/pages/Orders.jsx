@@ -335,7 +335,7 @@ export default function Orders({ openWizardTrigger }) {
         qtyGratuit: recordedFreeUnits,
         initialFreeUnits: recordedFreeUnits,
         promoTag: i.promoTag || '',
-        remisePercent: parseFloat(i.remisePercent || i.remise || 0)
+        remisePercent: (i.remisePercent !== undefined && i.remisePercent !== null && parseFloat(i.remisePercent) > 0) ? parseFloat(i.remisePercent) : (parseFloat(i.remise || 0) > 0 ? parseFloat(i.remise) : '')
       }
     })
 
@@ -616,18 +616,32 @@ export default function Orders({ openWizardTrigger }) {
     // 1. Locate the target product in catalog
     let targetProduct = null
     if (promo.targetType === 'PRODUCT') {
+      const targetRefs = (promo.targetProductRefs && Array.isArray(promo.targetProductRefs) && promo.targetProductRefs.length > 0)
+        ? promo.targetProductRefs
+        : (promo.targetProductRef ? [promo.targetProductRef] : (promo.targetProductId ? [promo.targetProductId] : []))
+
       targetProduct = products.find(p =>
-        p.id === promo.targetProductId ||
-        p.reference === promo.targetProductRef ||
-        (promo.targetProductRef && p.code === promo.targetProductRef) ||
+        targetRefs.some(ref => ref === p.id || ref === p.reference || ref === p.code) ||
         (promo.targetProductName && p.name && p.name.toLowerCase() === promo.targetProductName.toLowerCase()) ||
         (promo.targetProductRef && p.name && p.name.toLowerCase().includes(promo.targetProductRef.toLowerCase())) ||
         (promo.targetProductName && p.name && p.name.toLowerCase().includes(promo.targetProductName.toLowerCase()))
       )
     } else if (promo.targetType === 'FAMILY') {
-      targetProduct = products.find(p =>
-        (p.category || p.categoryId || '').toUpperCase() === (promo.targetFamily || '').toUpperCase()
-      )
+      const targetFamInfo = getFamilyInfo(promo.targetFamily)
+      // Check if user already has an item from this family in the cart
+      const existingFamilyItem = selectedProducts.find(item => {
+        const itemFam = getFamilyInfo(item.category)
+        return itemFam.code === targetFamInfo.code
+      })
+      if (existingFamilyItem) {
+        targetProduct = products.find(p => p.id === existingFamilyItem.productId || p.reference === existingFamilyItem.reference)
+      }
+      if (!targetProduct) {
+        targetProduct = products.find(p => {
+          const pFam = getFamilyInfo(p.category || p.categoryId || '')
+          return pFam.code === targetFamInfo.code
+        })
+      }
     }
 
     // Fallback: search in promo name or description
@@ -640,31 +654,45 @@ export default function Orders({ openWizardTrigger }) {
     }
 
     // 2. Required quantity in UNITS
-    let requiredCartons = 10
-    if (promo.tiers && promo.tiers.length > 0) {
-      requiredCartons = promo.tiers[0].min !== undefined ? promo.tiers[0].min : (promo.tiers[0].threshold || 10)
-    } else if (promo.threshold > 0) {
-      if (promo.type === 'TYPE_4' && targetProduct) {
-        const price = parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 100)
-        requiredCartons = Math.max(1, Math.ceil(promo.threshold / price))
-      } else {
-        requiredCartons = promo.threshold
-      }
+    let requiredUnits = 1
+    let targetThreshold = promo.threshold || 10
+
+    if (promo.tiers && Array.isArray(promo.tiers) && promo.tiers.length > 0) {
+      const validTiers = promo.tiers.filter(t => (parseFloat(t.discountPercent || 0) > 0 || parseInt(t.freeQuantity || 0, 10) > 0 || parseFloat(t.voucherAmount || 0) > 0))
+      const targetTier = validTiers.length > 0 ? validTiers[0] : promo.tiers[0]
+      targetThreshold = targetTier.min !== undefined && targetTier.min !== null ? parseFloat(targetTier.min) : (targetTier.threshold || 10)
     }
 
-    // 3. Add or update target product in selectedProducts with required units without manual gift duplication
     if (targetProduct) {
       const upb = parseInt(targetProduct.unitsPerBox || getProductUnitsPerCarton(targetProduct) || 1, 10) || 1
-      const requiredUnits = promo.type === 'TYPE_4' ? requiredCartons : (requiredCartons * upb)
+      const price = parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 100)
+
+      if (promo.type === 'TYPE_4') {
+        const targetFamInfo = getFamilyInfo(promo.targetFamily)
+        const currentFamilyAmount = selectedProducts.reduce((sum, item) => {
+          const itemFam = getFamilyInfo(item.category)
+          if (itemFam.code === targetFamInfo.code) {
+            return sum + (parseFloat(item.priceTtc || 0) * (parseInt(item.qty || 0, 10)))
+          }
+          return sum
+        }, 0)
+
+        const missingDh = Math.max(0, targetThreshold - currentFamilyAmount)
+        const unitsNeeded = Math.max(1, Math.ceil((missingDh > 0 ? missingDh : targetThreshold) / (price || 1)))
+        requiredUnits = unitsNeeded
+      } else {
+        requiredUnits = Math.max(1, Math.round(targetThreshold * upb))
+      }
 
       setSelectedProducts(prev => {
         const existingIdx = prev.findIndex(item => item.productId === targetProduct.id || item.reference === targetProduct.reference)
         if (existingIdx >= 0) {
           return prev.map((item, idx) => {
             if (idx === existingIdx) {
+              const newQty = (promo.type === 'TYPE_4') ? (item.qty || 0) + requiredUnits : Math.max(item.qty || 0, requiredUnits)
               return {
                 ...item,
-                qty: Math.max(item.qty || 0, requiredUnits),
+                qty: newQty,
                 unitsPerBox: upb,
                 promoTag: promo.name
               }
@@ -780,7 +808,7 @@ export default function Orders({ openWizardTrigger }) {
   const totalLineDiscountAmount = selectedProducts.reduce((sum, item, idx) => {
     const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
     const parsedRemise = parsePercent(item.remisePercent)
-    const finalPct = parsedRemise !== null ? parsedRemise : promoDiscount
+    const finalPct = (parsedRemise !== null && parsedRemise > 0) ? parsedRemise : promoDiscount
     return sum + ((item.priceTtc * item.qty) * (finalPct / 100))
   }, 0)
 
@@ -2580,7 +2608,7 @@ export default function Orders({ openWizardTrigger }) {
                         selectedProducts.map((item, idx) => {
                           const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
                           const parsedRemise = parsePercent(item.remisePercent)
-                          const hasManualOverride = parsedRemise !== null
+                          const hasManualOverride = parsedRemise !== null && parsedRemise > 0
                           const currentRemise = hasManualOverride ? parsedRemise : promoDiscount
                           const lineGross = item.priceTtc * item.qty
                           const lineDiscountVal = lineGross * (currentRemise / 100)
@@ -2916,7 +2944,7 @@ export default function Orders({ openWizardTrigger }) {
                                   <input
                                     type="text"
                                     inputMode="decimal"
-                                    value={item.remisePercent !== undefined && item.remisePercent !== '' ? item.remisePercent : (promoDiscount > 0 ? promoDiscount : '')}
+                                    value={(item.remisePercent !== undefined && item.remisePercent !== '' && parseFloat(item.remisePercent) > 0) ? item.remisePercent : (promoDiscount > 0 ? promoDiscount : (item.remisePercent || ''))}
                                     onChange={e => handleLineRemiseChange(idx, e.target.value)}
                                     placeholder={promoDiscount > 0 ? `${promoDiscount}` : "0"}
                                     style={{
@@ -3243,6 +3271,30 @@ export default function Orders({ openWizardTrigger }) {
                           `Vous avez actuellement ${promoAnalysis.selectedPromoStatus.currentVal} ${promoAnalysis.selectedPromoStatus.unitLabel} sur ${promoAnalysis.selectedPromoStatus.targetLabel}. Ajoutez encore ${promoAnalysis.selectedPromoStatus.missingValue} ${promoAnalysis.selectedPromoStatus.unitLabel} pour activer cette offre.`
                         )}
                       </p>
+
+                      {!promoAnalysis.selectedPromoStatus.isReached && (
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectPromotion(selectedPromoId)}
+                            style={{
+                              background: 'var(--bardahl-yellow)',
+                              color: '#000',
+                              fontWeight: '900',
+                              fontSize: '11px',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Sparkles size={13} /> Activer cette offre automatiquement (+ {promoAnalysis.selectedPromoStatus.missingValue} {promoAnalysis.selectedPromoStatus.unitLabel})
+                          </button>
+                        </div>
+                      )}
 
                       {/* Carte détaillée des modifications manuelles de remise */}
                       {(() => {

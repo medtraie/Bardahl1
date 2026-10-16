@@ -523,7 +523,7 @@ export function rowToProduct(row) {
     } catch {}
   }
   const unitsPerBox = parseInt(specs.unitsPerBox || row.units_per_box || 1, 10) || 1
-  const category = specs.category || specs.family || (row.category ? row.category.code : null) || 'ADDITIFS'
+  const category = specs.category || specs.family || (row.category ? (row.category.code || row.category.name) : null) || row.category_id || 'ADDITIFS'
 
   return {
     id: row.id,
@@ -547,7 +547,7 @@ export async function dbGetProducts() {
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select('*, category:categories(*)')
       .order('name', { ascending: true })
 
     if (error) {

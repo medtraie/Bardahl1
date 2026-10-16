@@ -103,7 +103,14 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     const rawUpper = rawCategory.toUpperCase()
 
     // Par famille (indexé sous tous les alias canoniques pour garantir la liaison fiche produit 100% effective)
-    const familyKeys = Array.from(new Set([canonicalCode, famLabelUpper, rawUpper]))
+    const familyKeys = Array.from(new Set([
+      canonicalCode,
+      famLabelUpper,
+      rawUpper,
+      (famInfo.id || '').toUpperCase(),
+      (meta.category_id || '').toUpperCase(),
+      (item.category_id || '').toUpperCase()
+    ])).filter(Boolean)
     familyKeys.forEach(fKey => {
       if (!familyStats[fKey]) {
         familyStats[fKey] = { totalCartons: 0, totalUnits: 0, totalAmountTtc: 0, items: [] }
@@ -134,7 +141,10 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       if (chosenPromo.targetType === 'FAMILY') {
         const rawTargetFam = String(chosenPromo.targetFamily || '').trim()
         const targetFamInfo = getFamilyInfo(rawTargetFam)
-        const st = familyStats[targetFamInfo.code.toUpperCase()] || familyStats[targetFamInfo.label.toUpperCase()] || familyStats[rawTargetFam.toUpperCase()]
+        const st = familyStats[targetFamInfo.code.toUpperCase()] ||
+                   familyStats[targetFamInfo.label.toUpperCase()] ||
+                   familyStats[(targetFamInfo.id || '').toUpperCase()] ||
+                   familyStats[rawTargetFam.toUpperCase()]
         currentVal = chosenPromo.type === 'TYPE_4' ? (st?.totalAmountTtc || 0) : (st?.totalCartons || 0)
       } else {
         // Multi-références ou mono-référence
@@ -220,7 +230,10 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       targetKey = `FAM_${targetFamInfo.code}`
       targetDisplay = `Famille « ${targetFamInfo.label} »`
 
-      const stats = familyStats[targetFamInfo.code.toUpperCase()] || familyStats[targetFamInfo.label.toUpperCase()] || familyStats[rawTargetFam.toUpperCase()]
+      const stats = familyStats[targetFamInfo.code.toUpperCase()] ||
+                    familyStats[targetFamInfo.label.toUpperCase()] ||
+                    familyStats[(targetFamInfo.id || '').toUpperCase()] ||
+                    familyStats[rawTargetFam.toUpperCase()]
       if (stats && stats.items.length > 0) {
         currentConditionValue = promo.type === 'TYPE_4' ? stats.totalAmountTtc : stats.totalCartons
         applicableItems = stats.items
