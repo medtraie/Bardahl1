@@ -59,15 +59,17 @@ export default function App() {
           onActionClick={activeTab === 'promotions' ? handleOpenNewPromo : handleOpenNewOrder}
         />
         
-        {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
-        {activeTab === 'clients' && <Clients />}
-        {activeTab === 'products' && <Products />}
-        {activeTab === 'promotions' && <Promotions openNewPromoTrigger={openNewPromoTrigger} />}
-        {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
-        {activeTab === 'commercials' && <Commercials />}
-        {activeTab === 'stock_movements' && <StockMovements />}
-        {activeTab === 'analytics' && <Analytics />}
-        {activeTab === 'settings' && <Settings />}
+        <div key={activeTab} className="page-transition-content">
+          {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} onNewOrderClick={handleOpenNewOrder} />}
+          {activeTab === 'clients' && <Clients />}
+          {activeTab === 'products' && <Products />}
+          {activeTab === 'promotions' && <Promotions openNewPromoTrigger={openNewPromoTrigger} />}
+          {activeTab === 'orders' && <Orders openWizardTrigger={openOrderWizardTrigger} />}
+          {activeTab === 'commercials' && <Commercials />}
+          {activeTab === 'stock_movements' && <StockMovements />}
+          {activeTab === 'analytics' && <Analytics />}
+          {activeTab === 'settings' && <Settings />}
+        </div>
       </main>
     </div>
   )

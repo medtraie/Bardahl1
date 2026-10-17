@@ -2,20 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   LayoutDashboard, Users, Boxes, Receipt, 
   Contact, LineChart, Settings, LogOut, ShieldCheck, UserCheck,
-  Sun, Moon, Gift, Activity, ChevronLeft, ChevronRight, GripVertical
+  Sun, Moon, Gift, Activity, GripVertical
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const { currentUser, logout, theme, toggleTheme } = useApp()
-
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem('bardahl_sidebar_width')
-    return saved ? parseInt(saved, 10) : 270
-  })
-  const [isResizing, setIsResizing] = useState(false)
-
-  const isCollapsed = sidebarWidth < 140
 
   const navItems = [
     { id: 'dashboard', label: 'Tableau de Bord', icon: LayoutDashboard, adminOnly: false },
@@ -32,138 +24,174 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   const isAdmin = currentUser?.role === 'ADMIN'
   const filteredNav = navItems.filter(item => !item.adminOnly || isAdmin)
 
-  // Sync CSS custom variable
-  useEffect(() => {
-    document.documentElement.style.setProperty('--sidebar-width', `${sidebarWidth}px`)
-  }, [sidebarWidth])
+  const activeIndex = Math.max(0, filteredNav.findIndex(item => item.id === activeTab))
 
-  // Mouse Drag to Resize Sidebar (شريط سحب ذكي متجاوب مع الماوس)
-  const startResizing = useCallback((e) => {
+  // Smart Navigation Slider state
+  const sliderTrackRef = useRef(null)
+  const [isDraggingSlider, setIsDraggingSlider] = useState(false)
+  const [isHoveringSlider, setIsHoveringSlider] = useState(false)
+  const lastWheelTime = useRef(0)
+
+  // Calculate nav index from mouse Y position
+  const calculateIndexFromY = useCallback((clientY) => {
+    if (!sliderTrackRef.current) return 0
+    const rect = sliderTrackRef.current.getBoundingClientRect()
+    const relY = clientY - rect.top
+    const total = filteredNav.length
+    if (total <= 1) return 0
+    const ratio = Math.max(0, Math.min(1, relY / rect.height))
+    const idx = Math.min(total - 1, Math.max(0, Math.round(ratio * (total - 1))))
+    return idx
+  }, [filteredNav])
+
+  // Mouse Down on track or thumb to start dragging
+  const handleSliderTrackMouseDown = (e) => {
     e.preventDefault()
-    setIsResizing(true)
-  }, [])
-
-  const stopResizing = useCallback(() => {
-    setIsResizing(false)
-  }, [])
-
-  const resize = useCallback((e) => {
-    if (!isResizing) return
-    let newWidth = e.clientX
-    if (newWidth < 120) {
-      newWidth = 72 // Snap to compact icon-only mode
-    } else if (newWidth > 380) {
-      newWidth = 380
-    } else if (newWidth < 200 && newWidth >= 120) {
-      newWidth = 200
+    setIsDraggingSlider(true)
+    const idx = calculateIndexFromY(e.clientY)
+    if (filteredNav[idx] && filteredNav[idx].id !== activeTab) {
+      setActiveTab(filteredNav[idx].id)
     }
-    setSidebarWidth(newWidth)
-    localStorage.setItem('bardahl_sidebar_width', newWidth)
-    document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`)
-  }, [isResizing])
+  }
 
+  // Window mousemove / mouseup while dragging
   useEffect(() => {
-    if (isResizing) {
-      window.addEventListener('mousemove', resize)
-      window.addEventListener('mouseup', stopResizing)
-      document.body.style.userSelect = 'none'
-      document.body.style.cursor = 'col-resize'
-    } else {
-      window.removeEventListener('mousemove', resize)
-      window.removeEventListener('mouseup', stopResizing)
-      document.body.style.userSelect = ''
-      document.body.style.cursor = ''
+    if (!isDraggingSlider) return
+
+    const handleMouseMove = (e) => {
+      const idx = calculateIndexFromY(e.clientY)
+      if (filteredNav[idx] && filteredNav[idx].id !== activeTab) {
+        setActiveTab(filteredNav[idx].id)
+      }
     }
+
+    const handleMouseUp = () => {
+      setIsDraggingSlider(false)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+
     return () => {
-      window.removeEventListener('mousemove', resize)
-      window.removeEventListener('mouseup', stopResizing)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isResizing, resize, stopResizing])
+  }, [isDraggingSlider, calculateIndexFromY, activeTab, setActiveTab, filteredNav])
 
-  const toggleCollapse = () => {
-    const nextWidth = isCollapsed ? 270 : 72
-    setSidebarWidth(nextWidth)
-    localStorage.setItem('bardahl_sidebar_width', nextWidth)
-    document.documentElement.style.setProperty('--sidebar-width', `${nextWidth}px`)
+  // Smooth mouse wheel navigation between sections
+  const handleWheelNav = (e) => {
+    const now = Date.now()
+    if (now - lastWheelTime.current < 170) return
+    if (Math.abs(e.deltaY) < 18) return
+
+    const direction = e.deltaY > 0 ? 1 : -1
+    const nextIdx = activeIndex + direction
+    if (nextIdx >= 0 && nextIdx < filteredNav.length) {
+      lastWheelTime.current = now
+      setActiveTab(filteredNav[nextIdx].id)
+    }
   }
 
-  // Mouse drag-to-scroll for nav container
-  const navRef = useRef(null)
-  const isNavDragging = useRef(false)
-  const navStartY = useRef(0)
-  const navScrollTop = useRef(0)
-
-  const handleNavMouseDown = (e) => {
-    if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return
-    isNavDragging.current = true
-    navStartY.current = e.pageY - (navRef.current?.offsetTop || 0)
-    navScrollTop.current = navRef.current?.scrollTop || 0
-  }
-
-  const handleNavMouseMove = (e) => {
-    if (!isNavDragging.current || !navRef.current) return
-    e.preventDefault()
-    const y = e.pageY - (navRef.current.offsetTop || 0)
-    const walk = (y - navStartY.current) * 1.5
-    navRef.current.scrollTop = navScrollTop.current - walk
-  }
-
-  const handleNavMouseUp = () => {
-    isNavDragging.current = false
-  }
+  const thumbPercent = (activeIndex / Math.max(1, filteredNav.length - 1)) * 100
+  const activeNavLabel = filteredNav[activeIndex]?.label || 'Section'
 
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isResizing ? 'resizing' : ''}`}>
+    <aside className="sidebar">
       {/* Brand Header with Prominent Official Bardahl Logo */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border-card)', textAlign: 'center', position: 'relative' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border-card)', textAlign: 'center' }}>
         <img
           src="/bardahl_logo.png"
           alt="Official Bardahl Logo"
-          style={{ width: isCollapsed ? '42px' : '130px', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(255, 208, 0, 0.45))', transition: 'width 0.2s ease' }}
+          style={{ width: '130px', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(255, 208, 0, 0.45))' }}
         />
-        {!isCollapsed && (
-          <span style={{ color: 'var(--bardahl-yellow)', fontSize: '11px', fontWeight: '800', letterSpacing: '1px' }}>MAGHREB S.A</span>
-        )}
+        <span style={{ color: 'var(--bardahl-yellow)', fontSize: '11px', fontWeight: '800', letterSpacing: '1px' }}>MAGHREB S.A</span>
       </div>
 
-      {/* Navigation Buttons with smart scroll and mouse response */}
-      <nav 
-        ref={navRef}
-        className="sidebar-nav-container"
-        onMouseDown={handleNavMouseDown}
-        onMouseMove={handleNavMouseMove}
-        onMouseUp={handleNavMouseUp}
-        onMouseLeave={handleNavMouseUp}
+      {/* Navigation Area with Smart Mouse Slider (شريط سحب ذكي للتنقل السلس بالماوس بين الأقسام) */}
+      <div 
+        className="sidebar-nav-wrapper"
+        onWheel={handleWheelNav}
       >
-        {filteredNav.map((item) => {
-          const IconComponent = item.icon
-          const isActive = activeTab === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <IconComponent style={{ width: '20px', height: '20px', flexShrink: 0 }} />
-              {!isCollapsed && <span>{item.label}</span>}
-            </button>
-          )
-        })}
-      </nav>
+        {/* Navigation Buttons List */}
+        <nav className="sidebar-nav-list">
+          {filteredNav.map((item) => {
+            const IconComponent = item.icon
+            const isActive = activeTab === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <IconComponent style={{ width: '19px', height: '19px', flexShrink: 0 }} />
+                <span>{item.label}</span>
+                {isActive && <span className="nav-item-active-dot" />}
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Smart Vertical Navigation Slider (شريط السحب الذكي التفاعلي مع الماوس) */}
+        <div 
+          ref={sliderTrackRef}
+          className={`nav-slider-track ${isDraggingSlider ? 'dragging' : ''}`}
+          onMouseDown={handleSliderTrackMouseDown}
+          onMouseEnter={() => setIsHoveringSlider(true)}
+          onMouseLeave={() => setIsHoveringSlider(false)}
+          title="شريط سحب ذكي: اسحب بالماوس أو حرّك عجلة الفأرة للتنقل السلس بين الأقسام"
+        >
+          {/* Vertical Slider Rail */}
+          <div className="nav-slider-rail" />
+
+          {/* Section Marker Ticks */}
+          <div className="nav-slider-ticks">
+            {filteredNav.map((item, idx) => (
+              <div 
+                key={item.id}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveTab(item.id)
+                }}
+                className={`nav-slider-tick ${idx === activeIndex ? 'active' : ''}`}
+                style={{ top: `${(idx / Math.max(1, filteredNav.length - 1)) * 100}%` }}
+                title={item.label}
+              />
+            ))}
+          </div>
+
+          {/* Draggable Slider Thumb / Scrubber (مقبض شريط السحب المتجاوب مع الماوس) */}
+          <div 
+            className="nav-slider-thumb"
+            style={{ top: `${thumbPercent}%` }}
+          >
+            <div className="slider-thumb-grip">
+              <GripVertical style={{ width: '10px', height: '12px', color: '#0D0F12' }} />
+            </div>
+
+            {/* Smart Floating Preview Badge while dragging or hovering */}
+            {(isDraggingSlider || isHoveringSlider) && (
+              <div className="nav-slider-preview-badge">
+                <span>{activeNavLabel}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Theme Toggle Button (Mode Sombre / Mode Clair) */}
-      <div style={{ marginTop: '10px', marginBottom: '14px' }}>
+      <div style={{ marginTop: '12px', marginBottom: '14px' }}>
         <button
           onClick={toggleTheme}
           style={{
             width: '100%',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: isCollapsed ? 'center' : 'space-between',
-            padding: isCollapsed ? '10px 0' : '10px 14px',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
             borderRadius: '12px',
             background: theme === 'dark' ? 'rgba(255, 208, 0, 0.08)' : '#F1F5F9',
             border: `1px solid ${theme === 'dark' ? 'rgba(255, 208, 0, 0.25)' : '#CBD5E1'}`,
@@ -175,115 +203,71 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           }}
           title={theme === 'dark' ? 'Passer au Mode Clair' : 'Passer au Mode Sombre'}
         >
-          {isCollapsed ? (
-            theme === 'dark' ? (
-              <Moon style={{ width: '18px', height: '18px', color: 'var(--bardahl-yellow)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {theme === 'dark' ? (
+              <Moon style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)' }} />
             ) : (
-              <Sun style={{ width: '18px', height: '18px', color: '#D97706' }} />
-            )
-          ) : (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {theme === 'dark' ? (
-                  <Moon style={{ width: '16px', height: '16px', color: 'var(--bardahl-yellow)' }} />
-                ) : (
-                  <Sun style={{ width: '16px', height: '16px', color: '#D97706' }} />
-                )}
-                <span>{theme === 'dark' ? 'Mode Sombre' : 'Mode Clair'}</span>
-              </div>
+              <Sun style={{ width: '16px', height: '16px', color: '#D97706' }} />
+            )}
+            <span>{theme === 'dark' ? 'Mode Sombre' : 'Mode Clair'}</span>
+          </div>
 
-              <div style={{
-                width: '36px',
-                height: '20px',
-                borderRadius: '10px',
-                background: theme === 'dark' ? '#2B313E' : '#E2E8F0',
-                position: 'relative',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: theme === 'dark' ? 'flex-end' : 'flex-start'
-              }}>
-                <div style={{
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  background: theme === 'dark' ? 'var(--bardahl-yellow)' : '#D97706',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}></div>
-              </div>
-            </>
-          )}
+          <div style={{
+            width: '36px',
+            height: '20px',
+            borderRadius: '10px',
+            background: theme === 'dark' ? '#2B313E' : '#E2E8F0',
+            position: 'relative',
+            padding: '2px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: theme === 'dark' ? 'flex-end' : 'flex-start'
+          }}>
+            <div style={{
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              background: theme === 'dark' ? 'var(--bardahl-yellow)' : '#D97706',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }}></div>
+          </div>
         </button>
       </div>
 
       {/* User Profile Footer */}
-      <div style={{ paddingTop: '14px', borderTop: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'space-between' }}>
+      <div style={{ paddingTop: '14px', borderTop: '1px solid var(--border-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-          <div 
-            onClick={isCollapsed ? logout : undefined}
-            style={{
-              width: '38px',
-              height: '38px',
-              background: isAdmin ? 'var(--bardahl-yellow)' : '#007AFF',
-              color: isAdmin ? '#0D0F12' : '#FFFFFF',
-              borderRadius: '50%',
-              fontWeight: '900',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '13px',
-              flexShrink: 0,
-              cursor: isCollapsed ? 'pointer' : 'default'
-            }}
-            title={isCollapsed ? `${currentUser?.name || (isAdmin ? 'Direction Bardahl' : 'Commercial')} (Déconnexion)` : undefined}
-          >
+          <div style={{
+            width: '38px',
+            height: '38px',
+            background: isAdmin ? 'var(--bardahl-yellow)' : '#007AFF',
+            color: isAdmin ? '#0D0F12' : '#FFFFFF',
+            borderRadius: '50%',
+            fontWeight: '900',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '13px',
+            flexShrink: 0
+          }}>
             {currentUser?.initials || (isAdmin ? 'DB' : 'CB')}
           </div>
-          {!isCollapsed && (
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentUser?.name || (isAdmin ? 'Direction Bardahl' : 'Commercial')}
-              </div>
-              <div style={{ fontSize: '11px', color: isAdmin ? 'var(--bardahl-yellow)' : '#007AFF', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700' }}>
-                {isAdmin ? <ShieldCheck style={{ width: '12px', height: '12px' }} /> : <UserCheck style={{ width: '12px', height: '12px' }} />}
-                {isAdmin ? 'Administrateur' : 'Commercial'}
-              </div>
+          <div style={{ overflow: 'hidden' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {currentUser?.name || (isAdmin ? 'Direction Bardahl' : 'Commercial')}
             </div>
-          )}
+            <div style={{ fontSize: '11px', color: isAdmin ? 'var(--bardahl-yellow)' : '#007AFF', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700' }}>
+              {isAdmin ? <ShieldCheck style={{ width: '12px', height: '12px' }} /> : <UserCheck style={{ width: '12px', height: '12px' }} />}
+              {isAdmin ? 'Administrateur' : 'Commercial'}
+            </div>
+          </div>
         </div>
-        {!isCollapsed && (
-          <button
-            onClick={logout}
-            style={{ color: '#FF453A', padding: '6px', cursor: 'pointer', borderRadius: '8px', flexShrink: 0 }}
-            title="Déconnexion"
-          >
-            <LogOut style={{ width: '18px', height: '18px' }} />
-          </button>
-        )}
-      </div>
-
-      {/* Smart Draggable Resizer Bar (شريط سحب ذكي متجاوب مع الماوس) */}
-      <div 
-        className={`sidebar-resizer ${isResizing ? 'active' : ''}`}
-        onMouseDown={startResizing}
-        onDoubleClick={toggleCollapse}
-        title="Glisser avec la souris pour redimensionner / Double-clic pour réduire ou agrandir"
-      >
-        <div className="resizer-handle-pill">
-          <GripVertical style={{ width: '10px', height: '14px', color: '#0D0F12' }} />
-        </div>
-        
-        {/* Quick Toggle Button on Hover */}
         <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            toggleCollapse()
-          }}
-          className="sidebar-quick-toggle"
-          title={isCollapsed ? "Agrandir le menu" : "Réduire le menu"}
+          onClick={logout}
+          style={{ color: '#FF453A', padding: '6px', cursor: 'pointer', borderRadius: '8px', flexShrink: 0 }}
+          title="Déconnexion"
         >
-          {isCollapsed ? <ChevronRight style={{ width: '12px', height: '12px' }} /> : <ChevronLeft style={{ width: '12px', height: '12px' }} />}
+          <LogOut style={{ width: '18px', height: '18px' }} />
         </button>
       </div>
     </aside>

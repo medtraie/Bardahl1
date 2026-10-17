@@ -255,7 +255,7 @@ button {
 }
 
 .sidebar {
-  width: var(--sidebar-width);
+  width: 270px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border-card);
   display: flex;
@@ -269,140 +269,31 @@ button {
   z-index: 100;
   box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5);
   box-sizing: border-box;
-  transition: width 0.16s ease, padding 0.16s ease;
 }
 
-.sidebar.resizing {
-  transition: none !important;
-  user-select: none;
-}
-
-.sidebar.collapsed {
-  padding: 20px 8px;
-}
-
-.sidebar.collapsed .sidebar-nav-item {
-  padding: 12px 0;
-  justify-content: center;
-  gap: 0;
-}
-
-.sidebar.collapsed .sidebar-nav-item span {
-  display: none;
-}
-
-/* Smart Draggable Resizer Bar (شريط سحب ذكي متجاوب مع الماوس) */
-.sidebar-resizer {
-  position: absolute;
-  top: 0;
-  right: -5px;
-  width: 10px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 150;
+/* Smart Mouse Navigation Wrapper with Vertical Slider */
+.sidebar-nav-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s ease;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 
-.sidebar-resizer:hover,
-.sidebar-resizer.active {
-  background: rgba(255, 208, 0, 0.22);
-}
-
-.sidebar-resizer .resizer-handle-pill {
-  width: 4px;
-  height: 38px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.sidebar-resizer:hover .resizer-handle-pill,
-.sidebar-resizer.active .resizer-handle-pill {
-  width: 14px;
-  height: 52px;
-  border-radius: 6px;
-  background: var(--bardahl-yellow);
-  box-shadow: 0 0 14px rgba(255, 208, 0, 0.85);
-}
-
-/* Quick Toggle Button on Hover */
-.sidebar-quick-toggle {
-  position: absolute;
-  top: 72px;
-  right: -10px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-card);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: all 0.2s ease;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 160;
-}
-
-.sidebar:hover .sidebar-quick-toggle,
-.sidebar-resizer:hover .sidebar-quick-toggle {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.sidebar-quick-toggle:hover {
-  background: var(--bardahl-yellow);
-  color: #0D0F12;
-  border-color: var(--bardahl-yellow);
-  box-shadow: 0 0 10px rgba(255, 208, 0, 0.7);
-  transform: scale(1.15);
-}
-
-/* Smart Navigation Scrollbar (شريط سحب وتمرير ذكي داخلي) */
-.sidebar-nav-container {
+.sidebar-nav-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
-  margin-right: -4px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 208, 0, 0.25) transparent;
+  padding-right: 2px;
+  scrollbar-width: none; /* Hide standard scrollbar in favor of smart slider */
 }
 
-.sidebar-nav-container::-webkit-scrollbar {
-  width: 5px;
-}
-
-.sidebar-nav-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar-nav-container::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  transition: background 0.2s ease;
-}
-
-.sidebar-nav-container:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 208, 0, 0.45);
-}
-
-.sidebar-nav-container::-webkit-scrollbar-thumb:hover {
-  background: var(--bardahl-yellow);
-  box-shadow: 0 0 8px rgba(255, 208, 0, 0.7);
+.sidebar-nav-list::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-nav-item {
@@ -410,10 +301,10 @@ button {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 16px;
+  padding: 11px 14px;
   border-radius: 12px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-secondary);
   border: 1px solid transparent;
   transition: all 0.2s ease;
@@ -432,6 +323,140 @@ button {
   color: var(--bardahl-yellow);
   border-color: var(--bardahl-yellow);
   box-shadow: 0 4px 15px rgba(255, 208, 0, 0.15);
+  transform: translateX(2px);
+}
+
+.nav-item-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bardahl-yellow);
+  box-shadow: 0 0 8px var(--bardahl-yellow);
+  margin-left: auto;
+}
+
+/* Smart Interactive Navigation Slider (شريط السحب الذكي للتنقل بين الأقسام) */
+.nav-slider-track {
+  width: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  margin: 6px 0;
+}
+
+.nav-slider-rail {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.nav-slider-track:hover .nav-slider-rail,
+.nav-slider-track.dragging .nav-slider-rail {
+  background: rgba(255, 208, 0, 0.35);
+  box-shadow: 0 0 8px rgba(255, 208, 0, 0.3);
+  width: 4px;
+}
+
+.nav-slider-ticks {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.nav-slider-tick {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-slider-tick:hover {
+  background: var(--bardahl-yellow);
+  transform: translate(-50%, -50%) scale(1.4);
+}
+
+.nav-slider-tick.active {
+  background: var(--bardahl-yellow);
+  box-shadow: 0 0 6px var(--bardahl-yellow);
+  width: 7px;
+  height: 7px;
+}
+
+/* Draggable Slider Thumb / Scrubber (مقبض شريط السحب المتجاوب مع الماوس) */
+.nav-slider-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 26px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #FFD000, #E5B800);
+  box-shadow: 0 0 12px rgba(255, 208, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 10;
+  transition: top 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nav-slider-thumb:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 16px rgba(255, 208, 0, 0.9);
+}
+
+.nav-slider-track.dragging .nav-slider-thumb {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow: 0 0 22px rgba(255, 208, 0, 1);
+  transition: none; /* Instant tracking while dragging */
+}
+
+.slider-thumb-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Smart Floating Preview Badge while dragging or hovering */
+.nav-slider-preview-badge {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #0D0F12;
+  border: 1px solid var(--bardahl-yellow);
+  color: var(--bardahl-yellow);
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  z-index: 200;
+  animation: fadeInSliderBadge 0.15s ease forwards;
+}
+
+@keyframes fadeInSliderBadge {
+  from { opacity: 0; transform: translateY(-50%) translateX(4px); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0); }
 }
 
 [data-theme="light"] .sidebar {
@@ -445,28 +470,44 @@ button {
   box-shadow: 0 2px 10px rgba(217, 119, 6, 0.1);
 }
 
-[data-theme="light"] .sidebar-resizer .resizer-handle-pill {
-  background: rgba(0, 0, 0, 0.18);
+[data-theme="light"] .nav-slider-rail {
+  background: rgba(0, 0, 0, 0.1);
 }
 
-[data-theme="light"] .sidebar-quick-toggle {
+[data-theme="light"] .nav-slider-tick {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .nav-slider-preview-badge {
   background: #FFFFFF;
-  border-color: #CBD5E1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #D97706;
+  color: #D97706;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* Main Content & Smooth Transition between Sections */
 .main-content {
-  margin-left: var(--sidebar-width);
+  margin-left: 270px;
   flex: 1;
   padding: 32px 40px;
   min-height: 100vh;
-  max-width: calc(100vw - var(--sidebar-width));
+  max-width: calc(100vw - 270px);
   box-sizing: border-box;
-  transition: margin-left 0.16s ease, max-width 0.16s ease;
 }
 
-.main-content.resizing {
-  transition: none !important;
+.page-transition-content {
+  animation: pageFadeSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageFadeSlide {
+  0% {
+    opacity: 0.35;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Form Inputs */
