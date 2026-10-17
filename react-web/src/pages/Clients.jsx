@@ -643,7 +643,7 @@ export default function Clients() {
                   <option value="">-- Sélectionner un Représentant --</option>
                   {commercials.map(comm => (
                     <option key={comm.id || comm.dbId} value={comm.dbId || comm.id}>
-                      {comm.name} ({comm.city || 'Casablanca'})
+                      {comm.name}
                     </option>
                   ))}
                 </select>

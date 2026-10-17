@@ -21,6 +21,7 @@
   --status-cancelled: #FF453A;
 
   --font-main: 'Outfit', sans-serif;
+  --sidebar-width: 270px;
 }
 
 [data-theme="light"] {
@@ -254,7 +255,7 @@ button {
 }
 
 .sidebar {
-  width: 270px;
+  width: var(--sidebar-width);
   background: var(--bg-surface);
   border-right: 1px solid var(--border-card);
   display: flex;
@@ -267,6 +268,141 @@ button {
   height: 100vh;
   z-index: 100;
   box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  transition: width 0.16s ease, padding 0.16s ease;
+}
+
+.sidebar.resizing {
+  transition: none !important;
+  user-select: none;
+}
+
+.sidebar.collapsed {
+  padding: 20px 8px;
+}
+
+.sidebar.collapsed .sidebar-nav-item {
+  padding: 12px 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar.collapsed .sidebar-nav-item span {
+  display: none;
+}
+
+/* Smart Draggable Resizer Bar (شريط سحب ذكي متجاوب مع الماوس) */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.active {
+  background: rgba(255, 208, 0, 0.22);
+}
+
+.sidebar-resizer .resizer-handle-pill {
+  width: 4px;
+  height: 38px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sidebar-resizer:hover .resizer-handle-pill,
+.sidebar-resizer.active .resizer-handle-pill {
+  width: 14px;
+  height: 52px;
+  border-radius: 6px;
+  background: var(--bardahl-yellow);
+  box-shadow: 0 0 14px rgba(255, 208, 0, 0.85);
+}
+
+/* Quick Toggle Button on Hover */
+.sidebar-quick-toggle {
+  position: absolute;
+  top: 72px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 160;
+}
+
+.sidebar:hover .sidebar-quick-toggle,
+.sidebar-resizer:hover .sidebar-quick-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-quick-toggle:hover {
+  background: var(--bardahl-yellow);
+  color: #0D0F12;
+  border-color: var(--bardahl-yellow);
+  box-shadow: 0 0 10px rgba(255, 208, 0, 0.7);
+  transform: scale(1.15);
+}
+
+/* Smart Navigation Scrollbar (شريط سحب وتمرير ذكي داخلي) */
+.sidebar-nav-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  margin-right: -4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 208, 0, 0.25) transparent;
+}
+
+.sidebar-nav-container::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-nav-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.sidebar-nav-container:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 208, 0, 0.45);
+}
+
+.sidebar-nav-container::-webkit-scrollbar-thumb:hover {
+  background: var(--bardahl-yellow);
+  box-shadow: 0 0 8px rgba(255, 208, 0, 0.7);
 }
 
 .sidebar-nav-item {
@@ -282,6 +418,7 @@ button {
   border: 1px solid transparent;
   transition: all 0.2s ease;
   text-align: left;
+  white-space: nowrap;
 }
 
 .sidebar-nav-item:hover {
@@ -308,12 +445,28 @@ button {
   box-shadow: 0 2px 10px rgba(217, 119, 6, 0.1);
 }
 
+[data-theme="light"] .sidebar-resizer .resizer-handle-pill {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="light"] .sidebar-quick-toggle {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .main-content {
-  margin-left: 270px;
+  margin-left: var(--sidebar-width);
   flex: 1;
   padding: 32px 40px;
   min-height: 100vh;
-  max-width: calc(100vw - 270px);
+  max-width: calc(100vw - var(--sidebar-width));
+  box-sizing: border-box;
+  transition: margin-left 0.16s ease, max-width 0.16s ease;
+}
+
+.main-content.resizing {
+  transition: none !important;
 }
 
 /* Form Inputs */
