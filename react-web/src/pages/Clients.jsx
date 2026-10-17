@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, UserPlus, MapPin, Phone, Building, Hash, ShieldCheck, Edit3, Trash2, Eye, FileText, Download, TrendingUp, DollarSign, ShoppingBag, CheckCircle2, Filter, Globe } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateClientPdf, generateOrderPdf, generatePortfolioByCommercialPdf } from '../utils/pdfGenerator'
@@ -50,19 +51,21 @@ export default function Clients() {
   }
 
   const handleOpenEditModal = (client) => {
+    if (!client) return
     setEditingClient(client)
     const resolvedRegion = client.region || getRegionForCity(client.city, availableRegions)
+    const matchedComm = commercials.find(cm => cm.name === client.commercialName || cm.id === client.commercialDbId || cm.dbId === client.commercialDbId)
     setFormData({
       companyName: client.companyName || '',
       ice: client.ice || '',
       rc: client.rc || '',
       address: client.address || '',
-      city: client.city || '',
+      city: client.city || 'Casablanca',
       phone: client.phone || '',
       type: client.type || 'Grossiste',
       region: resolvedRegion,
       codeClient: client.codeClient || '',
-      commercialDbId: client.commercialDbId || ''
+      commercialDbId: client.commercialDbId || (matchedComm ? (matchedComm.dbId || matchedComm.id) : '')
     })
   }
 
@@ -340,8 +343,8 @@ export default function Clients() {
       {/* Modal 1: Détails & Chiffre d'Affaires Client */}
       {selectedDetailClient && (() => {
         const { clientOrders, totalCaTtc, totalHt, totalTva, totalOrders, validatedCount } = getClientFinancials(selectedDetailClient)
-        return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
+        return createPortal(
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999 }}>
             <div className="glass-card" style={{ width: '100%', maxWidth: '840px', maxHeight: '90vh', overflowY: 'auto', borderColor: 'var(--bardahl-yellow)' }}>
               
               {/* Modal Header */}
@@ -486,13 +489,14 @@ export default function Clients() {
               </div>
 
             </div>
-          </div>
+          </div>,
+          document.body
         )
       })()}
 
       {/* Modal 2: Ajouter / Modifier Client */}
-      {(showAddModal || editingClient) && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
+      {(showAddModal || editingClient) && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999 }}>
           <div className="glass-card" style={{ width: '100%', maxWidth: '480px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Building style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} />
@@ -659,7 +663,8 @@ export default function Clients() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

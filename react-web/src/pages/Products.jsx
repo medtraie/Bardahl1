@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, Package, Tag, Filter, Plus, Edit3, Trash2, Box, Layers } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { DEFAULT_BARDAHL_FAMILIES, getFamilyInfo } from '../data/familiesData'
@@ -263,8 +264,8 @@ export default function Products() {
       </div>
 
       {/* Modal: Ajouter / Modifier Produit */}
-      {(showAddModal || editingProduct) && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 1000 }}>
+      {(showAddModal || editingProduct) && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999 }}>
           <div className="glass-card" style={{ width: '100%', maxWidth: '520px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Box style={{ width: '20px', height: '20px', color: 'var(--bardahl-yellow)' }} />
@@ -383,7 +384,8 @@ export default function Products() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
