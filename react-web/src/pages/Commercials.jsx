@@ -413,29 +413,31 @@ export default function Commercials() {
     }
   }
 
-  const handleToggleActiveStatus = (comm) => {
+  const handleToggleActiveStatus = async (comm) => {
     const updatedStatus = comm.isActive === false ? true : false
     const updatedComm = {
       ...comm,
       isActive: updatedStatus
     }
-    updateCommercial(updatedComm)
+    await updateCommercial(updatedComm)
   }
 
-  const handleDeleteCommercial = (comm) => {
-    const commOrdersCount = orders.filter(o => o.commercialName === comm.name || o.commercialDbId === comm.id).length
-    const commClientsCount = clients.filter(c => c.commercialName === comm.name || c.commercialDbId === comm.id).length
+  const handleDeleteCommercial = async (comm) => {
+    const targetId = comm.dbId || comm.id
+    const commOrdersCount = orders.filter(o => o.commercialName === comm.name || o.commercialDbId === targetId || o.commercialDbId === comm.id).length
+    const commClientsCount = clients.filter(c => c.commercialName === comm.name || c.commercialDbId === targetId || c.commercialDbId === comm.id).length
 
+    let confirmMsg = `Êtes-vous sûr de vouloir supprimer définitivement le commercial "${comm.name}" ?`
     if (commOrdersCount > 0 || commClientsCount > 0) {
-      const confirmDeactivate = window.confirm(
-        `⚠️ ATTENTION : Le commercial "${comm.name}" a ${commOrdersCount} bon(s) de commande et ${commClientsCount} client(s) associés.\n\nPour conserver l'historique des ventes et des rapports, il est fortement recommandé de DÉSACTIVER son compte.\n\nCliquez sur "OK" pour DÉSACTIVER le compte, ou "Annuler" pour abandonner.`
-      )
-      if (confirmDeactivate) {
-        updateCommercial({ ...comm, isActive: false })
-      }
-    } else {
-      if (window.confirm(`Voulez-vous vraiment supprimer définitivement le compte commercial de "${comm.name}" ?`)) {
-        deleteCommercial(comm.id)
+      confirmMsg = `⚠️ ATTENTION : Le commercial "${comm.name}" a ${commOrdersCount} bon(s) de commande et ${commClientsCount} client(s) rattaché(s).\n\nEn confirmant la suppression, ses clients et bons de commande seront automatiquement réassignés à la "Direction Bardahl" sans aucune perte de données historiques.\n\nVoulez-vous vraiment SUPPRIMER DÉFINITIVEMENT ce commercial ?`
+    }
+
+    if (window.confirm(confirmMsg)) {
+      const ok = await deleteCommercial(targetId)
+      if (ok) {
+        alert(`Le compte commercial "${comm.name}" a été supprimé avec succès.`)
+      } else {
+        alert(`Erreur lors de la suppression du commercial.`)
       }
     }
   }

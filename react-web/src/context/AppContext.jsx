@@ -26,18 +26,33 @@ function rowToCommercial(row) {
   let explicitRegions = []
   const rawCity = row.city || ''
 
-  if (rawCity.includes('| Régions:')) {
-    const parts = rawCity.split('| Régions:')
+  // Determine active status from city tag or local storage cache
+  const isInactiveInCity = rawCity.includes('Statut: INACTIF') || rawCity.includes('[Status: INACTIVE]')
+  let localInactive = false
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const savedStatus = JSON.parse(localStorage.getItem('bardahl_commercials_status') || '{}')
+      if (savedStatus[row.id] !== undefined) localInactive = (savedStatus[row.id] === false)
+      else if (row.matricule && savedStatus[row.matricule] !== undefined) localInactive = (savedStatus[row.matricule] === false)
+    } catch (e) {}
+  }
+  const isActive = !isInactiveInCity && !localInactive
+
+  // Clean rawCity before splitting sectors and regions so status tag doesn't pollute them
+  const cleanCity = rawCity.replace(/\|\s*Statut:\s*\w+/gi, '').replace(/\[Status:\s*\w+\]/gi, '').trim()
+
+  if (cleanCity.includes('| Régions:')) {
+    const parts = cleanCity.split('| Régions:')
     sectors = parts[0].split(',').map(s => s.trim()).filter(Boolean)
     explicitRegions = parts[1].split(',').map(r => r.trim()).filter(Boolean)
-  } else if (rawCity.includes('[Régions:')) {
-    const match = rawCity.match(/\[Régions:(.*?)\]/)
+  } else if (cleanCity.includes('[Régions:')) {
+    const match = cleanCity.match(/\[Régions:(.*?)\]/)
     if (match) {
       explicitRegions = match[1].split(',').map(r => r.trim()).filter(Boolean)
-      sectors = rawCity.replace(/\[Régions:.*?\]/, '').split(',').map(s => s.trim()).filter(Boolean)
+      sectors = cleanCity.replace(/\[Régions:.*?\]/, '').split(',').map(s => s.trim()).filter(Boolean)
     }
   } else {
-    sectors = rawCity.split(',').map(s => s.trim()).filter(Boolean)
+    sectors = cleanCity.split(',').map(s => s.trim()).filter(Boolean)
   }
 
   // Check localStorage cache if explicit regions not in city string
@@ -61,8 +76,8 @@ function rowToCommercial(row) {
           if (reg) regionsSet.add(reg)
         })
         const inferred = Array.from(regionsSet)
-        if (inferred.length === 0 && rawCity) {
-          const fallbackReg = getRegionForCity(rawCity, stored)
+        if (inferred.length === 0 && cleanCity) {
+          const fallbackReg = getRegionForCity(cleanCity, stored)
           if (fallbackReg) inferred.push(fallbackReg)
         }
         return inferred.length > 0 ? inferred : ['Casablanca-Settat']
@@ -76,11 +91,12 @@ function rowToCommercial(row) {
     password: row.password || '123456',
     matricule: row.matricule || '',
     city: row.city || '',
-    sectors: sectors.length > 0 ? sectors : [row.city || 'Casablanca'],
+    sectors: sectors.length > 0 ? sectors : [cleanCity || 'Casablanca'],
     regions: regions,
     phone: row.phone || '',
     target: row.target_monthly_sales || 150000,
     current: row.current_month_sales || 0,
+    isActive: isActive,
   }
 }
 
@@ -529,20 +545,29 @@ export function AppProvider({ children }) {
     const rawSectors = Array.isArray(c.sectors) && c.sectors.length > 0 ? c.sectors : (c.city ? c.city.split('|')[0].split(',') : ['Casablanca'])
     const sectorClean = rawSectors.map(s => s.trim()).filter(Boolean)
     const regionsClean = Array.isArray(c.regions) && c.regions.length > 0 ? c.regions : (c.region ? c.region.split(',') : ['Casablanca-Settat'])
-    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')}`
+    const statusTag = c.isActive === false ? 'INACTIF' : 'ACTIF'
+    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')} | Statut: ${statusTag}`
 
     const row = await dbAddCommercial({ ...c, city: cityPayload })
     if (!row) return null
     const appComm = {
       ...rowToCommercial(row),
       regions: regionsClean,
-      sectors: sectorClean
+      sectors: sectorClean,
+      isActive: c.isActive !== false
     }
     try {
       const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
       saved[row.id] = { regions: regionsClean, sectors: sectorClean }
       if (c.matricule) saved[c.matricule] = { regions: regionsClean, sectors: sectorClean }
       localStorage.setItem('bardahl_commercial_regions', JSON.stringify(saved))
+    } catch (e) {}
+
+    try {
+      const savedStatus = JSON.parse(localStorage.getItem('bardahl_commercials_status') || '{}')
+      savedStatus[row.id] = c.isActive !== false
+      if (c.matricule) savedStatus[c.matricule] = c.isActive !== false
+      localStorage.setItem('bardahl_commercials_status', JSON.stringify(savedStatus))
     } catch (e) {}
 
     setCommercials(prev => [...prev, appComm])
@@ -554,7 +579,8 @@ export function AppProvider({ children }) {
     const rawSectors = Array.isArray(c.sectors) && c.sectors.length > 0 ? c.sectors : (c.city ? c.city.split('|')[0].split(',') : ['Casablanca'])
     const sectorClean = rawSectors.map(s => s.trim()).filter(Boolean)
     const regionsClean = Array.isArray(c.regions) && c.regions.length > 0 ? c.regions : (c.region ? c.region.split(',') : ['Casablanca-Settat'])
-    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')}`
+    const statusTag = c.isActive === false ? 'INACTIF' : 'ACTIF'
+    const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')} | Statut: ${statusTag}`
 
     try {
       const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
@@ -563,16 +589,24 @@ export function AppProvider({ children }) {
       localStorage.setItem('bardahl_commercial_regions', JSON.stringify(saved))
     } catch (e) {}
 
+    try {
+      const savedStatus = JSON.parse(localStorage.getItem('bardahl_commercials_status') || '{}')
+      savedStatus[targetId] = c.isActive !== false
+      if (c.matricule) savedStatus[c.matricule] = c.isActive !== false
+      localStorage.setItem('bardahl_commercials_status', JSON.stringify(savedStatus))
+    } catch (e) {}
+
     const row = await dbUpdateCommercial({ ...c, id: targetId, city: cityPayload })
     if (!row) {
-      const fallbackComm = { ...c, id: targetId, regions: regionsClean, sectors: sectorClean }
+      const fallbackComm = { ...c, id: targetId, regions: regionsClean, sectors: sectorClean, isActive: c.isActive !== false }
       setCommercials(prev => prev.map(x => (x.id === targetId || x.dbId === targetId) ? fallbackComm : x))
       return fallbackComm
     }
     const appComm = {
       ...rowToCommercial(row),
       regions: regionsClean,
-      sectors: sectorClean
+      sectors: sectorClean,
+      isActive: c.isActive !== false
     }
     setCommercials(prev => prev.map(x => (x.id === row.id || x.dbId === row.id || x.id === targetId) ? appComm : x))
     return appComm
@@ -580,7 +614,22 @@ export function AppProvider({ children }) {
 
   const deleteCommercial = useCallback(async (id) => {
     const ok = await dbDeleteCommercial(id)
-    if (ok) setCommercials(prev => prev.filter(x => x.id !== id))
+    if (ok) {
+      setCommercials(prev => prev.filter(x => x.id !== id && x.dbId !== id))
+      // Detach locally from clients and orders
+      setClients(prev => prev.map(cl => (cl.commercialDbId === id || cl.commercialId === id) ? { ...cl, commercialDbId: null, commercialName: 'Direction Bardahl' } : cl))
+      setOrders(prev => prev.map(o => (o.commercialDbId === id || o.commercialId === id) ? { ...o, commercialDbId: null, commercialName: 'Direction Bardahl' } : o))
+      try {
+        const savedStatus = JSON.parse(localStorage.getItem('bardahl_commercials_status') || '{}')
+        delete savedStatus[id]
+        localStorage.setItem('bardahl_commercials_status', JSON.stringify(savedStatus))
+      } catch (e) {}
+      try {
+        const savedRegions = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
+        delete savedRegions[id]
+        localStorage.setItem('bardahl_commercial_regions', JSON.stringify(savedRegions))
+      } catch (e) {}
+    }
     return ok
   }, [])
 

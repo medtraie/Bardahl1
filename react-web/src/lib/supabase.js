@@ -81,9 +81,22 @@ export async function dbUpdateCommercial(c) {
 }
 
 export async function dbDeleteCommercial(id) {
-  const { error } = await supabase.from('commercials').delete().eq('id', id)
-  if (error) { console.error('dbDeleteCommercial:', error.message); return false }
-  return true
+  try {
+    // 1. Detach clients assigned to this commercial to prevent foreign key errors
+    await supabase.from('clients').update({ commercial_id: null }).eq('commercial_id', id)
+    // 2. Detach orders assigned to this commercial
+    await supabase.from('orders').update({ commercial_id: null }).eq('commercial_id', id)
+    // 3. Delete commercial from commercials table
+    const { error } = await supabase.from('commercials').delete().eq('id', id)
+    if (error) {
+      console.error('dbDeleteCommercial:', error.message)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('dbDeleteCommercial exception:', err)
+    return false
+  }
 }
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────────────

@@ -202,18 +202,22 @@ class SupabaseService(
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
                     val rawCityStr = obj.optString("city", "Casablanca")
-                    var sectorStr = rawCityStr
+                    val isInactive = rawCityStr.contains("Statut: INACTIF", ignoreCase = true) || rawCityStr.contains("[Status: INACTIVE]", ignoreCase = true)
+                    val cleanCity = rawCityStr.replace(Regex("""\|\s*Statut:\s*\w+""", RegexOption.IGNORE_CASE), "")
+                        .replace(Regex("""\[Status:\s*\w+\]""", RegexOption.IGNORE_CASE), "").trim()
+
+                    var sectorStr = cleanCity
                     var regionList = emptyList<String>()
 
-                    if (rawCityStr.contains("| Régions:")) {
-                        val parts = rawCityStr.split("| Régions:")
+                    if (cleanCity.contains("| Régions:")) {
+                        val parts = cleanCity.split("| Régions:")
                         sectorStr = parts[0].trim()
                         regionList = parts[1].split(",").map { it.trim() }.filter { it.isNotBlank() }
-                    } else if (rawCityStr.contains("[Régions:")) {
-                        val match = Regex("""\[Régions:(.*?)\]""").find(rawCityStr)
+                    } else if (cleanCity.contains("[Régions:")) {
+                        val match = Regex("""\[Régions:(.*?)\]""").find(cleanCity)
                         if (match != null) {
                             regionList = match.groupValues[1].split(",").map { it.trim() }.filter { it.isNotBlank() }
-                            sectorStr = rawCityStr.replace(Regex("""\[Régions:.*?\]"""), "").trim()
+                            sectorStr = cleanCity.replace(Regex("""\[Régions:.*?\]"""), "").trim()
                         }
                     }
 
@@ -239,7 +243,7 @@ class SupabaseService(
                             targetMonthlySales = obj.optDouble("target_monthly_sales", 150000.0),
                             currentMonthSales = obj.optDouble("current_month_sales", 0.0),
                             totalOrdersCount = obj.optInt("total_orders_count", 0),
-                            isActive = obj.optBoolean("is_active", true),
+                            isActive = !isInactive,
                             sectors = if (sectorList.isNotEmpty()) sectorList else listOf("Casablanca"),
                             regions = regionList
                         )
@@ -257,10 +261,11 @@ class SupabaseService(
         try {
             val conn = getConnection("commercials", "POST")
             conn.doOutput = true
+            val statusTag = if (commercial.isActive) "ACTIF" else "INACTIF"
             val cityPayload = if (commercial.regions.isNotEmpty()) {
-                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")}"
+                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")} | Statut: $statusTag"
             } else {
-                commercial.city
+                "${commercial.city} | Statut: $statusTag"
             }
             val json = JSONObject().apply {
                 put("id", commercial.id)
@@ -286,10 +291,11 @@ class SupabaseService(
         try {
             val conn = getConnection("commercials?id=eq.${commercial.id}", "PATCH")
             conn.doOutput = true
+            val statusTag = if (commercial.isActive) "ACTIF" else "INACTIF"
             val cityPayload = if (commercial.regions.isNotEmpty()) {
-                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")}"
+                "${commercial.sectors.joinToString(", ")} | Régions: ${commercial.regions.joinToString(", ")} | Statut: $statusTag"
             } else {
-                commercial.city
+                "${commercial.city} | Statut: $statusTag"
             }
             val json = JSONObject().apply {
                 put("name", commercial.name)
@@ -310,6 +316,25 @@ class SupabaseService(
 
     suspend fun deleteCommercial(id: String): Boolean = withContext(Dispatchers.IO) {
         try {
+            // First detach clients and orders to prevent foreign key errors
+            try {
+                val connClients = getConnection("clients?commercial_id=eq.$id", "PATCH")
+                connClients.doOutput = true
+                connClients.outputStream.bufferedWriter().use { it.write("{\"commercial_id\":null}") }
+                connClients.responseCode
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            try {
+                val connOrders = getConnection("orders?commercial_id=eq.$id", "PATCH")
+                connOrders.doOutput = true
+                connOrders.outputStream.bufferedWriter().use { it.write("{\"commercial_id\":null}") }
+                connOrders.responseCode
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             val conn = getConnection("commercials?id=eq.$id", "DELETE")
             return@withContext conn.responseCode in 200..299
         } catch (e: Exception) {

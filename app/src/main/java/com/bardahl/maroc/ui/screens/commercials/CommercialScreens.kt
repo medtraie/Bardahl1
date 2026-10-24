@@ -395,6 +395,26 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                 Button(
                     onClick = {
                         commercials = commercials.map { if (it.id == comm.id) it.copy(isActive = false) else it }
+                        coroutineScope.launch {
+                            supabaseService.updateCommercial(
+                                Commercial(
+                                    id = comm.id,
+                                    userId = "00000000-0000-0000-0000-000000000000",
+                                    name = comm.fullName,
+                                    email = comm.email,
+                                    password = comm.password,
+                                    phone = comm.phone,
+                                    matricule = comm.matricule,
+                                    city = comm.city,
+                                    isActive = false,
+                                    targetMonthlySales = comm.targetSales,
+                                    currentMonthSales = comm.currentSales,
+                                    totalOrdersCount = comm.totalOrders,
+                                    sectors = comm.sectors,
+                                    regions = comm.regions
+                                )
+                            )
+                        }
                         commercialToSafeDelete = null
                         Toast.makeText(context, "Compte de ${comm.fullName} désactivé avec succès.", Toast.LENGTH_SHORT).show()
                     },
@@ -408,6 +428,9 @@ fun CommercialManagementScreen(onSettingsClick: () -> Unit) {
                 TextButton(
                     onClick = {
                         commercials = commercials.filter { it.id != comm.id }
+                        coroutineScope.launch {
+                            supabaseService.deleteCommercial(comm.id)
+                        }
                         commercialToSafeDelete = null
                         Toast.makeText(context, "Commercial ${comm.fullName} supprimé définitivement.", Toast.LENGTH_SHORT).show()
                     }
