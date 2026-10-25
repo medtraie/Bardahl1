@@ -20,7 +20,7 @@ export const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 //         signature_url, observations, is_synced, offline_created_at
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── AUTH USERS (via auth.users & public.users) ─────────────────────────────
+// ─── AUTH USERS (via auth.users) ─────────────────────────────────────────────
 
 export async function dbCreateAuthUser(email, password, metadata = {}) {
   // Create auth user via admin API
@@ -32,97 +32,6 @@ export async function dbCreateAuthUser(email, password, metadata = {}) {
   })
   if (error) { console.error('dbCreateAuthUser:', error.message); return null }
   return data.user
-}
-
-export async function dbGetUsers() {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) { console.error('dbGetUsers:', error.message); return [] }
-  return data || []
-}
-
-export async function dbAddTenantUser(u) {
-  let authUser = null
-  try {
-    authUser = await dbCreateAuthUser(u.email, u.password || '123456', {
-      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim(),
-      company: u.companyName || 'Organisation'
-    })
-  } catch (e) {
-    console.warn('dbCreateAuthUser exception:', e)
-  }
-
-  const userId = authUser?.id || u.id || `user_${Date.now()}`
-  const payload = {
-    id: userId,
-    auth_id: authUser?.id || null,
-    email: u.email,
-    role: u.role || 'admin',
-    first_name: u.firstName || u.name?.split(' ')[0] || 'Admin',
-    last_name: u.lastName || (u.name ? u.name.split(' ').slice(1).join(' ') : ''),
-    phone: u.phone || '+212 6 00 00 00 00',
-    is_active: u.isActive !== false,
-    avatar_url: u.password || '123456'
-  }
-
-  const { data, error } = await supabase.from('users').insert([payload]).select().single()
-  if (error) {
-    console.error('dbAddTenantUser error:', error.message)
-    // Minimal fallback insert
-    const fallbackPayload = {
-      id: userId,
-      email: u.email,
-      role: 'admin',
-      first_name: u.firstName || u.name || 'Admin',
-      last_name: u.lastName || '',
-      is_active: u.isActive !== false
-    }
-    const { data: d2, error: e2 } = await supabase.from('users').insert([fallbackPayload]).select().single()
-    if (e2) console.error('dbAddTenantUser fallback error:', e2.message)
-    return d2 || { ...payload, id: userId }
-  }
-  return data
-}
-
-export async function dbUpdateTenantUser(u) {
-  const targetId = u.id
-  const payload = {
-    email: u.email,
-    first_name: u.firstName || u.name?.split(' ')[0] || 'Admin',
-    last_name: u.lastName || (u.name ? u.name.split(' ').slice(1).join(' ') : ''),
-    phone: u.phone || '+212 6 00 00 00 00',
-    is_active: u.isActive !== false,
-    updated_at: new Date().toISOString()
-  }
-  if (u.password) {
-    payload.avatar_url = u.password
-  }
-
-  const { data, error } = await supabase.from('users').update(payload).eq('id', targetId).select().single()
-  if (error) {
-    console.error('dbUpdateTenantUser:', error.message)
-    return null
-  }
-  return data
-}
-
-export async function dbDeleteTenantUser(userId) {
-  try {
-    // 1. Delete associated commercials, clients, orders for this tenant
-    await supabase.from('commercials').delete().eq('user_id', userId)
-    await supabase.from('orders').delete().eq('user_id', userId)
-    await supabase.from('clients').delete().eq('user_id', userId)
-    // 2. Delete from public.users
-    await supabase.from('users').delete().eq('id', userId)
-    // 3. Delete from auth.users
-    await supabase.auth.admin.deleteUser(userId).catch(() => {})
-    return true
-  } catch (e) {
-    console.error('dbDeleteTenantUser exception:', e)
-    return false
-  }
 }
 
 // ─── COMMERCIALS ─────────────────────────────────────────────────────────────
@@ -138,7 +47,6 @@ export async function dbGetCommercials() {
 
 export async function dbAddCommercial(c) {
   const payload = {
-    user_id: c.userId || c.user_id || null,
     matricule: c.matricule || 'COM-000',
     city: c.city || 'Casablanca',
     target_monthly_sales: parseFloat(c.target) || 150000,
@@ -165,9 +73,6 @@ export async function dbUpdateCommercial(c) {
     email: c.email || '',
     password: c.password || '123456',
     phone: c.phone || '',
-  }
-  if (c.userId || c.user_id) {
-    payload.user_id = c.userId || c.user_id
   }
 
   const { data, error } = await supabase.from('commercials').update(payload).eq('id', c.id).select().single()
@@ -248,7 +153,6 @@ export async function dbAddClient(c) {
     'Flotte': 'flotte'
   }
   const cleanIce = (c.ice && c.ice.trim()) ? c.ice.trim() : (c.codeClient ? '0015' + c.codeClient.replace(/\D/g, '').padStart(5, '0') + '000001' : '0015' + Date.now().toString().slice(-9))
-  const cleanAddress = c.userId ? `${(c.address || c.city || 'Casablanca, Maroc').replace(/\|\s*UID:[a-zA-Z0-9_-]+/gi, '').trim()} | UID:${c.userId}` : (c.address || c.city || 'Casablanca, Maroc')
 
   const insertData = {
     commercial_id: c.commercialDbId || null,
@@ -257,22 +161,15 @@ export async function dbAddClient(c) {
     rc: c.rc || '',
     if_code: c.codeClient || '',
     patente: c.region || '',
-    address: cleanAddress,
+    address: c.address || c.city || 'Casablanca, Maroc',
     city: c.city || 'Casablanca',
     phone: c.phone || '+212 5 22 00 00 00',
     email: c.clientEmail || '',
     client_type: typeMapToDb[c.type] || 'gros',
     is_active: true,
   }
-  if (c.userId) insertData.user_id = c.userId
 
-  let { data, error } = await supabase.from('clients').insert([insertData]).select().single()
-  if (error && error.message && error.message.includes('user_id')) {
-    delete insertData.user_id
-    const res = await supabase.from('clients').insert([insertData]).select().single()
-    data = res.data
-    error = res.error
-  }
+  const { data, error } = await supabase.from('clients').insert([insertData]).select().single()
   if (error) { console.error('dbAddClient error:', error.message); return null }
   return data
 }
@@ -295,7 +192,6 @@ export async function dbUpdateClient(c) {
 
   const targetId = c.dbId || c.id
   const cleanIce = (c.ice && c.ice.trim()) ? c.ice.trim() : (c.codeClient ? '0015' + c.codeClient.replace(/\D/g, '').padStart(5, '0') + '000001' : '001500000000000')
-  const cleanAddress = c.userId ? `${(c.address || c.city || 'Casablanca, Maroc').replace(/\|\s*UID:[a-zA-Z0-9_-]+/gi, '').trim()} | UID:${c.userId}` : (c.address || c.city || 'Casablanca, Maroc')
 
   const updateData = {
     commercial_id: c.commercialDbId || null,
@@ -304,28 +200,20 @@ export async function dbUpdateClient(c) {
     rc: c.rc || '',
     if_code: c.codeClient || '',
     patente: c.region || '',
-    address: cleanAddress,
+    address: c.address || c.city || 'Casablanca, Maroc',
     city: c.city || 'Casablanca',
     phone: c.phone || '+212 5 22 00 00 00',
     email: c.clientEmail || '',
     client_type: typeMapToDb[c.type] || 'gros',
     updated_at: new Date().toISOString()
   }
-  if (c.userId) updateData.user_id = c.userId
 
-  let { data, error } = await supabase
+  const { data, error } = await supabase
     .from('clients')
     .update(updateData)
     .eq('id', targetId)
     .select()
     .single()
-
-  if (error && error.message && error.message.includes('user_id')) {
-    delete updateData.user_id
-    const res = await supabase.from('clients').update(updateData).eq('id', targetId).select().single()
-    data = res.data
-    error = res.error
-  }
 
   if (error) {
     console.error('dbUpdateClient error:', error.message, error.details)
@@ -384,7 +272,6 @@ export async function dbAddOrder(o) {
 
   // Pack items and full order metadata into observations JSON
   const observationsPayload = JSON.stringify({
-    userId: o.userId || null,
     items: o.items || [],
     paymentMethod: o.paymentMethod || 'Chèque',
     modeExpedition: o.modeExpedition || 'Transport Bardahl',
@@ -406,7 +293,7 @@ export async function dbAddOrder(o) {
     clientPhone: o.clientPhone || '',
   })
 
-  const orderInsertPayload = {
+  const { data, error } = await supabase.from('orders').insert([{
     commercial_id: o.commercialDbId,
     client_id: o.clientDbId,
     order_number: o.orderNumber || `BC-${Date.now()}`,
@@ -418,16 +305,7 @@ export async function dbAddOrder(o) {
     total_ttc: parseFloat(o.totalTtc) || 0,
     observations: observationsPayload,
     is_synced: true,
-  }
-  if (o.userId) orderInsertPayload.user_id = o.userId
-
-  let { data, error } = await supabase.from('orders').insert([orderInsertPayload]).select().single()
-  if (error && error.message && error.message.includes('user_id')) {
-    delete orderInsertPayload.user_id
-    const res = await supabase.from('orders').insert([orderInsertPayload]).select().single()
-    data = res.data
-    error = res.error
-  }
+  }]).select().single()
   if (error) { console.error('dbAddOrder:', error.message); return null }
   return data
 }
@@ -444,7 +322,6 @@ export async function dbUpdateOrder(o) {
   const dbStatus = statusMap[(o.status || 'DRAFT').toUpperCase()] || 'draft'
 
   const observationsPayload = JSON.stringify({
-    userId: o.userId || null,
     items: o.items || [],
     paymentMethod: o.paymentMethod || 'Chèque',
     modeExpedition: o.modeExpedition || 'Transport Bardahl',
@@ -467,7 +344,7 @@ export async function dbUpdateOrder(o) {
   })
 
   const targetId = o.id || o.dbId
-  const orderUpdatePayload = {
+  const { data, error } = await supabase.from('orders').update({
     order_number: o.orderNumber,
     order_date: o.date || new Date().toISOString(),
     status: dbStatus,
@@ -476,16 +353,7 @@ export async function dbUpdateOrder(o) {
     total_tva: parseFloat(o.totalTva) || 0,
     total_ttc: parseFloat(o.totalTtc) || 0,
     observations: observationsPayload,
-  }
-  if (o.userId) orderUpdatePayload.user_id = o.userId
-
-  let { data, error } = await supabase.from('orders').update(orderUpdatePayload).eq('id', targetId).select().single()
-  if (error && error.message && error.message.includes('user_id')) {
-    delete orderUpdatePayload.user_id
-    const res = await supabase.from('orders').update(orderUpdatePayload).eq('id', targetId).select().single()
-    data = res.data
-    error = res.error
-  }
+  }).eq('id', targetId).select().single()
   if (error) { console.error('dbUpdateOrder:', error.message); return null }
   return data
 }

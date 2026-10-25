@@ -1,28 +1,22 @@
 import React, { useState } from 'react'
-import { ShieldCheck, Mail, Lock, LogIn, UserCheck, Shield, AlertTriangle, Loader2 } from 'lucide-react'
+import { ShieldCheck, Mail, Lock, LogIn, UserCheck, Shield, AlertTriangle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Login() {
-  const { login, tenantUsers } = useApp()
+  const { login } = useApp()
   const [email, setEmail] = useState('bardahl@gmail.com')
   const [password, setPassword] = useState('123456')
   const [errorMsg, setErrorMsg] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  const normalizedEmail = email.trim().toLowerCase()
-  const isSuperAdmin = normalizedEmail === 'bardahl@gmail.com' || normalizedEmail === 'superadmin@bardahl.ma'
-  const isTenantAccount = (tenantUsers || []).some(u => (u.email || '').toLowerCase() === normalizedEmail)
+  const isEmailAdmin = email.trim().toLowerCase() === 'bardahl@gmail.com'
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault()
     setErrorMsg('')
-    setLoading(true)
     try {
-      await login(email, password)
+      login(email, password, isEmailAdmin ? 'ADMIN' : 'COMMERCIAL')
     } catch (err) {
       setErrorMsg(err.message || 'Erreur de connexion.')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -56,7 +50,7 @@ export default function Login() {
           BARDAHL MAROC
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-          Système Multi-Tenant & Gestion Commerciale Bardahl
+          Système de Gestion Commerciale & Bons de Commande
         </p>
 
         {/* Error Alert Box */}
@@ -91,28 +85,12 @@ export default function Login() {
           marginBottom: '20px',
           fontSize: '12px',
           fontWeight: '800',
-          background: isSuperAdmin 
-            ? 'rgba(255, 208, 0, 0.15)' 
-            : isTenantAccount 
-            ? 'rgba(52, 199, 89, 0.15)' 
-            : 'rgba(0, 122, 255, 0.15)',
-          color: isSuperAdmin 
-            ? 'var(--bardahl-yellow)' 
-            : isTenantAccount 
-            ? '#34C759' 
-            : '#007AFF',
-          border: isSuperAdmin 
-            ? '1px solid var(--bardahl-yellow)' 
-            : isTenantAccount 
-            ? '1px solid rgba(52, 199, 89, 0.4)' 
-            : '1px solid rgba(0, 122, 255, 0.3)'
+          background: isEmailAdmin ? 'rgba(255, 208, 0, 0.15)' : 'rgba(0, 122, 255, 0.15)',
+          color: isEmailAdmin ? 'var(--bardahl-yellow)' : '#007AFF',
+          border: isEmailAdmin ? '1px solid var(--bardahl-yellow)' : '1px solid rgba(0, 122, 255, 0.3)'
         }}>
-          {isSuperAdmin ? <Shield style={{ width: '16px', height: '16px' }} /> : <UserCheck style={{ width: '16px', height: '16px' }} />}
-          {isSuperAdmin 
-            ? "Compte Super Administrateur Global" 
-            : isTenantAccount 
-            ? "Compte Administrateur Client (Espace Isolé)" 
-            : "Compte Agent Commercial Supabase"}
+          {isEmailAdmin ? <Shield style={{ width: '16px', height: '16px' }} /> : <UserCheck style={{ width: '16px', height: '16px' }} />}
+          {isEmailAdmin ? "Compte Administrateur Global (bardahl@gmail.com)" : "Compte Agent Commercial Supabase"}
         </div>
 
         {/* Form Inputs */}
@@ -126,7 +104,7 @@ export default function Login() {
               value={email}
               onChange={(e) => { setEmail(e.target.value); setErrorMsg(''); }}
               className="input-field"
-              placeholder="bardahl@gmail.com ou email compte"
+              placeholder="bardahl@gmail.com ou email commercial"
               required
             />
           </div>
@@ -145,21 +123,15 @@ export default function Login() {
             />
           </div>
 
-          <button 
-            type="submit" 
-            className="btn-bardahl" 
-            style={{ width: '100%', marginTop: '8px', padding: '14px', opacity: loading ? 0.7 : 1 }}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="spinner" style={{ width: '18px', height: '18px' }} /> : <LogIn style={{ width: '18px', height: '18px' }} />}
-            {loading ? "CONNEXION EN COURS..." : "SE CONNECTER"}
+          <button type="submit" className="btn-bardahl" style={{ width: '100%', marginTop: '8px', padding: '14px' }}>
+            <LogIn style={{ width: '18px', height: '18px' }} /> SE CONNECTER
           </button>
         </form>
 
         {/* Quick Demo Shortcuts */}
         <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-          <div>Super Admin : <button onClick={() => { setEmail('bardahl@gmail.com'); setPassword('123456'); setErrorMsg(''); }} style={{ color: 'var(--bardahl-yellow)', textDecoration: 'underline', fontWeight: '800' }}>bardahl@gmail.com</button></div>
-          <div>Agent Commercial : <button onClick={() => { setEmail('karim@bardahl.ma'); setPassword('123'); setErrorMsg(''); }} style={{ color: '#007AFF', textDecoration: 'underline', fontWeight: '800' }}>karim@bardahl.ma</button></div>
+          <div>Tester Connexion Admin : <button onClick={() => { setEmail('bardahl@gmail.com'); setPassword('123456'); setErrorMsg(''); }} style={{ color: 'var(--bardahl-yellow)', textDecoration: 'underline', fontWeight: '800' }}>bardahl@gmail.com</button></div>
+          <div>Tester Connexion Commercial : <button onClick={() => { setEmail('karim@bardahl.ma'); setPassword('123'); setErrorMsg(''); }} style={{ color: '#007AFF', textDecoration: 'underline', fontWeight: '800' }}>karim@bardahl.ma</button></div>
         </div>
 
       </div>
