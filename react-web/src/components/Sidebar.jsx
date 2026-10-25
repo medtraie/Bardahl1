@@ -2,12 +2,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   LayoutDashboard, Users, Boxes, Receipt, 
   Contact, LineChart, Settings, LogOut, ShieldCheck, UserCheck,
-  Sun, Moon, Gift, Activity, GripVertical
+  Sun, Moon, Gift, Activity, GripVertical, ShieldAlert
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const { currentUser, logout, theme, toggleTheme } = useApp()
+
+  const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.role === 'SUPER_ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
+  const isAdmin = currentUser?.role === 'ADMIN' || isSuperAdmin
 
   const navItems = [
     { id: 'dashboard', label: 'Tableau de Bord', icon: LayoutDashboard, adminOnly: false },
@@ -18,11 +21,15 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'stock_movements', label: 'Mouvements de Stock', icon: Activity, adminOnly: true },
     { id: 'commercials', label: 'Équipe Commerciale', icon: Contact, adminOnly: true },
     { id: 'analytics', label: 'Analyses Ventes', icon: LineChart, adminOnly: true },
+    { id: 'super_admin', label: 'Panel Super Admin', icon: ShieldAlert, superAdminOnly: true },
     { id: 'settings', label: 'Paramètres', icon: Settings, adminOnly: false },
   ]
 
-  const isAdmin = currentUser?.role === 'ADMIN'
-  const filteredNav = navItems.filter(item => !item.adminOnly || isAdmin)
+  const filteredNav = navItems.filter(item => {
+    if (item.superAdminOnly) return isSuperAdmin
+    if (item.adminOnly) return isAdmin
+    return true
+  })
 
   const activeIndex = Math.max(0, filteredNav.findIndex(item => item.id === activeTab))
 

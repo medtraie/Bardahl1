@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { allProductsData } from '../data/productsData'
 import { defaultPromotions } from '../data/promotionsData'
 import { DEFAULT_BARDAHL_FAMILIES, setGlobalProductFamilies } from '../data/familiesData'
@@ -10,6 +10,7 @@ import {
   dbGetPromotions,  dbAddPromotion,   dbUpdatePromotion,   dbDeletePromotion,
   dbGetProducts,    dbAddProduct,     dbUpdateProduct,     dbDeleteProduct,
   dbGetProductFamilies, dbAddProductFamily, dbUpdateProductFamily, dbDeleteProductFamily,
+  dbGetUsers,       dbAddTenantUser,  dbUpdateTenantUser,  dbDeleteTenantUser,
   dbUpdateOrderStatus,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
@@ -86,6 +87,7 @@ function rowToCommercial(row) {
   return {
     id: row.id,
     dbId: row.id,
+    userId: row.user_id || null,
     name: row.name || `Commercial ${row.matricule}`,
     email: row.email || '',
     password: row.password || '123456',
@@ -110,15 +112,24 @@ function rowToClient(row) {
     fleet: 'Grand compte',
     industriel: 'Grand compte'
   }
+
+  let clientUserId = row.user_id || null
+  if (!clientUserId && row.address && row.address.includes('UID:')) {
+    const match = row.address.match(/UID:([a-zA-Z0-9_-]+)/)
+    if (match) clientUserId = match[1]
+  }
+  const cleanAddress = (row.address || '').replace(/\|\s*UID:[a-zA-Z0-9_-]+/gi, '').trim()
+
   return {
     id: row.id,
     dbId: row.id,
+    userId: clientUserId,
     companyName: row.company_name || '',
     ice: row.ice || '',
     rc: row.rc || '',
     codeClient: row.if_code || '',
     region: row.patente || '',
-    address: row.address || '',
+    address: cleanAddress || row.city || '',
     city: row.city || '',
     phone: row.phone || '',
     clientEmail: row.email || '',
@@ -154,6 +165,8 @@ function rowToOrder(row, extras = {}) {
   }
 
   const obsRaw = row.observations || ''
+  const orderUserId = row.user_id || parsedObs.userId || extras.userId || null
+
   const paymentMethod = extras.paymentMethod || parsedObs.paymentMethod ||
     (obsRaw.includes('Carte Bancaire') ? 'Carte Bancaire' :
      obsRaw.includes('Espèces') ? 'Espèces' :
@@ -189,6 +202,7 @@ function rowToOrder(row, extras = {}) {
   return {
     id: row.id,
     dbId: row.id,
+    userId: orderUserId,
     orderNumber: row.order_number || '',
     date: row.order_date ? String(row.order_date).substring(0, 10) : '',
     status: statusMap[(row.status || 'draft').toLowerCase()] || (row.status === 'EN_ATTENTE' ? 'EN_ATTENTE' : 'EN_ATTENTE'),
@@ -251,6 +265,9 @@ export function AppProvider({ children }) {
   })
 
   const [loading, setLoading] = useState(true)
+  const [tenantUsers, setTenantUsers] = useState([])
+  const [isInspecting, setIsInspecting] = useState(false)
+  const [inspectedUser, setInspectedUser] = useState(null)
   const [commercials, setCommercials] = useState([])
   const [clients, setClients] = useState([])
   const [orders, setOrders] = useState([])
@@ -403,13 +420,18 @@ export function AppProvider({ children }) {
   const refreshAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [commsRows, clientsRows, ordersRows, productsRows, familiesRows] = await Promise.all([
+      const [commsRows, clientsRows, ordersRows, productsRows, familiesRows, usersRows] = await Promise.all([
         dbGetCommercials(),
         dbGetClients(),
         dbGetOrders(),
         dbGetProducts().catch(() => null),
         dbGetProductFamilies().catch(() => null),
+        dbGetUsers().catch(() => null),
       ])
+
+      if (usersRows && Array.isArray(usersRows)) {
+        setTenantUsers(usersRows)
+      }
 
       const appComms = commsRows.map(rowToCommercial)
       const appClients = clientsRows.map(r => {
@@ -419,6 +441,9 @@ export function AppProvider({ children }) {
         if (comm) {
           client.commercialName = comm.name
           client.commercialEmail = comm.email
+          if (!client.userId && comm.userId) {
+            client.userId = comm.userId
+          }
         }
         return client
       })
@@ -442,8 +467,16 @@ export function AppProvider({ children }) {
         } else if (comm) {
           order.commercialName = comm.name
           order.commercialEmail = comm.email
+          if (!order.userId && comm.userId) {
+            order.userId = comm.userId
+          }
         }
-        if (client) order.clientName = client.companyName
+        if (client) {
+          order.clientName = client.companyName
+          if (!order.userId && client.userId) {
+            order.userId = client.userId
+          }
+        }
         return order
       })
 
@@ -494,51 +527,165 @@ export function AppProvider({ children }) {
     const chCli  = subscribeToTable('clients',     refreshAll)
     const chOrd  = subscribeToTable('orders',      refreshAll)
     const chFam  = subscribeToTable('product_families', refreshAll)
+    const chUsr  = subscribeToTable('users',       refreshAll)
     return () => {
       unsubscribeChannel(chComm)
       unsubscribeChannel(chCli)
       unsubscribeChannel(chOrd)
       unsubscribeChannel(chFam)
+      unsubscribeChannel(chUsr)
     }
   }, [refreshAll])
 
+  // ── TENANT USERS CRUD (Super Admin) ──────────────────────────────────────────
+  const addTenantUser = useCallback(async (u) => {
+    const created = await dbAddTenantUser(u)
+    if (created) {
+      setTenantUsers(prev => [created, ...prev.filter(x => x.id !== created.id)])
+    }
+    return created
+  }, [])
+
+  const updateTenantUser = useCallback(async (u) => {
+    const updated = await dbUpdateTenantUser(u)
+    if (updated) {
+      setTenantUsers(prev => prev.map(x => x.id === u.id ? { ...x, ...updated } : x))
+    }
+    return updated || u
+  }, [])
+
+  const deleteTenantUser = useCallback(async (id) => {
+    const ok = await dbDeleteTenantUser(id)
+    if (ok) {
+      setTenantUsers(prev => prev.filter(x => x.id !== id))
+      // Clean up local state data belonging to this tenant
+      setCommercials(prev => prev.filter(c => c.userId !== id))
+      setClients(prev => prev.filter(c => c.userId !== id))
+      setOrders(prev => prev.filter(o => o.userId !== id))
+    }
+    return ok
+  }, [])
+
+  const inspectTenant = useCallback((targetUser) => {
+    setIsInspecting(true)
+    setInspectedUser(targetUser)
+    const displayName = `${targetUser.first_name || ''} ${targetUser.last_name || ''}`.trim() || targetUser.email
+    setCurrentUser({
+      id: targetUser.id,
+      name: displayName,
+      email: targetUser.email,
+      role: 'ADMIN',
+      companyName: targetUser.company_name || 'Organisation',
+      isSuperAdmin: false,
+      initials: ((targetUser.first_name?.[0] || 'U') + (targetUser.last_name?.[0] || 'A')).toUpperCase(),
+      commercialDbId: `admin_${targetUser.id}`,
+    })
+  }, [])
+
+  const exitInspection = useCallback(() => {
+    setIsInspecting(false)
+    setInspectedUser(null)
+    setCurrentUser({
+      id: '11111111-1111-1111-1111-111111111111',
+      name: 'Direction Bardahl (Super Admin)',
+      email: 'bardahl@gmail.com',
+      role: 'SUPER_ADMIN',
+      isSuperAdmin: true,
+      initials: 'SA',
+      commercialDbId: ADMIN_COMMERCIAL_ID,
+    })
+  }, [])
+
   // ── AUTH ─────────────────────────────────────────────────────────────────────
-  const login = useCallback((inputEmail, inputPassword) => {
+  const login = useCallback(async (inputEmail, inputPassword) => {
     const email = (inputEmail || '').trim().toLowerCase()
     const pwd   = (inputPassword || '').trim()
 
     if (!email) throw new Error('Veuillez saisir votre adresse email.')
 
-    // Admin login
-    if (email === 'bardahl@gmail.com') {
+    // 1. Super Admin login
+    if (email === 'bardahl@gmail.com' || email === 'superadmin@bardahl.ma') {
+      if (pwd && pwd !== '123456' && pwd !== 'admin') throw new Error('Mot de passe incorrect.')
       const user = {
-        name: 'Direction Bardahl',
+        id: '11111111-1111-1111-1111-111111111111',
+        name: 'Direction Bardahl (Super Admin)',
         email,
-        role: 'ADMIN',
-        initials: 'DB',
+        role: 'SUPER_ADMIN',
+        isSuperAdmin: true,
+        initials: 'SA',
         commercialDbId: ADMIN_COMMERCIAL_ID,
       }
       setCurrentUser(user)
+      setIsInspecting(false)
+      setInspectedUser(null)
       return user
     }
 
-    // Commercial login - check against Supabase data
-    const comm = commercials.find(c => (c.email || '').toLowerCase() === email)
-    if (!comm) throw new Error(`Aucun compte trouvé pour "${email}".`)
-    if (pwd !== (comm.password || '123456')) throw new Error('Mot de passe incorrect.')
-
-    const user = {
-      name: comm.name,
-      email: comm.email,
-      role: 'COMMERCIAL',
-      initials: comm.name.split(' ').filter(Boolean).map(n => n[0]).join(''),
-      commercialDbId: comm.dbId,
+    // 2. Tenant Admin login (accounts created via Panel Super Administrateur)
+    const foundTenant = tenantUsers.find(u => (u.email || '').toLowerCase() === email)
+    if (foundTenant) {
+      if (foundTenant.is_active === false) {
+        throw new Error('Ce compte utilisateur a été désactivé par le Super Administrateur.')
+      }
+      const expectedPwd = foundTenant.avatar_url || '123456'
+      if (pwd && expectedPwd && pwd !== expectedPwd) {
+        throw new Error('Mot de passe incorrect.')
+      }
+      const displayName = `${foundTenant.first_name || ''} ${foundTenant.last_name || ''}`.trim() || foundTenant.email
+      const tenantUser = {
+        id: foundTenant.id,
+        name: displayName,
+        email: foundTenant.email,
+        role: 'ADMIN',
+        companyName: foundTenant.company_name || 'Organisation',
+        isSuperAdmin: false,
+        initials: ((foundTenant.first_name?.[0] || 'U') + (foundTenant.last_name?.[0] || 'A')).toUpperCase(),
+        commercialDbId: `admin_${foundTenant.id}`,
+      }
+      setCurrentUser(tenantUser)
+      setIsInspecting(false)
+      setInspectedUser(null)
+      return tenantUser
     }
-    setCurrentUser(user)
-    return user
-  }, [commercials])
 
-  const logout = useCallback(() => setCurrentUser(null), [])
+    // 3. Commercial login - check against Supabase data
+    const comm = commercials.find(c => (c.email || '').toLowerCase() === email)
+    if (comm) {
+      if (pwd !== (comm.password || '123456')) throw new Error('Mot de passe incorrect.')
+      if (comm.isActive === false) throw new Error('Ce compte commercial est actuellement désactivé.')
+
+      const user = {
+        name: comm.name,
+        email: comm.email,
+        role: 'COMMERCIAL',
+        id: comm.id,
+        initials: comm.name.split(' ').filter(Boolean).map(n => n[0]).join(''),
+        commercialDbId: comm.dbId || comm.id,
+        tenantUserId: comm.userId,
+      }
+      setCurrentUser(user)
+      setIsInspecting(false)
+      setInspectedUser(null)
+      return user
+    }
+
+    throw new Error(`Aucun compte trouvé pour "${email}".`)
+  }, [commercials, tenantUsers])
+
+  const logout = useCallback(() => {
+    setIsInspecting(false)
+    setInspectedUser(null)
+    setCurrentUser(null)
+  }, [])
+
+  // ── EFFECTIVE TENANT ID ─────────────────────────────────────────────────────
+  const effectiveTenantId = useMemo(() => {
+    if (!currentUser) return null
+    if (currentUser.role === 'COMMERCIAL') {
+      return currentUser.tenantUserId || null
+    }
+    return currentUser.id || null
+  }, [currentUser])
 
   // ── COMMERCIALS CRUD ────────────────────────────────────────────────────────
   const addCommercial = useCallback(async (c) => {
@@ -548,10 +695,18 @@ export function AppProvider({ children }) {
     const statusTag = c.isActive === false ? 'INACTIF' : 'ACTIF'
     const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')} | Statut: ${statusTag}`
 
-    const row = await dbAddCommercial({ ...c, city: cityPayload })
+    const commPayload = {
+      ...c,
+      userId: effectiveTenantId,
+      user_id: effectiveTenantId,
+      city: cityPayload
+    }
+
+    const row = await dbAddCommercial(commPayload)
     if (!row) return null
     const appComm = {
       ...rowToCommercial(row),
+      userId: effectiveTenantId,
       regions: regionsClean,
       sectors: sectorClean,
       isActive: c.isActive !== false
@@ -572,7 +727,7 @@ export function AppProvider({ children }) {
 
     setCommercials(prev => [...prev, appComm])
     return appComm
-  }, [])
+  }, [effectiveTenantId])
 
   const updateCommercial = useCallback(async (c) => {
     const targetId = c.id || c.dbId
@@ -581,6 +736,13 @@ export function AppProvider({ children }) {
     const regionsClean = Array.isArray(c.regions) && c.regions.length > 0 ? c.regions : (c.region ? c.region.split(',') : ['Casablanca-Settat'])
     const statusTag = c.isActive === false ? 'INACTIF' : 'ACTIF'
     const cityPayload = `${sectorClean.join(', ')} | Régions: ${regionsClean.join(', ')} | Statut: ${statusTag}`
+
+    const updatePayload = {
+      ...c,
+      id: targetId,
+      userId: c.userId || effectiveTenantId,
+      city: cityPayload
+    }
 
     try {
       const saved = JSON.parse(localStorage.getItem('bardahl_commercial_regions') || '{}')
@@ -596,21 +758,22 @@ export function AppProvider({ children }) {
       localStorage.setItem('bardahl_commercials_status', JSON.stringify(savedStatus))
     } catch (e) {}
 
-    const row = await dbUpdateCommercial({ ...c, id: targetId, city: cityPayload })
+    const row = await dbUpdateCommercial(updatePayload)
     if (!row) {
-      const fallbackComm = { ...c, id: targetId, regions: regionsClean, sectors: sectorClean, isActive: c.isActive !== false }
+      const fallbackComm = { ...c, id: targetId, userId: c.userId || effectiveTenantId, regions: regionsClean, sectors: sectorClean, isActive: c.isActive !== false }
       setCommercials(prev => prev.map(x => (x.id === targetId || x.dbId === targetId) ? fallbackComm : x))
       return fallbackComm
     }
     const appComm = {
       ...rowToCommercial(row),
+      userId: c.userId || effectiveTenantId,
       regions: regionsClean,
       sectors: sectorClean,
       isActive: c.isActive !== false
     }
     setCommercials(prev => prev.map(x => (x.id === row.id || x.dbId === row.id || x.id === targetId) ? appComm : x))
     return appComm
-  }, [])
+  }, [effectiveTenantId])
 
   const deleteCommercial = useCallback(async (id) => {
     const ok = await dbDeleteCommercial(id)
@@ -640,24 +803,38 @@ export function AppProvider({ children }) {
       commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())?.dbId ||
       null
 
-    const row = await dbAddClient({ ...c, commercialDbId: commDbId })
+    const clientPayload = {
+      ...c,
+      userId: effectiveTenantId,
+      commercialDbId: commDbId
+    }
+
+    const row = await dbAddClient(clientPayload)
     if (!row) return null
 
-    const appClient = rowToClient(row)
+    const appClient = {
+      ...rowToClient(row),
+      userId: effectiveTenantId
+    }
     const comm = commercials.find(cm => cm.dbId === commDbId || cm.id === commDbId)
     if (comm) { appClient.commercialName = comm.name; appClient.commercialEmail = comm.email }
     setClients(prev => [...prev, appClient])
     return appClient
-  }, [currentUser, commercials])
+  }, [currentUser, commercials, effectiveTenantId])
 
   const updateClient = useCallback(async (c) => {
     const targetId = c.id || c.dbId
-    const row = await dbUpdateClient(c)
+    const updatePayload = {
+      ...c,
+      userId: c.userId || effectiveTenantId
+    }
+    const row = await dbUpdateClient(updatePayload)
     if (!row) {
       // Fallback: update local state if db update returned null
       const comm = commercials.find(cm => cm.dbId === c.commercialDbId || cm.id === c.commercialDbId)
       const fallbackClient = {
         ...c,
+        userId: c.userId || effectiveTenantId,
         commercialName: comm ? comm.name : c.commercialName,
         commercialEmail: comm ? comm.email : c.commercialEmail
       }
@@ -665,7 +842,10 @@ export function AppProvider({ children }) {
       return fallbackClient
     }
 
-    const appClient = rowToClient(row)
+    const appClient = {
+      ...rowToClient(row),
+      userId: c.userId || effectiveTenantId
+    }
     const comm = commercials.find(cm => cm.dbId === appClient.commercialDbId || cm.id === appClient.commercialDbId)
     if (comm) {
       appClient.commercialName = comm.name
@@ -676,7 +856,7 @@ export function AppProvider({ children }) {
     }
     setClients(prev => prev.map(x => (x.id === row.id || x.dbId === row.id || x.id === targetId || x.dbId === targetId) ? appClient : x))
     return appClient
-  }, [clients, commercials])
+  }, [clients, commercials, effectiveTenantId])
 
   const deleteClient = useCallback(async (id) => {
     const ok = await dbDeleteClient(id)
@@ -685,7 +865,7 @@ export function AppProvider({ children }) {
 
   // ── ORDERS CRUD ──────────────────────────────────────────────────────────────
   const addOrder = useCallback(async (o) => {
-    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
+    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
     let commDbId = o.commercialDbId || (isCurrentUserAdmin ? ADMIN_COMMERCIAL_ID : currentUser?.commercialDbId)
     if (!commDbId) {
       if (isCurrentUserAdmin) {
@@ -717,6 +897,7 @@ export function AppProvider({ children }) {
 
     const orderPayload = {
       ...o,
+      userId: effectiveTenantId,
       commercialDbId: commDbId,
       clientDbId: clientDbId,
       clientName: clientRecord?.companyName || o.clientName,
@@ -733,6 +914,7 @@ export function AppProvider({ children }) {
 
     // Save extras locally (items, paymentMethod, modeExpedition)
     const extras = {
+      userId: effectiveTenantId,
       items: o.items || [],
       paymentMethod: o.paymentMethod || 'Chèque',
       modeExpedition: o.modeExpedition || 'Transport Bardahl',
@@ -755,16 +937,21 @@ export function AppProvider({ children }) {
     }
     setOrderExtras(prev => ({ ...prev, [row.id]: extras }))
 
-    const appOrder = { ...rowToOrder(row, extras) }
+    const appOrder = { ...rowToOrder(row, extras), userId: effectiveTenantId }
     setOrders(prev => [appOrder, ...prev.filter(x => x.id !== row.id && x.orderNumber !== appOrder.orderNumber)])
     return appOrder
-  }, [currentUser, commercials, clients])
+  }, [currentUser, commercials, clients, effectiveTenantId])
 
   const updateOrder = useCallback(async (o) => {
-    const row = await dbUpdateOrder(o)
+    const updatePayload = {
+      ...o,
+      userId: o.userId || effectiveTenantId
+    }
+    const row = await dbUpdateOrder(updatePayload)
     if (!row) return null
 
     const extras = {
+      userId: o.userId || effectiveTenantId,
       items: o.items || [],
       paymentMethod: o.paymentMethod || 'Chèque',
       modeExpedition: o.modeExpedition || 'Transport Bardahl',
@@ -787,10 +974,10 @@ export function AppProvider({ children }) {
     }
     setOrderExtras(prev => ({ ...prev, [row.id]: extras }))
 
-    const appOrder = { ...rowToOrder(row, extras) }
+    const appOrder = { ...rowToOrder(row, extras), userId: o.userId || effectiveTenantId }
     setOrders(prev => prev.map(x => (x.id === row.id || x.dbId === row.id) ? appOrder : x))
     return appOrder
-  }, [])
+  }, [effectiveTenantId])
 
   const deleteOrder = useCallback(async (id) => {
     setOrderExtras(prev => { const n = { ...prev }; delete n[id]; return n })
@@ -1029,6 +1216,7 @@ export function AppProvider({ children }) {
   const addClientCompensation = useCallback((comp) => {
     const newComp = {
       id: comp.id || `comp_${Date.now()}`,
+      userId: effectiveTenantId,
       orderId: comp.orderId || null,
       orderNumber: comp.orderNumber || '',
       clientId: comp.clientId || '',
@@ -1046,7 +1234,7 @@ export function AppProvider({ children }) {
     }
     setClientCompensations(prev => [newComp, ...prev.filter(c => c.id !== newComp.id)])
     return newComp
-  }, [])
+  }, [effectiveTenantId])
 
   const updateClientCompensation = useCallback((comp) => {
     setClientCompensations(prev => prev.map(c => c.id === comp.id ? { ...c, ...comp } : c))
@@ -1070,35 +1258,78 @@ export function AppProvider({ children }) {
     setClientCompensations(prev => prev.filter(c => c.id !== id))
   }, [])
 
-  // ── Role-based visibility ────────────────────────────────────────────────────
-  const isAdmin = currentUser?.role === 'ADMIN'
+  // ── STRICT MULTI-TENANT DATA ISOLATION ──────────────────────────────────────
+  // Rules requested:
+  // - Utilisateur A : voit uniquement ses données.
+  // - Utilisateur B : voit uniquement ses données.
+  // - Nouveau compte : application vide.
+  // - Les anciennes lignes qui n’ont pas de user_id ne seront visibles par personne.
 
-  const visibleClients = isAdmin
-    ? clients
-    : clients.filter(c => {
-        const comm = commercials.find(cm => cm.dbId === c.commercialDbId)
-        return comm && (comm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase()
-      })
+  const tenantCommercials = useMemo(() => {
+    if (!effectiveTenantId) return []
+    return commercials.filter(c => c.userId && String(c.userId).trim() === String(effectiveTenantId).trim())
+  }, [commercials, effectiveTenantId])
 
-  const visibleOrders = isAdmin
-    ? orders
-    : orders.filter(o => {
-        const comm = commercials.find(cm => cm.dbId === o.commercialDbId)
-        return comm && (comm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase()
-      })
+  const tenantClients = useMemo(() => {
+    if (!effectiveTenantId) return []
+    return clients.filter(cl => {
+      if (cl.userId && String(cl.userId).trim() === String(effectiveTenantId).trim()) return true
+      if (cl.commercialDbId) {
+        const comm = tenantCommercials.find(cm => cm.dbId === cl.commercialDbId || cm.id === cl.commercialDbId)
+        if (comm && comm.userId && String(comm.userId).trim() === String(effectiveTenantId).trim()) return true
+      }
+      return false
+    })
+  }, [clients, effectiveTenantId, tenantCommercials])
+
+  const tenantOrders = useMemo(() => {
+    if (!effectiveTenantId) return []
+    return orders.filter(o => {
+      if (o.userId && String(o.userId).trim() === String(effectiveTenantId).trim()) return true
+      if (o.commercialDbId) {
+        const comm = tenantCommercials.find(cm => cm.dbId === o.commercialDbId || cm.id === o.commercialDbId)
+        if (comm && comm.userId && String(comm.userId).trim() === String(effectiveTenantId).trim()) return true
+      }
+      return false
+    })
+  }, [orders, effectiveTenantId, tenantCommercials])
+
+  // Commercial role-based further filter
+  const visibleClients = useMemo(() => {
+    if (currentUser?.role === 'COMMERCIAL') {
+      return tenantClients.filter(c => c.commercialDbId === currentUser.commercialDbId || c.commercialId === currentUser.commercialDbId)
+    }
+    return tenantClients
+  }, [tenantClients, currentUser])
+
+  const visibleOrders = useMemo(() => {
+    if (currentUser?.role === 'COMMERCIAL') {
+      return tenantOrders.filter(o => o.commercialDbId === currentUser.commercialDbId || o.commercialId === currentUser.commercialDbId)
+    }
+    return tenantOrders
+  }, [tenantOrders, currentUser])
+
+  const tenantCompensations = useMemo(() => {
+    if (!effectiveTenantId) return []
+    return clientCompensations.filter(c => c.userId && String(c.userId).trim() === String(effectiveTenantId).trim())
+  }, [clientCompensations, effectiveTenantId])
 
   return (
     <AppContext.Provider value={{
       currentUser, login, logout, loading,
       theme, setTheme, toggleTheme,
-      clients: visibleClients, allClients: clients,
+      // Multi-tenant & Super Admin state
+      tenantUsers, addTenantUser, updateTenantUser, deleteTenantUser,
+      inspectTenant, exitInspection, isInspecting, inspectedUser,
+      // Isolated data (strictly per user_id)
+      clients: visibleClients, allClients: tenantClients,
       addClient, updateClient, deleteClient,
       products: localProducts, addProduct, updateProduct, deleteProduct, deductProductsStock, restoreProductsStock,
       productFamilies, addProductFamily, updateProductFamily, deleteProductFamily, toggleProductFamily,
-      orders: visibleOrders, allOrders: orders,
+      orders: visibleOrders, allOrders: tenantOrders,
       addOrder, updateOrder, deleteOrder, updateOrderStatus,
-      clientCompensations, addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
-      commercials, addCommercial, updateCommercial, deleteCommercial,
+      clientCompensations: tenantCompensations, addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
+      commercials: tenantCommercials, allCommercials: commercials, addCommercial, updateCommercial, deleteCommercial,
       promotions, addPromotion, updatePromotion, deletePromotion, togglePromotion,
       refreshAll,
     }}>
