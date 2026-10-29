@@ -432,19 +432,24 @@ export default function MacFiltering() {
                   {/* Top Bar of Commercial Card */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                       <div style={{
-                        width: '44px',
-                        height: '44px',
-                        borderRadius: '12px',
+                        minWidth: '96px',
+                        height: '40px',
+                        padding: '0 14px',
+                        borderRadius: '10px',
                         background: 'rgba(255, 208, 0, 0.1)',
-                        border: '1px solid rgba(255, 208, 0, 0.3)',
-                        display: 'flex',
+                        border: '1.5px solid rgba(255, 208, 0, 0.4)',
+                        display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: 'var(--bardahl-yellow)',
                         fontWeight: '900',
-                        fontSize: '15px'
+                        fontSize: '13px',
+                        letterSpacing: '0.8px',
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
                       }}>
                         {comm.matricule || 'COM'}
                       </div>
