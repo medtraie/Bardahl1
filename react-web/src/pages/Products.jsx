@@ -19,7 +19,7 @@ export default function Products() {
   }, [productFamilies])
 
   const [formData, setFormData] = useState({
-    code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100'
+    code: '', reference: '', name: '', category: 'FA0015', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100'
   })
 
   const categories = useMemo(() => [
@@ -42,7 +42,7 @@ export default function Products() {
   })
 
   const handleOpenAddModal = () => {
-    setFormData({ code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
+    setFormData({ code: '', reference: '', name: '', category: activeFamilies[0]?.code || 'FA0015', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
     setShowAddModal(true)
   }
 
@@ -52,7 +52,7 @@ export default function Products() {
       code: p.code || '',
       reference: p.reference || '',
       name: p.name || '',
-      category: p.category || 'ADDITIFS',
+      category: p.category || activeFamilies[0]?.code || 'FA0015',
       packaging: p.packaging || 'Carton de 12',
       unitsPerBox: String(p.unitsPerBox || getProductUnitsPerCarton(p) || '1'),
       priceTtc: p.priceTtc ? p.priceTtc.toString() : '',
@@ -69,7 +69,7 @@ export default function Products() {
       stock: parseInt(formData.stock, 10) || 100
     })
     setShowAddModal(false)
-    setFormData({ code: '', reference: '', name: '', category: 'ADDITIFS', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
+    setFormData({ code: '', reference: '', name: '', category: activeFamilies[0]?.code || 'FA0015', packaging: 'Carton de 12', unitsPerBox: '12', priceTtc: '', stock: '100' })
     alert(`Produit « ${formData.name} » ajouté avec succès et synchronisé dans Supabase !`)
   }
 

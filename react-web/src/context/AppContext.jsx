@@ -322,19 +322,9 @@ export function AppProvider({ children }) {
     async function loadFamilies() {
       const remote = await dbGetProductFamilies()
       if (remote && remote.length > 0) {
-        setProductFamilies(prev => {
-          const map = new Map()
-          DEFAULT_BARDAHL_FAMILIES.forEach(f => map.set(f.code, f))
-          prev.forEach(f => map.set(f.code, f))
-          remote.forEach(f => {
-            const existing = map.get(f.code) || {}
-            map.set(f.code, { ...existing, ...f })
-          })
-          const merged = Array.from(map.values())
-          try { localStorage.setItem('bardahl_product_families', JSON.stringify(merged)) } catch (e) {}
-          setGlobalProductFamilies(merged)
-          return merged
-        })
+        setProductFamilies(remote)
+        try { localStorage.setItem('bardahl_product_families', JSON.stringify(remote)) } catch (e) {}
+        setGlobalProductFamilies(remote)
       }
     }
     loadFamilies()
@@ -452,32 +442,13 @@ export function AppProvider({ children }) {
       setOrders(appOrders)
 
       if (productsRows && productsRows.length > 0) {
-        setLocalProducts(prev => {
-          const map = new Map()
-          prev.forEach(p => map.set(p.reference || p.id, p))
-          productsRows.forEach(p => {
-            const key = p.reference || p.id
-            const existing = map.get(p.reference) || map.get(p.id)
-            map.set(key, { ...(existing || {}), ...p })
-          })
-          return Array.from(map.values())
-        })
+        setLocalProducts(productsRows)
       }
 
       if (familiesRows && familiesRows.length > 0) {
-        setProductFamilies(prev => {
-          const map = new Map()
-          DEFAULT_BARDAHL_FAMILIES.forEach(f => map.set(f.code, f))
-          prev.forEach(f => map.set(f.code, f))
-          familiesRows.forEach(f => {
-            const existing = map.get(f.code) || {}
-            map.set(f.code, { ...existing, ...f })
-          })
-          const merged = Array.from(map.values())
-          try { localStorage.setItem('bardahl_product_families', JSON.stringify(merged)) } catch (e) {}
-          setGlobalProductFamilies(merged)
-          return merged
-        })
+        setProductFamilies(familiesRows)
+        try { localStorage.setItem('bardahl_product_families', JSON.stringify(familiesRows)) } catch (e) {}
+        setGlobalProductFamilies(familiesRows)
       }
     } catch (err) {
       console.error('refreshAll error:', err)
