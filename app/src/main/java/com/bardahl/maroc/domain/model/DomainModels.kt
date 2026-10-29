@@ -233,3 +233,40 @@ data class CompanySettings(
     val patente: String = "456789",
     val tvaDefault: Double = 20.0
 )
+
+enum class DevisStatus(val label: String) {
+    EN_ATTENTE("En Attente"),
+    VALIDE("Validé"),
+    CONVERTI("Converti"),
+    EXPIRE("Expiré")
+}
+
+data class Devis(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val devisNumber: String,
+    val commercialId: String,
+    val commercialName: String = "",
+    val commercialEmail: String = "",
+    val clientId: String,
+    val clientName: String = "",
+    val clientIce: String = "",
+    val clientCity: String = "",
+    val clientAddress: String = "",
+    val clientPhone: String = "",
+    val date: String,
+    val validityDate: String = "",
+    val status: DevisStatus = DevisStatus.EN_ATTENTE,
+    val items: List<OrderItem> = emptyList(),
+    val paymentMethod: String = "Chèque",
+    val modeExpedition: String = "Transport Bardahl",
+    val remarque: String = "",
+    val remisePercent: Double = 0.0,
+    val remiseMontant: Double = 0.0,
+    val totalHt: Double = 0.0,
+    val totalDiscount: Double = 0.0,
+    val totalTva: Double = 0.0,
+    val totalTtc: Double = 0.0,
+    val convertedOrderNumber: String? = null,
+    val convertedOrderId: String? = null,
+    val convertedAt: String? = null
+)

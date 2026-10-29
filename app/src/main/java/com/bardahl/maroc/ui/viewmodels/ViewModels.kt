@@ -320,4 +320,63 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             }
         }
     }
+
+    // ── DEVIS / ESTIMATIONS STATE & CRUD ──
+    private val _devis = MutableStateFlow<List<Devis>>(emptyList())
+    val devis: StateFlow<List<Devis>> = _devis.asStateFlow()
+
+    fun createDevis(d: Devis) {
+        viewModelScope.launch {
+            _devis.value = listOf(d) + _devis.value.filter { it.id != d.id && it.devisNumber != d.devisNumber }
+        }
+    }
+
+    fun updateDevis(d: Devis) {
+        viewModelScope.launch {
+            _devis.value = _devis.value.map { if (it.id == d.id || it.devisNumber == d.devisNumber) d else it }
+        }
+    }
+
+    fun deleteDevis(id: String) {
+        viewModelScope.launch {
+            _devis.value = _devis.value.filter { it.id != id }
+        }
+    }
+
+    fun convertDevisToOrder(targetDevis: Devis): Order {
+        val nextNum = String.format("BC-2026-%06d", 4332 + _orders.value.size + 1)
+        val newOrder = Order(
+            id = "ord_" + System.currentTimeMillis(),
+            orderNumber = nextNum,
+            commercialId = targetDevis.commercialId,
+            commercialName = targetDevis.commercialName,
+            clientId = targetDevis.clientId,
+            clientName = targetDevis.clientName,
+            orderDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()),
+            status = OrderStatus.VALIDATED,
+            items = targetDevis.items,
+            paymentMethod = targetDevis.paymentMethod,
+            modeExpedition = targetDevis.modeExpedition,
+            remarque = if (targetDevis.remarque.isNotBlank()) "[Converti depuis Devis ${targetDevis.devisNumber}] ${targetDevis.remarque}" else "Converti depuis Devis ${targetDevis.devisNumber}",
+            remisePercent = targetDevis.remisePercent,
+            remiseMontant = targetDevis.remiseMontant,
+            totalHt = targetDevis.totalHt,
+            totalDiscount = targetDevis.totalDiscount,
+            totalTva = targetDevis.totalTva,
+            totalTtc = targetDevis.totalTtc,
+            hasAnormalPrice = false
+        )
+
+        createOrder(newOrder)
+
+        val updatedDevis = targetDevis.copy(
+            status = DevisStatus.CONVERTI,
+            convertedOrderNumber = nextNum,
+            convertedOrderId = newOrder.id,
+            convertedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        )
+        updateDevis(updatedDevis)
+
+        return newOrder
+    }
 }

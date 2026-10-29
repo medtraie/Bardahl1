@@ -83,6 +83,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Dashboard : Screen("dashboard", "Accueil", Icons.Default.Dashboard)
     object Clients : Screen("clients", "Clients", Icons.Default.People)
     object Products : Screen("products", "Produits", Icons.Default.Inventory2)
+    object Devis : Screen("devis", "Devis", Icons.Default.Description)
     object Orders : Screen("orders", "Bons de Commande", Icons.Default.ReceiptLong)
     object CreateOrder : Screen("create_order", "Nouveau Bon", Icons.Default.AddCircle)
     object Commercials : Screen("commercials", "Commerciaux", Icons.Default.Badge)
@@ -132,9 +133,9 @@ fun MainAppNavHost(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val bottomNavItems = if (isAdmin) {
-                            listOf(Screen.Dashboard, Screen.Clients, Screen.Products, Screen.Orders, Screen.Commercials, Screen.Analytics)
+                            listOf(Screen.Dashboard, Screen.Clients, Screen.Products, Screen.Devis, Screen.Orders, Screen.Commercials, Screen.Analytics)
                         } else {
-                            listOf(Screen.Dashboard, Screen.Clients, Screen.Products, Screen.Orders)
+                            listOf(Screen.Dashboard, Screen.Clients, Screen.Products, Screen.Devis, Screen.Orders)
                         }
 
                         bottomNavItems.forEach { screen ->
@@ -220,6 +221,16 @@ fun MainAppNavHost(
                     ProductCatalogScreen(
                         productViewModel = productViewModel,
                         onSettingsClick = navigateToSettings
+                    )
+                }
+                composable(Screen.Devis.route) {
+                    com.bardahl.maroc.ui.screens.devis.DevisScreen(
+                        orderViewModel = orderViewModel,
+                        clientViewModel = clientViewModel,
+                        productViewModel = productViewModel,
+                        authViewModel = authViewModel,
+                        onSettingsClick = navigateToSettings,
+                        onNavigateToOrders = { navController.navigate(Screen.Orders.route) }
                     )
                 }
                 composable(Screen.Orders.route) {
