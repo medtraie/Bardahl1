@@ -65,3 +65,66 @@ export function exportStockMovementsToExcel(movements, promoNameFilter = 'Toutes
   const cleanFilter = (promoNameFilter || 'Global').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)
   XLSX.writeFile(workbook, `Bardahl_Mouvements_Stock_${cleanFilter}.xlsx`)
 }
+
+export function exportMacDevicesToExcel(commercialsWithDevices, auditLogs = []) {
+  // Sheet 1: Devices
+  const devicesData = []
+  commercialsWithDevices.forEach(comm => {
+    const devices = comm.devices || []
+    if (devices.length === 0) {
+      devicesData.push({
+        "Matricule": comm.matricule,
+        "Commercial": comm.name,
+        "Email": comm.email,
+        "Région": (comm.regions || []).join(', ') || comm.city || '-',
+        "Filtrage MAC": comm.isMacFilteringActive !== false ? 'ACTIVÉ' : 'DÉSACTIVÉ',
+        "Appareils Autorisés": '0 / 3',
+        "Adresse MAC": 'Aucun appareil',
+        "Nom de l'Appareil": '-',
+        "Modèle Appareil": '-',
+        "Statut Appareil": '-',
+        "Dernière Connexion": comm.lastLogin?.date ? new Date(comm.lastLogin.date).toLocaleString('fr-FR') : 'Jamais connecté',
+        "Dernier Modèle Utilisé": comm.lastLogin?.deviceModel || '-'
+      })
+    } else {
+      devices.forEach((d, idx) => {
+        devicesData.push({
+          "Matricule": comm.matricule,
+          "Commercial": comm.name,
+          "Email": comm.email,
+          "Région": (comm.regions || []).join(', ') || comm.city || '-',
+          "Filtrage MAC": comm.isMacFilteringActive !== false ? 'ACTIVÉ' : 'DÉSACTIVÉ',
+          "Appareils Autorisés": `${devices.length} / 3`,
+          "Adresse MAC": d.macAddress,
+          "Nom de l'Appareil": d.deviceName || `Appareil #${idx + 1}`,
+          "Modèle Appareil": d.deviceModel || '-',
+          "Statut Appareil": d.isActive !== false ? 'AUTORISÉ' : 'DÉSACTIVÉ',
+          "Dernière Connexion": comm.lastLogin?.date ? new Date(comm.lastLogin.date).toLocaleString('fr-FR') : 'Jamais connecté',
+          "Dernier Modèle Utilisé": comm.lastLogin?.deviceModel || '-'
+        })
+      })
+    }
+  })
+
+  // Sheet 2: Audit Logs
+  const logsData = auditLogs.map(l => ({
+    "Date & Heure": new Date(l.createdAt || l.created_at || Date.now()).toLocaleString('fr-FR'),
+    "Commercial": l.commercialName || l.commercial_name || '-',
+    "Adresse MAC Tentée": l.attemptedMac || l.attempted_mac || '-',
+    "Modèle de l'Appareil": l.deviceModel || l.device_model || '-',
+    "Statut": l.status || 'BLOCKED',
+    "Motif": l.reason || '-'
+  }))
+
+  const workbook = XLSX.utils.book_new()
+  const wsDevices = XLSX.utils.json_to_sheet(devicesData)
+  XLSX.utils.book_append_sheet(workbook, wsDevices, "Appareils Autorisés")
+
+  if (logsData.length > 0) {
+    const wsLogs = XLSX.utils.json_to_sheet(logsData)
+    XLSX.utils.book_append_sheet(workbook, wsLogs, "Journal de Sécurité")
+  }
+
+  const dateStr = new Date().toISOString().substring(0, 10)
+  XLSX.writeFile(workbook, `Bardahl_Audit_Securite_MAC_${dateStr}.xlsx`)
+}

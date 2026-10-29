@@ -1013,3 +1013,140 @@ export function subscribeToTable(table, callback) {
 export function unsubscribeChannel(channel) {
   if (channel) supabase.removeChannel(channel)
 }
+
+// ─── MAC FILTERING & DEVICE SECURITY ─────────────────────────────────────────
+
+export function rowToCommercialDevice(row) {
+  return {
+    id: row.id,
+    commercialId: row.commercial_id,
+    macAddress: (row.mac_address || '').toUpperCase().trim(),
+    deviceName: row.device_name || 'Appareil Android',
+    deviceModel: row.device_model || 'Android Device',
+    isActive: row.is_active !== false,
+    addedAt: row.added_at || row.created_at || new Date().toISOString(),
+    lastUsedAt: row.last_used_at || null
+  }
+}
+
+export async function dbGetCommercialDevices() {
+  try {
+    const { data, error } = await supabase
+      .from('commercial_devices')
+      .select('*')
+      .order('added_at', { ascending: false })
+
+    if (error) return null
+    return (data || []).map(rowToCommercialDevice)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbAddCommercialDevice(device) {
+  try {
+    const payload = {
+      id: device.id || undefined,
+      commercial_id: device.commercialId,
+      mac_address: (device.macAddress || '').toUpperCase().trim(),
+      device_name: device.deviceName || 'Appareil Android Commercial',
+      device_model: device.deviceModel || 'Android Device',
+      is_active: device.isActive !== false,
+      added_at: device.addedAt || new Date().toISOString()
+    }
+
+    const { data, error } = await supabase
+      .from('commercial_devices')
+      .insert([payload])
+      .select()
+      .single()
+
+    if (error) return null
+    return rowToCommercialDevice(data)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbUpdateCommercialDevice(device) {
+  try {
+    const payload = {
+      mac_address: (device.macAddress || '').toUpperCase().trim(),
+      device_name: device.deviceName,
+      device_model: device.deviceModel,
+      is_active: device.isActive !== false,
+      last_used_at: device.lastUsedAt || undefined,
+      updated_at: new Date().toISOString()
+    }
+
+    const targetId = device.id
+    const { data, error } = await supabase
+      .from('commercial_devices')
+      .update(payload)
+      .eq('id', targetId)
+      .select()
+      .single()
+
+    if (error) return null
+    return rowToCommercialDevice(data)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbDeleteCommercialDevice(id) {
+  try {
+    const { error } = await supabase
+      .from('commercial_devices')
+      .delete()
+      .eq('id', id)
+
+    if (error) return false
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+export async function dbGetMacSecurityLogs() {
+  try {
+    const { data, error } = await supabase
+      .from('mac_security_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (error) return null
+    return data || []
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbAddMacSecurityLog(log) {
+  try {
+    const payload = {
+      id: log.id || undefined,
+      commercial_id: log.commercialId || null,
+      commercial_name: log.commercialName || '',
+      commercial_email: log.commercialEmail || '',
+      attempted_mac: (log.attemptedMac || '').toUpperCase().trim(),
+      device_model: log.deviceModel || 'Android Device',
+      status: log.status || 'BLOCKED',
+      reason: log.reason || 'Appareil non enregistré',
+      ip_address: log.ipAddress || 'Réseau Mobile / Wi-Fi',
+      created_at: log.createdAt || new Date().toISOString()
+    }
+
+    const { data, error } = await supabase
+      .from('mac_security_logs')
+      .insert([payload])
+      .select()
+      .single()
+
+    if (error) return null
+    return data
+  } catch (e) {
+    return null
+  }
+}

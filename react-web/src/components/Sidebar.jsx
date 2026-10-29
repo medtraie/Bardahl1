@@ -18,6 +18,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'orders', label: 'Bons de Commande', icon: Receipt, adminOnly: false },
     { id: 'stock_movements', label: 'Mouvements de Stock', icon: Activity, adminOnly: true },
     { id: 'commercials', label: 'Équipe Commerciale', icon: Contact, adminOnly: true },
+    { id: 'mac_filtering', label: 'Filtrage MAC & Sécurité', icon: ShieldCheck, adminOnly: true },
     { id: 'analytics', label: 'Analyses Ventes', icon: LineChart, adminOnly: true },
     { id: 'settings', label: 'Paramètres', icon: Settings, adminOnly: false },
   ]

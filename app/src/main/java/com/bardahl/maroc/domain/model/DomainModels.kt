@@ -46,7 +46,12 @@ data class Commercial(
     val totalOrdersCount: Int = 0,
     val isActive: Boolean = true,
     val sectors: List<String> = emptyList(),
-    val regions: List<String> = emptyList()
+    val regions: List<String> = emptyList(),
+    val authorizedMacs: List<String> = emptyList(),
+    val isMacFilteringActive: Boolean = true,
+    val lastLoginAt: String? = null,
+    val lastDeviceModel: String? = null,
+    val lastLoginMac: String? = null
 )
 
 data class Client(
@@ -269,4 +274,26 @@ data class Devis(
     val convertedOrderNumber: String? = null,
     val convertedOrderId: String? = null,
     val convertedAt: String? = null
+)
+
+data class AuthorizedDevice(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val commercialId: String,
+    val macAddress: String,
+    val deviceName: String = "Appareil Android",
+    val deviceModel: String = "",
+    val isActive: Boolean = true,
+    val addedAt: String = "",
+    val lastUsedAt: String = ""
+)
+
+data class MacSecurityLog(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val commercialId: String,
+    val commercialName: String,
+    val attemptedMac: String,
+    val deviceModel: String,
+    val timestamp: String,
+    val status: String = "BLOCKED",
+    val reason: String = "Appareil non enregistré"
 )

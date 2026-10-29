@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import {
   Search, Plus, FileText, Trash2, Edit3, CheckCircle2,
   Filter, Truck, MessageSquare, Package, X, ShoppingBag,
@@ -888,7 +887,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       )}
 
       {/* ── MODAL: NOUVEAU / MODIFIER DEVIS (WIZARD) ── */}
-      {showWizard && createPortal(
+      {showWizard && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -985,7 +984,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       }}>
                         {filteredClientOptions.length === 0 ? (
                           <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-                            Aucun client trouvé pour « ${clientSearchQuery} »
+                            Aucun client trouvé pour « {clientSearchQuery} »
                           </div>
                         ) : (
                           filteredClientOptions.map(c => (
@@ -1099,13 +1098,13 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       className="input-field"
                       style={{
                         width: 'auto',
-                        minWidth: '220px',
+                        minWidth: '240px',
                         height: '42px',
-                        padding: '6px 14px',
+                        lineHeight: '40px',
+                        padding: '0 36px 0 14px',
                         fontSize: '13px',
                         fontWeight: '700',
-                        boxSizing: 'border-box',
-                        lineHeight: 'normal'
+                        boxSizing: 'border-box'
                       }}
                     >
                       <option value="ALL">Toutes les Familles</option>
@@ -1441,12 +1440,11 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             </div>
 
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* ── MODAL: CONFIRMATION DE CONVERSION EN COMMANDE ── */}
-      {convertingDevis && createPortal(
+      {convertingDevis && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1526,12 +1524,11 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             </div>
 
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* ── MODAL: SUCCÈS DE CONVERSION AVEC LIEN DIRECT ── */}
-      {conversionSuccessInfo && createPortal(
+      {conversionSuccessInfo && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1585,12 +1582,11 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             </div>
 
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* ── MODAL: DÉTAILS COMPLETS DU DEVIS ── */}
-      {selectedDevisDetails && createPortal(
+      {selectedDevisDetails && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1775,8 +1771,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             </div>
 
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
     </div>

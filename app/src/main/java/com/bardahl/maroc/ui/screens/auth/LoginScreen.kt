@@ -39,6 +39,7 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var email by remember { mutableStateOf("bardahl@gmail.com") }
     var password by remember { mutableStateOf("123456") }
 
@@ -292,7 +293,7 @@ fun LoginScreen(
 
                     // Login Button (Glowing Bardahl Yellow with Login Icon)
                     Button(
-                        onClick = { authViewModel.login(email, password) },
+                        onClick = { authViewModel.login(email, password, context) },
                         enabled = authState !is AuthState.Loading,
                         modifier = Modifier
                             .fillMaxWidth()

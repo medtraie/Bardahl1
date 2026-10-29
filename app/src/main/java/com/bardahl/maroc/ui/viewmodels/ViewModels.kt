@@ -37,7 +37,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun login(email: String, password: String) {
+    fun login(email: String, password: String, context: android.content.Context? = null) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
 
@@ -102,6 +102,21 @@ class AuthViewModel : ViewModel() {
             if (cleanPassword != expectedPassword) {
                 _authState.value = AuthState.Error("Mot de passe incorrect.")
                 return@launch
+            }
+
+            // MAC Filtering & Device Authorization Check (Max 3 Devices per Commercial)
+            val currentMac = com.bardahl.maroc.util.DeviceSecurityUtil.getDeviceMacAddress(context)
+            val deviceInfo = com.bardahl.maroc.util.DeviceSecurityUtil.getDeviceInfo(context)
+
+            if (comm.isMacFilteringActive && comm.authorizedMacs.isNotEmpty()) {
+                val isAuthorized = comm.authorizedMacs.any { authMac ->
+                    authMac.replace(":", "").replace("-", "").equals(currentMac.replace(":", "").replace("-", ""), ignoreCase = true)
+                }
+                if (!isAuthorized) {
+                    val errorMsg = "🔒 ACCÈS REFUSÉ : Cet appareil n'est pas autorisé par la Direction Bardahl.\n\nAdresse MAC : $currentMac\nModèle : ${deviceInfo.deviceModel}\n\nMaximum 3 appareils autorisés. Contactez votre administrateur pour enregistrer ce téléphone."
+                    _authState.value = AuthState.Error(errorMsg)
+                    return@launch
+                }
             }
 
             val user = User(
