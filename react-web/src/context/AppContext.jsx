@@ -692,130 +692,6 @@ export function AppProvider({ children }) {
     if (ok) setClients(prev => prev.filter(x => x.id !== id))
   }, [])
 
-  // ── DEVIS / ESTIMATIONS CRUD ──────────────────────────────────────────────
-  const addDevis = useCallback(async (d) => {
-    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
-    let commDbId = d.commercialDbId || (isCurrentUserAdmin ? ADMIN_COMMERCIAL_ID : currentUser?.commercialDbId)
-    if (!commDbId) {
-      const matchedComm = commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())
-        || (d.commercialName ? commercials.find(cm => cm.name.toLowerCase().includes(d.commercialName.toLowerCase())) : null)
-        || commercials[0]
-      commDbId = matchedComm?.dbId || matchedComm?.id
-    }
-    const comm = commercials.find(cm => cm.dbId === commDbId || cm.id === commDbId)
-    const client = clients.find(cl => cl.id === d.clientDbId || cl.dbId === d.clientDbId)
-
-    const nextDevisNumber = d.devisNumber || `DEV-2026-${String(devis.length + 1).padStart(4, '0')}`
-    const newDevis = {
-      ...d,
-      id: d.id || `dev_${Date.now()}`,
-      devisNumber: nextDevisNumber,
-      date: d.date || new Date().toISOString().substring(0, 10),
-      validityDate: d.validityDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
-      status: d.status || 'EN_ATTENTE',
-      commercialDbId: commDbId,
-      commercialName: (commDbId === ADMIN_COMMERCIAL_ID || isCurrentUserAdmin) ? 'Direction Bardahl' : (comm?.name || d.commercialName || 'Commercial Bardahl'),
-      commercialEmail: (commDbId === ADMIN_COMMERCIAL_ID || isCurrentUserAdmin) ? 'bardahl@gmail.com' : (comm?.email || d.commercialEmail || currentUser?.email || ''),
-      clientDbId: d.clientDbId,
-      clientName: client?.companyName || d.clientName || 'Client',
-      clientIce: client?.ice || d.clientIce || '',
-      clientCity: client?.city || d.clientCity || '',
-      clientAddress: client?.address || d.clientAddress || '',
-      clientPhone: client?.phone || d.clientPhone || '',
-      paymentMethod: d.paymentMethod || 'Chèque',
-      modeExpedition: d.modeExpedition || 'Transport Bardahl',
-      items: d.items || [],
-      totalHt: parseFloat(d.totalHt) || 0,
-      totalDiscount: parseFloat(d.totalDiscount) || 0,
-      totalTva: parseFloat(d.totalTva) || 0,
-      totalTtc: parseFloat(d.totalTtc) || 0,
-      remisePercent: parseFloat(d.remisePercent || 0),
-      remiseMontant: parseFloat(d.remiseMontant || 0),
-      remarque: d.remarque || '',
-      createdAt: new Date().toISOString()
-    }
-
-    setDevis(prev => [newDevis, ...prev.filter(x => x.id !== newDevis.id && x.devisNumber !== newDevis.devisNumber)])
-    dbAddDevis(newDevis).catch(err => console.warn('Supabase devis add notice:', err))
-    return newDevis
-  }, [currentUser, commercials, clients, devis.length])
-
-  const updateDevis = useCallback(async (d) => {
-    const targetId = d.id || d.dbId
-    const updated = {
-      ...d,
-      updatedAt: new Date().toISOString()
-    }
-    setDevis(prev => prev.map(x => (x.id === targetId || x.dbId === targetId || x.devisNumber === d.devisNumber) ? updated : x))
-    dbUpdateDevis(updated).catch(err => console.warn('Supabase devis update notice:', err))
-    return updated
-  }, [])
-
-  const deleteDevis = useCallback(async (id) => {
-    setDevis(prev => prev.filter(x => x.id !== id && x.dbId !== id))
-    dbDeleteDevis(id).catch(err => console.warn('Supabase devis delete notice:', err))
-  }, [])
-
-  const convertDevisToOrder = useCallback(async (devisId, options = {}) => {
-    const targetDevis = devis.find(d => d.id === devisId || d.dbId === devisId || d.devisNumber === devisId)
-    if (!targetDevis) throw new Error("Devis introuvable pour la conversion.")
-
-    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
-    const generatedOrderNumber = options.orderNumber || `BC-2026-${String(4332 + orders.length + 1).padStart(6, '0')}`
-
-    const newOrder = {
-      id: `ord_${Date.now()}`,
-      orderNumber: generatedOrderNumber,
-      date: new Date().toISOString().substring(0, 10),
-      clientDbId: targetDevis.clientDbId,
-      clientId: targetDevis.clientDbId,
-      clientName: targetDevis.clientName,
-      clientIce: targetDevis.clientIce,
-      clientCity: targetDevis.clientCity,
-      clientAddress: targetDevis.clientAddress,
-      clientPhone: targetDevis.clientPhone,
-      commercialDbId: targetDevis.commercialDbId,
-      commercialName: targetDevis.commercialName,
-      commercialEmail: targetDevis.commercialEmail,
-      status: isCurrentUserAdmin ? 'VALIDATED' : 'EN_ATTENTE',
-      totalHt: targetDevis.totalHt,
-      totalDiscount: targetDevis.totalDiscount,
-      totalTva: targetDevis.totalTva,
-      totalTtc: targetDevis.totalTtc,
-      remisePercent: targetDevis.remisePercent || 0,
-      remiseMontant: targetDevis.remiseMontant || 0,
-      paymentMethod: targetDevis.paymentMethod || 'Chèque',
-      modeExpedition: targetDevis.modeExpedition || 'Transport Bardahl',
-      remarque: targetDevis.remarque ? `[Converti depuis Devis ${targetDevis.devisNumber}] ${targetDevis.remarque}` : `Converti depuis Devis ${targetDevis.devisNumber}`,
-      items: targetDevis.items || [],
-      appliedPromotions: targetDevis.appliedPromotions || [],
-      totalFreeItems: targetDevis.totalFreeItems || 0,
-      hasAnormalPrice: targetDevis.hasAnormalPrice || false,
-      fromDevisNumber: targetDevis.devisNumber,
-      fromDevisId: targetDevis.id
-    }
-
-    // 1. Create order
-    const createdOrder = await addOrder(newOrder)
-
-    // 2. Deduct product stock
-    if (deductProductsStock && newOrder.items && newOrder.items.length > 0) {
-      deductProductsStock(newOrder.items)
-    }
-
-    // 3. Update devis status to CONVERTI
-    const updatedDevis = {
-      ...targetDevis,
-      status: 'CONVERTI',
-      convertedOrderNumber: createdOrder?.orderNumber || generatedOrderNumber,
-      convertedOrderId: createdOrder?.id || newOrder.id,
-      convertedAt: new Date().toISOString()
-    }
-    await updateDevis(updatedDevis)
-
-    return { order: createdOrder || newOrder, devis: updatedDevis }
-  }, [devis, currentUser, orders.length, addOrder, deductProductsStock, updateDevis])
-
   // ── ORDERS CRUD ──────────────────────────────────────────────────────────────
   const addOrder = useCallback(async (o) => {
     const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
@@ -1059,6 +935,132 @@ export function AppProvider({ children }) {
       return updated
     })
   }, [])
+
+  // ── DEVIS / ESTIMATIONS CRUD ──────────────────────────────────────────────
+  const addDevis = useCallback(async (d) => {
+    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
+    let commDbId = d.commercialDbId || (isCurrentUserAdmin ? ADMIN_COMMERCIAL_ID : currentUser?.commercialDbId)
+    if (!commDbId) {
+      const matchedComm = commercials.find(cm => (cm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase())
+        || (d.commercialName ? commercials.find(cm => cm.name.toLowerCase().includes(d.commercialName.toLowerCase())) : null)
+        || commercials[0]
+      commDbId = matchedComm?.dbId || matchedComm?.id
+    }
+    const comm = commercials.find(cm => cm.dbId === commDbId || cm.id === commDbId)
+    const client = clients.find(cl => cl.id === d.clientDbId || cl.dbId === d.clientDbId)
+
+    const nextDevisNumber = d.devisNumber || `DEV-2026-${String(devis.length + 1).padStart(4, '0')}`
+    const newDevis = {
+      ...d,
+      id: d.id || `dev_${Date.now()}`,
+      devisNumber: nextDevisNumber,
+      date: d.date || new Date().toISOString().substring(0, 10),
+      validityDate: d.validityDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+      status: d.status || 'EN_ATTENTE',
+      commercialDbId: commDbId,
+      commercialName: (commDbId === ADMIN_COMMERCIAL_ID || isCurrentUserAdmin) ? 'Direction Bardahl' : (comm?.name || d.commercialName || 'Commercial Bardahl'),
+      commercialEmail: (commDbId === ADMIN_COMMERCIAL_ID || isCurrentUserAdmin) ? 'bardahl@gmail.com' : (comm?.email || d.commercialEmail || currentUser?.email || ''),
+      clientDbId: d.clientDbId,
+      clientName: client?.companyName || d.clientName || 'Client',
+      clientIce: client?.ice || d.clientIce || '',
+      clientCity: client?.city || d.clientCity || '',
+      clientAddress: client?.address || d.clientAddress || '',
+      clientPhone: client?.phone || d.clientPhone || '',
+      paymentMethod: d.paymentMethod || 'Chèque',
+      modeExpedition: d.modeExpedition || 'Transport Bardahl',
+      items: d.items || [],
+      totalHt: parseFloat(d.totalHt) || 0,
+      totalDiscount: parseFloat(d.totalDiscount) || 0,
+      totalTva: parseFloat(d.totalTva) || 0,
+      totalTtc: parseFloat(d.totalTtc) || 0,
+      remisePercent: parseFloat(d.remisePercent || 0),
+      remiseMontant: parseFloat(d.remiseMontant || 0),
+      remarque: d.remarque || '',
+      createdAt: new Date().toISOString()
+    }
+
+    setDevis(prev => [newDevis, ...prev.filter(x => x.id !== newDevis.id && x.devisNumber !== newDevis.devisNumber)])
+    dbAddDevis(newDevis).catch(err => console.warn('Supabase devis add notice:', err))
+    return newDevis
+  }, [currentUser, commercials, clients, devis.length])
+
+  const updateDevis = useCallback(async (d) => {
+    const targetId = d.id || d.dbId
+    const updated = {
+      ...d,
+      updatedAt: new Date().toISOString()
+    }
+    setDevis(prev => prev.map(x => (x.id === targetId || x.dbId === targetId || x.devisNumber === d.devisNumber) ? updated : x))
+    dbUpdateDevis(updated).catch(err => console.warn('Supabase devis update notice:', err))
+    return updated
+  }, [])
+
+  const deleteDevis = useCallback(async (id) => {
+    setDevis(prev => prev.filter(x => x.id !== id && x.dbId !== id))
+    dbDeleteDevis(id).catch(err => console.warn('Supabase devis delete notice:', err))
+  }, [])
+
+  const convertDevisToOrder = useCallback(async (devisId, options = {}) => {
+    const targetDevis = devis.find(d => d.id === devisId || d.dbId === devisId || d.devisNumber === devisId)
+    if (!targetDevis) throw new Error("Devis introuvable pour la conversion.")
+
+    const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
+    const generatedOrderNumber = options.orderNumber || `BC-2026-${String(4332 + orders.length + 1).padStart(6, '0')}`
+
+    const newOrder = {
+      id: `ord_${Date.now()}`,
+      orderNumber: generatedOrderNumber,
+      date: new Date().toISOString().substring(0, 10),
+      clientDbId: targetDevis.clientDbId,
+      clientId: targetDevis.clientDbId,
+      clientName: targetDevis.clientName,
+      clientIce: targetDevis.clientIce,
+      clientCity: targetDevis.clientCity,
+      clientAddress: targetDevis.clientAddress,
+      clientPhone: targetDevis.clientPhone,
+      commercialDbId: targetDevis.commercialDbId,
+      commercialName: targetDevis.commercialName,
+      commercialEmail: targetDevis.commercialEmail,
+      status: isCurrentUserAdmin ? 'VALIDATED' : 'EN_ATTENTE',
+      totalHt: targetDevis.totalHt,
+      totalDiscount: targetDevis.totalDiscount,
+      totalTva: targetDevis.totalTva,
+      totalTtc: targetDevis.totalTtc,
+      remisePercent: targetDevis.remisePercent || 0,
+      remiseMontant: targetDevis.remiseMontant || 0,
+      paymentMethod: targetDevis.paymentMethod || 'Chèque',
+      modeExpedition: targetDevis.modeExpedition || 'Transport Bardahl',
+      remarque: targetDevis.remarque ? `[Converti depuis Devis ${targetDevis.devisNumber}] ${targetDevis.remarque}` : `Converti depuis Devis ${targetDevis.devisNumber}`,
+      items: targetDevis.items || [],
+      appliedPromotions: targetDevis.appliedPromotions || [],
+      totalFreeItems: targetDevis.totalFreeItems || 0,
+      hasAnormalPrice: targetDevis.hasAnormalPrice || false,
+      fromDevisNumber: targetDevis.devisNumber,
+      fromDevisId: targetDevis.id
+    }
+
+    // 1. Create order
+    const createdOrder = await addOrder(newOrder)
+
+    // 2. Deduct product stock
+    if (deductProductsStock && newOrder.items && newOrder.items.length > 0) {
+      deductProductsStock(newOrder.items)
+    }
+
+    // 3. Update devis status to CONVERTI
+    const updatedDevis = {
+      ...targetDevis,
+      status: 'CONVERTI',
+      convertedOrderNumber: createdOrder?.orderNumber || generatedOrderNumber,
+      convertedOrderId: createdOrder?.id || newOrder.id,
+      convertedAt: new Date().toISOString()
+    }
+    await updateDevis(updatedDevis)
+
+    return { order: createdOrder || newOrder, devis: updatedDevis }
+  }, [devis, currentUser, orders.length, addOrder, deductProductsStock, updateDevis])
+
+
 
   // ── PROMOTIONS CRUD ──────────────────────────────────────────────────────────
   const addPromotion = useCallback((p) => {
