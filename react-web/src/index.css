@@ -528,6 +528,10 @@ button {
 
 select.input-field {
   color-scheme: dark;
+  padding: 8px 14px;
+  line-height: normal;
+  box-sizing: border-box;
+  cursor: pointer;
 }
 
 select.input-field option {

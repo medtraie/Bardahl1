@@ -1047,7 +1047,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={validityDays}
                       onChange={e => setValidityDays(parseInt(e.target.value, 10))}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '40px' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
                     >
                       <option value={15}>15 Jours</option>
                       <option value={30}>30 Jours (Standard)</option>
@@ -1068,7 +1068,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={paymentMethod}
                       onChange={e => setPaymentMethod(e.target.value)}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '40px' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
                     >
                       <option value="Chèque">Chèque</option>
                       <option value="Traite 60J">Traite 60 Jours</option>
@@ -1085,7 +1085,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={modeExpedition}
                       onChange={e => setModeExpedition(e.target.value)}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '40px' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
                     >
                       <option value="Transport Bardahl">Transport Bardahl</option>
                       <option value="Comptoir / Enlèvement">Comptoir / Enlèvement</option>
@@ -1110,7 +1110,16 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={selectedProductCategoryFilter}
                       onChange={e => setSelectedProductCategoryFilter(e.target.value)}
                       className="input-field"
-                      style={{ width: 'auto', minWidth: '180px', height: '34px', fontSize: '12px' }}
+                      style={{
+                        width: 'auto',
+                        minWidth: '220px',
+                        height: '42px',
+                        padding: '6px 14px',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        boxSizing: 'border-box',
+                        lineHeight: 'normal'
+                      }}
                     >
                       <option value="ALL">Toutes les Familles</option>
                       {activeFamilies.map(f => (
@@ -1125,7 +1134,13 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={productSearchQuery}
                       onChange={e => setProductSearchQuery(e.target.value)}
                       className="input-field"
-                      style={{ width: '200px', height: '34px', fontSize: '12px' }}
+                      style={{
+                        width: '220px',
+                        height: '42px',
+                        padding: '8px 14px',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
                     />
                   </div>
                 </div>
