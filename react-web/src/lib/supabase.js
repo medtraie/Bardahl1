@@ -836,6 +836,169 @@ export async function dbDeleteProductFamily(id, code) {
   }
 }
 
+// ─── DEVIS / ESTIMATIONS ─────────────────────────────────────────────────────
+
+export function rowToDevis(row) {
+  let details = {}
+  if (row.details) {
+    try {
+      details = typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+    } catch {}
+  }
+  return {
+    id: row.id,
+    dbId: row.id,
+    devisNumber: row.devis_number || row.devisNumber,
+    date: row.date ? String(row.date).substring(0, 10) : new Date().toISOString().substring(0, 10),
+    validityDate: row.validity_date || details.validityDate || '',
+    status: (row.status || 'EN_ATTENTE').toUpperCase(),
+    totalHt: parseFloat(row.total_ht || 0),
+    totalDiscount: parseFloat(row.total_discount || 0),
+    totalTva: parseFloat(row.total_tva || 0),
+    totalTtc: parseFloat(row.total_ttc || 0),
+    convertedOrderNumber: row.converted_order_number || details.convertedOrderNumber || '',
+    convertedOrderId: row.converted_order_id || details.convertedOrderId || null,
+    convertedAt: row.converted_at || details.convertedAt || null,
+    commercialDbId: row.commercial_id || details.commercialDbId,
+    commercialName: details.commercialName || '',
+    commercialEmail: details.commercialEmail || '',
+    clientDbId: row.client_id || details.clientDbId,
+    clientName: details.clientName || '',
+    clientIce: details.clientIce || '',
+    clientCity: details.clientCity || '',
+    clientAddress: details.clientAddress || '',
+    clientPhone: details.clientPhone || '',
+    paymentMethod: details.paymentMethod || 'Chèque',
+    modeExpedition: details.modeExpedition || 'Transport Bardahl',
+    remisePercent: parseFloat(details.remisePercent || 0),
+    remiseMontant: parseFloat(details.remiseMontant || 0),
+    remarque: details.remarque || '',
+    items: details.items || [],
+    createdAt: row.created_at || details.createdAt || new Date().toISOString()
+  }
+}
+
+export async function dbGetDevis() {
+  try {
+    const { data, error } = await supabase
+      .from('devis')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      return null
+    }
+    return (data || []).map(rowToDevis)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbAddDevis(d) {
+  try {
+    const payload = {
+      id: d.id || `dev_${Date.now()}`,
+      devis_number: d.devisNumber,
+      commercial_id: d.commercialDbId && String(d.commercialDbId).includes('-') ? d.commercialDbId : null,
+      client_id: d.clientDbId && String(d.clientDbId).includes('-') ? d.clientDbId : null,
+      date: d.date || new Date().toISOString().substring(0, 10),
+      validity_date: d.validityDate || null,
+      status: (d.status || 'EN_ATTENTE').toUpperCase(),
+      total_ht: parseFloat(d.totalHt) || 0,
+      total_discount: parseFloat(d.totalDiscount) || 0,
+      total_tva: parseFloat(d.totalTva) || 0,
+      total_ttc: parseFloat(d.totalTtc) || 0,
+      converted_order_number: d.convertedOrderNumber || null,
+      converted_order_id: d.convertedOrderId || null,
+      converted_at: d.convertedAt || null,
+      details: {
+        commercialDbId: d.commercialDbId,
+        commercialName: d.commercialName,
+        commercialEmail: d.commercialEmail,
+        clientDbId: d.clientDbId,
+        clientName: d.clientName,
+        clientIce: d.clientIce,
+        clientCity: d.clientCity,
+        clientAddress: d.clientAddress,
+        clientPhone: d.clientPhone,
+        paymentMethod: d.paymentMethod,
+        modeExpedition: d.modeExpedition,
+        remisePercent: d.remisePercent,
+        remiseMontant: d.remiseMontant,
+        remarque: d.remarque,
+        items: d.items,
+        createdAt: d.createdAt || new Date().toISOString()
+      }
+    }
+
+    const { data, error } = await supabase.from('devis').insert([payload]).select().single()
+    if (error) {
+      return null
+    }
+    return rowToDevis(data)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbUpdateDevis(d) {
+  try {
+    const payload = {
+      devis_number: d.devisNumber,
+      commercial_id: d.commercialDbId && String(d.commercialDbId).includes('-') ? d.commercialDbId : null,
+      client_id: d.clientDbId && String(d.clientDbId).includes('-') ? d.clientDbId : null,
+      date: d.date || new Date().toISOString().substring(0, 10),
+      validity_date: d.validityDate || null,
+      status: (d.status || 'EN_ATTENTE').toUpperCase(),
+      total_ht: parseFloat(d.totalHt) || 0,
+      total_discount: parseFloat(d.totalDiscount) || 0,
+      total_tva: parseFloat(d.totalTva) || 0,
+      total_ttc: parseFloat(d.totalTtc) || 0,
+      converted_order_number: d.convertedOrderNumber || null,
+      converted_order_id: d.convertedOrderId || null,
+      converted_at: d.convertedAt || null,
+      details: {
+        commercialDbId: d.commercialDbId,
+        commercialName: d.commercialName,
+        commercialEmail: d.commercialEmail,
+        clientDbId: d.clientDbId,
+        clientName: d.clientName,
+        clientIce: d.clientIce,
+        clientCity: d.clientCity,
+        clientAddress: d.clientAddress,
+        clientPhone: d.clientPhone,
+        paymentMethod: d.paymentMethod,
+        modeExpedition: d.modeExpedition,
+        remisePercent: d.remisePercent,
+        remiseMontant: d.remiseMontant,
+        remarque: d.remarque,
+        items: d.items,
+        createdAt: d.createdAt || new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    }
+
+    const targetId = d.dbId || d.id
+    const { data, error } = await supabase.from('devis').update(payload).eq('id', targetId).select().single()
+    if (error) {
+      return null
+    }
+    return rowToDevis(data)
+  } catch (e) {
+    return null
+  }
+}
+
+export async function dbDeleteDevis(id) {
+  try {
+    const { error } = await supabase.from('devis').delete().eq('id', id)
+    if (error) return false
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 // ─── REALTIME ────────────────────────────────────────────────────────────────
 
 

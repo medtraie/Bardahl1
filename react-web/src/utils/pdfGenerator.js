@@ -962,3 +962,208 @@ export function generateStockReportPdf(movements, filterLabel = 'Global') {
   doc.save(`Rapport_Mouvements_Stock_Bardahl_${cleanFilter}.pdf`)
 }
 
+
+/**
+ * Render a professional Bardahl Quotation / Devis page
+ */
+export function renderDevisPage(doc, devis) {
+  // 1. Top Header Bar & Official Bardahl Logo
+  doc.setFillColor(255, 208, 0)
+  doc.rect(0, 0, 210, 5, 'F')
+
+  // Draw Official Bardahl Logo Image
+  try {
+    doc.addImage(BARDAHL_LOGO_BASE64, 'PNG', 14, 8, 52, 32)
+  } catch (e) {
+    console.error("Error drawing logo base64:", e)
+  }
+
+  // Top Far-Right Aligned Official Company Registration
+  doc.setFontSize(13)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(13, 15, 18)
+  doc.text("BARDAHL - MAGHREB", 196, 15, { align: 'right' })
+
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(50, 50, 50)
+  doc.text("S.A. au Capital de 1.800.000 DHs", 196, 20, { align: 'right' })
+  doc.text("107, Rue Amir Abdelkader - CASABLANCA 20 300", 196, 24, { align: 'right' })
+  doc.text("Tél. : 05 22 61 89 56 - Fax : 05 22 62 03 05", 196, 28, { align: 'right' })
+  doc.text("E-mail : bardahlmaghreb@menara.ma | www.bardahl.ma", 196, 32, { align: 'right' })
+  doc.text("R.C. 44907 Casa - B.P. 2177 - Patente 31400690 - I.F. : 01620063", 196, 36, { align: 'right' })
+  doc.text("C.C.P. Rabat 147213 P - C.N.S.S. 1601716 - I.C.E. : 000084015000037", 196, 40, { align: 'right' })
+
+  // Golden Divider Bar
+  doc.setDrawColor(255, 208, 0)
+  doc.setLineWidth(1)
+  doc.line(14, 44, 196, 44)
+
+  // 2. Document Title Box (Devis)
+  doc.setFillColor(20, 23, 31)
+  doc.roundedRect(14, 48, 182, 12, 2, 2, 'F')
+  doc.setTextColor(255, 208, 0)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.text("DEVIS ESTIMATIF N° : " + (devis.devisNumber || "DEV-2026-0001"), 18, 56)
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  const valText = devis.validityDate ? " (Valide jusqu'au " + devis.validityDate + ")" : " (Valable 30 jours)"
+  doc.text("Casablanca, le : " + (devis.date || new Date().toISOString().substring(0, 10)) + valText, 192, 56, { align: 'right' })
+
+  // 3. Client & Commercial & Mode Expédition Box
+  doc.setFillColor(248, 249, 250)
+  doc.setDrawColor(226, 232, 240)
+  doc.roundedRect(14, 64, 182, 28, 3, 3, 'FD')
+
+  doc.setTextColor(13, 15, 18)
+  doc.setFontSize(9.5)
+  doc.setFont('helvetica', 'bold')
+  doc.text("INFORMATIONS CLIENT", 18, 71)
+  doc.text("MODALITÉS DU DEVIS", 115, 71)
+
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(74, 85, 104)
+  doc.text("Raison Sociale : " + (devis.clientName || "-"), 18, 77)
+  doc.text("Commercial Responsable : " + (devis.commercialName || "Mohammed amine"), 18, 83)
+  doc.text("Code I.C.E. Client : " + (devis.clientIce || "-"), 18, 89)
+
+  doc.text("Mode de Paiement : " + (devis.paymentMethod || "Chèque"), 115, 77)
+  doc.text("Mode d'Expédition : " + (devis.modeExpedition || "Transport Bardahl"), 115, 83)
+  doc.text("Statut Devis : " + (devis.status || "EN_ATTENTE"), 115, 89)
+
+  // 4. Products Table
+  let itemsList = (devis.items && devis.items.length > 0) ? devis.items : []
+  const rows = itemsList.map(i => {
+    const ref = i.reference || i.code || '-'
+    const name = i.productName || i.name || 'Article Bardahl'
+    const qty = parseInt(i.qty || 0, 10)
+    const cartonUnits = parseInt(i.unitsPerCarton || i.unitsPerBox || 1, 10)
+    const cartons = Math.floor(qty / cartonUnits)
+    const colDisplay = cartons > 0 ? `${cartons} ct (${qty} un)` : `${qty} un`
+    const puTtc = parseFloat(i.priceTtc || 0)
+    const remise = parseFloat(i.remise || 0)
+    const lineTotal = (qty * puTtc) * (1 - remise / 100)
+
+    return [
+      ref,
+      name,
+      colDisplay,
+      puTtc.toFixed(2),
+      remise > 0 ? `${remise}%` : '-',
+      lineTotal.toFixed(2)
+    ]
+  })
+
+  doc.autoTable({
+    startY: 96,
+    head: [['Réf.', 'Désignation Produit', 'Qté / Colis', 'P.U TTC (DH)', 'Remise', 'Total TTC (DH)']],
+    body: rows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [20, 23, 31],
+      textColor: [255, 208, 0],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'left'
+    },
+    styles: {
+      fontSize: 7.5,
+      textColor: [30, 41, 59],
+      cellPadding: 2.5
+    },
+    columnStyles: {
+      0: { cellWidth: 22, fontStyle: 'bold' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 26, halign: 'center' },
+      3: { cellWidth: 24, halign: 'right' },
+      4: { cellWidth: 18, halign: 'center' },
+      5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
+    },
+    margin: { left: 14, right: 14 }
+  })
+
+  let finalY = doc.lastAutoTable.finalY + 6
+
+  // 5. Financial Summary Box
+  const totalTtc = parseFloat(devis.totalTtc || 0)
+  const totalHt = parseFloat(devis.totalHt || (totalTtc / 1.20))
+  const totalTva = parseFloat(devis.totalTva || (totalTtc - totalHt))
+  const totalDiscount = parseFloat(devis.totalDiscount || 0)
+
+  if (finalY > 230) {
+    doc.addPage()
+    finalY = 20
+  }
+
+  doc.setFillColor(248, 249, 250)
+  doc.setDrawColor(226, 232, 240)
+  doc.roundedRect(120, finalY, 76, totalDiscount > 0 ? 36 : 28, 2, 2, 'FD')
+
+  let rowY = finalY + 6
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(74, 85, 104)
+
+  if (totalDiscount > 0) {
+    doc.text("Total Remise Accordée :", 124, rowY)
+    doc.setTextColor(239, 68, 68)
+    doc.setFont('helvetica', 'bold')
+    doc.text("-" + totalDiscount.toFixed(2) + " DH", 192, rowY, { align: 'right' })
+    rowY += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(74, 85, 104)
+  }
+
+  doc.text("Total Hors Taxes (H.T.) :", 124, rowY)
+  doc.text(totalHt.toFixed(2) + " DH", 192, rowY, { align: 'right' })
+  rowY += 6
+
+  doc.text("TVA Légale (20%) :", 124, rowY)
+  doc.text(totalTva.toFixed(2) + " DH", 192, rowY, { align: 'right' })
+  rowY += 8
+
+  doc.setFillColor(20, 23, 31)
+  doc.rect(120, rowY - 5, 76, 9, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(255, 208, 0)
+  doc.text("TOTAL NET TTC :", 124, rowY + 1)
+  doc.text(totalTtc.toFixed(2) + " DH", 192, rowY + 1, { align: 'right' })
+
+  // Notes & Signatures Box
+  const sigY = finalY + (totalDiscount > 0 ? 42 : 34)
+  if (sigY < 240) {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(100, 100, 100)
+    doc.text("Validité de l'offre : 30 jours à dater de l'émission. Pour accord, veuillez retourner ce document signé et tamponné.", 14, sigY)
+
+    doc.setFillColor(248, 249, 250)
+    doc.setDrawColor(200, 200, 200)
+    doc.rect(14, sigY + 6, 80, 24, 'FD')
+    doc.rect(116, sigY + 6, 80, 24, 'FD')
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(50, 50, 50)
+    doc.text("Cachet & Signature Client (Bon pour accord)", 16, sigY + 12)
+    doc.text("Direction Commerciale Bardahl Maroc", 118, sigY + 12)
+  }
+
+  // Footer
+  doc.setDrawColor(255, 208, 0)
+  doc.line(14, 280, 196, 280)
+  doc.setFontSize(7)
+  doc.setTextColor(113, 128, 150)
+  doc.text("BARDAHL MAGHREB S.A - 107, Rue Amir Abdelkader, Casablanca - ICE: 000084015000037 - RC: 44907 Casa", 105, 285, { align: 'center' })
+}
+
+export function generateDevisPdf(devis) {
+  const doc = new jsPDF()
+  renderDevisPage(doc, devis)
+  doc.save(`${devis.devisNumber || 'Devis_Bardahl'}.pdf`)
+}

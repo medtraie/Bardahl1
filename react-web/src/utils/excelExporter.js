@@ -18,6 +18,30 @@ export function exportOrdersToExcel(orders) {
   XLSX.writeFile(workbook, "Bardahl_Export_Commandes.xlsx")
 }
 
+export function exportDevisToExcel(devisList) {
+  const data = devisList.map(d => ({
+    "N° Devis": d.devisNumber,
+    "Date Émission": d.date,
+    "Date Validité": d.validityDate || '-',
+    "Commercial": d.commercialName,
+    "Client": d.clientName,
+    "Ville Client": d.clientCity || '-',
+    "ICE Client": d.clientIce || '-',
+    "Nombre d'Articles": (d.items || []).length,
+    "Total HT (DH)": d.totalHt,
+    "TVA (DH)": d.totalTva,
+    "Total TTC (DH)": d.totalTtc,
+    "Remise (DH)": d.totalDiscount || 0,
+    "Statut": d.status,
+    "Bon de Commande Associé": d.convertedOrderNumber || '-'
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(data)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Devis")
+  XLSX.writeFile(workbook, `Bardahl_Export_Devis_${new Date().toISOString().substring(0, 10)}.xlsx`)
+}
+
 export function exportStockMovementsToExcel(movements, promoNameFilter = 'Toutes') {
   const data = movements.map(m => ({
     "Date": m.date,
@@ -41,4 +65,3 @@ export function exportStockMovementsToExcel(movements, promoNameFilter = 'Toutes
   const cleanFilter = (promoNameFilter || 'Global').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)
   XLSX.writeFile(workbook, `Bardahl_Mouvements_Stock_${cleanFilter}.xlsx`)
 }
-
