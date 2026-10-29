@@ -516,9 +516,19 @@ fun CreateDevisDialog(
     val currentUser = (authState as? AuthState.Success)?.user
 
     var selectedClient by remember { mutableStateOf<Client?>(clients.firstOrNull()) }
-    var validityDays by remember { mutableStateOf(30) }
+    var clientSearch by remember { mutableStateOf("") }
+    var showClientPicker by remember { mutableStateOf(false) }
+
     var paymentMethod by remember { mutableStateOf("Chèque") }
+    val paymentOptions = listOf("Chèque", "Traite 60J", "Traite 90J", "Virement bancaire", "Espèces")
+
     var modeExpedition by remember { mutableStateOf("Transport Bardahl") }
+    val modeOptions = listOf(
+        "Transport Bardahl" to "🚚 Transport Bardahl (Livraison directe)",
+        "Messagerie CTM / Ghazala" to "📦 Messagerie CTM / Ghazala",
+        "Comptoir / Enlèvement" to "🏬 Comptoir / Enlèvement sur place"
+    )
+
     var remarque by remember { mutableStateOf("") }
     var selectedProductsList by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
 
@@ -527,6 +537,13 @@ fun CreateDevisDialog(
         productSearch.isBlank() ||
                 it.name.contains(productSearch, ignoreCase = true) ||
                 it.reference.contains(productSearch, ignoreCase = true)
+    }
+
+    val filteredClients = clients.filter {
+        clientSearch.isBlank() ||
+                it.companyName.contains(clientSearch, ignoreCase = true) ||
+                it.city.contains(clientSearch, ignoreCase = true) ||
+                it.ice.contains(clientSearch, ignoreCase = true)
     }
 
     val totalTtc = selectedProductsList.sumOf { it.totalTtc }
@@ -540,7 +557,7 @@ fun CreateDevisDialog(
             border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.4f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.9f)
+                .fillMaxHeight(0.92f)
         ) {
             Column(
                 modifier = Modifier
@@ -553,12 +570,16 @@ fun CreateDevisDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Nouveau Devis",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = BardahlYellow
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Description, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Nouveau Devis",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = BardahlYellow
+                        )
+                    }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Fermer", tint = TextSecondaryDark)
                     }
@@ -571,31 +592,207 @@ fun CreateDevisDialog(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Client Selector
-                    Text("Client Bénéficiaire", fontSize = 12.sp, color = TextSecondaryDark, fontWeight = FontWeight.Bold)
+                    // 1. Client Bénéficiaire * (Spacieux avec sélection claire)
+                    Text("Client Bénéficiaire *", fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
+
+                    Surface(
+                        color = DarkSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (showClientPicker) BardahlYellow else BardahlCardBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showClientPicker = !showClientPicker }
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = selectedClient?.companyName ?: "Sélectionner un client",
+                                        color = if (selectedClient != null) TextPrimaryDark else TextSecondaryDark,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (selectedClient != null) {
+                                        Text(
+                                            text = "${selectedClient?.city ?: "Maroc"} • ICE: ${selectedClient?.ice ?: "-"}",
+                                            color = TextSecondaryDark,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = if (showClientPicker) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = BardahlYellow
+                                )
+                            }
+
+                            // Searchable client picker list
+                            if (showClientPicker) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(BardahlCardDark)
+                                        .border(1.dp, BardahlCardBorder, RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    BasicTextField(
+                                        value = clientSearch,
+                                        onValueChange = { clientSearch = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(color = TextPrimaryDark, fontSize = 12.sp),
+                                        cursorBrush = SolidColor(BardahlYellow),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        decorationBox = { innerTextField ->
+                                            if (clientSearch.isEmpty()) {
+                                                Text("Chercher par nom, ville, ICE...", color = TextSecondaryDark, fontSize = 12.sp)
+                                            }
+                                            innerTextField()
+                                        }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 180.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    filteredClients.take(30).forEach { c ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    selectedClient = c
+                                                    showClientPicker = false
+                                                }
+                                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(text = c.companyName, fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                                                Text(text = "${c.city} • ICE: ${c.ice}", fontSize = 10.sp, color = TextSecondaryDark)
+                                            }
+                                            if (selectedClient?.id == c.id) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 2. Mode d'Expédition (Spacieux, bien visible et aéré)
+                    Text("Mode d'Expédition", fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        modeOptions.forEach { (modeKey, modeLabel) ->
+                            val isSelected = modeExpedition == modeKey
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) BardahlYellow.copy(alpha = 0.15f) else DarkSurface)
+                                    .border(1.dp, if (isSelected) BardahlYellow else BardahlCardBorder, RoundedCornerShape(8.dp))
+                                    .clickable { modeExpedition = modeKey }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = modeLabel,
+                                    fontSize = 12.sp,
+                                    color = if (isSelected) BardahlYellow else TextPrimaryDark,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                if (isSelected) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 3. Paiement Proposé (Chips horizontaux)
+                    Text("Paiement Proposé", fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        paymentOptions.forEach { opt ->
+                            val isSelected = paymentMethod == opt
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) BardahlYellow else DarkSurface)
+                                    .border(1.dp, if (isSelected) BardahlYellow else BardahlCardBorder, RoundedCornerShape(8.dp))
+                                    .clickable { paymentMethod = opt }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = opt,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) BardahlBlack else TextPrimaryDark,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 4. Products Selection
+                    Text("Articles Bardahl (${selectedProductsList.size} sélectionnés)", fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Search product
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(DarkSurface, RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurface)
                             .border(1.dp, BardahlCardBorder, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
                     ) {
-                        Text(
-                            text = selectedClient?.companyName ?: "Sélectionner un client",
-                            color = if (selectedClient != null) TextPrimaryDark else TextSecondaryDark,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
+                        BasicTextField(
+                            value = productSearch,
+                            onValueChange = { productSearch = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = TextPrimaryDark, fontSize = 12.sp),
+                            cursorBrush = SolidColor(BardahlYellow),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { innerTextField ->
+                                if (productSearch.isEmpty()) {
+                                    Text("Rechercher un produit à ajouter...", color = TextSecondaryDark, fontSize = 12.sp)
+                                }
+                                innerTextField()
+                            }
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Products Selection
-                    Text("Ajouter des Articles (${selectedProductsList.size} sélectionnés)", fontSize = 12.sp, color = TextSecondaryDark, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Product Quick Picker
+                    // Product Quick Picker Box
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -605,7 +802,7 @@ fun CreateDevisDialog(
                             .padding(6.dp)
                     ) {
                         LazyColumn {
-                            items(filteredProducts.take(20)) { prod ->
+                            items(filteredProducts.take(30)) { prod ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -703,7 +900,7 @@ fun CreateDevisDialog(
                                 clientAddress = client.address,
                                 clientPhone = client.phone,
                                 date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                                validityDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(System.currentTimeMillis() + validityDays * 24L * 3600 * 1000)),
+                                validityDate = "",
                                 status = DevisStatus.EN_ATTENTE,
                                 items = selectedProductsList,
                                 paymentMethod = paymentMethod,

@@ -741,11 +741,6 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Calendar size={12} /> Émis le {dev.date}
                     </span>
-                    {dev.validityDate && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: dev.status === 'EXPIRE' ? '#FF453A' : undefined }}>
-                        <Clock size={12} /> Valide jusqu'au {dev.validityDate}
-                      </span>
-                    )}
                   </div>
 
                   {isConverted && dev.convertedOrderNumber && (
@@ -935,100 +930,104 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
               
               {/* Section 1: Informations Générales & Client */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
                 
-                {/* Client Autocomplete Search */}
-                <div style={{ position: 'relative' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
-                    Client Bénéficiaire *
-                  </label>
+                {/* Ligne 1 : Client Bénéficiaire (Spacieux) + N° Devis */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 3fr) minmax(180px, 1fr)', gap: '14px', alignItems: 'flex-start' }}>
+                  
+                  {/* Client Autocomplete Search (Spacieux pour afficher tout le nom du client) */}
                   <div style={{ position: 'relative' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                    <input
-                      type="text"
-                      placeholder="Rechercher par nom, ville, ICE..."
-                      value={clientSearchQuery}
-                      onChange={e => {
-                        setClientSearchQuery(e.target.value)
-                        setShowClientDropdown(true)
-                        if (!e.target.value) setSelectedClient('')
-                      }}
-                      onFocus={() => setShowClientDropdown(true)}
-                      className="input-field"
-                      style={{ paddingLeft: '34px', fontSize: '13px', height: '40px' }}
-                    />
-                    {clientSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => { setClientSearchQuery(''); setSelectedClient(''); }}
-                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-                      >
-                        <X size={14} />
-                      </button>
+                    <label style={{ fontSize: '12px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Building2 size={14} style={{ color: 'var(--bardahl-yellow)' }} />
+                      Client Bénéficiaire *
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)' }} />
+                      <input
+                        type="text"
+                        placeholder="Rechercher par nom, ville, ICE..."
+                        value={clientSearchQuery}
+                        onChange={e => {
+                          setClientSearchQuery(e.target.value)
+                          setShowClientDropdown(true)
+                          if (!e.target.value) setSelectedClient('')
+                        }}
+                        onFocus={() => setShowClientDropdown(true)}
+                        className="input-field"
+                        style={{ paddingLeft: '36px', paddingRight: '32px', fontSize: '13px', height: '42px', fontWeight: '600', width: '100%', boxSizing: 'border-box' }}
+                      />
+                      {clientSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => { setClientSearchQuery(''); setSelectedClient(''); }}
+                          style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Client Dropdown */}
+                    {showClientDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: '#181C24',
+                        border: '1px solid rgba(255, 208, 0, 0.4)',
+                        borderRadius: '10px',
+                        maxHeight: '240px',
+                        overflowY: 'auto',
+                        zIndex: 100,
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.7)',
+                        marginTop: '4px'
+                      }}>
+                        {filteredClientOptions.length === 0 ? (
+                          <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                            Aucun client trouvé pour « ${clientSearchQuery} »
+                          </div>
+                        ) : (
+                          filteredClientOptions.map(c => (
+                            <div
+                              key={c.id || c.dbId}
+                              onClick={() => {
+                                setSelectedClient(c.id || c.dbId)
+                                setClientSearchQuery(`${c.codeClient ? '[' + c.codeClient + '] ' : ''}${c.companyName} (${c.city || ''})`)
+                                setShowClientDropdown(false)
+                              }}
+                              style={{
+                                padding: '10px 14px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                fontSize: '12px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 208, 0, 0.1)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <strong style={{ color: '#FFFFFF' }}>{c.companyName}</strong>
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                  {c.city || 'Maroc'} {c.ice ? `• ICE: ${c.ice}` : ''}
+                                </div>
+                              </div>
+                              <span style={{ fontSize: '10px', color: 'var(--bardahl-yellow)', background: 'rgba(255, 208, 0, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
+                                {c.type || 'Revendeur'}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {/* Client Dropdown */}
-                  {showClientDropdown && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: '#181C24',
-                      border: '1px solid rgba(255, 208, 0, 0.4)',
-                      borderRadius: '10px',
-                      maxHeight: '220px',
-                      overflowY: 'auto',
-                      zIndex: 100,
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.7)',
-                      marginTop: '4px'
-                    }}>
-                      {filteredClientOptions.length === 0 ? (
-                        <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-                          Aucun client trouvé pour « {clientSearchQuery} »
-                        </div>
-                      ) : (
-                        filteredClientOptions.map(c => (
-                          <div
-                            key={c.id || c.dbId}
-                            onClick={() => {
-                              setSelectedClient(c.id || c.dbId)
-                              setClientSearchQuery(`${c.codeClient ? '[' + c.codeClient + '] ' : ''}${c.companyName} (${c.city || ''})`)
-                              setShowClientDropdown(false)
-                            }}
-                            style={{
-                              padding: '10px 14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid rgba(255,255,255,0.05)',
-                              fontSize: '12px',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 208, 0, 0.1)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <div>
-                              <strong style={{ color: '#FFFFFF' }}>{c.companyName}</strong>
-                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                {c.city || 'Maroc'} {c.ice ? `• ICE: ${c.ice}` : ''}
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '10px', color: 'var(--bardahl-yellow)', background: 'rgba(255, 208, 0, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
-                              {c.type || 'Revendeur'}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Devis Number & Validity */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {/* N° Devis */}
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+                    <label style={{ fontSize: '12px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FileText size={14} style={{ color: 'var(--bardahl-yellow)' }} />
                       N° Devis
                     </label>
                     <input
@@ -1036,39 +1035,24 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       value={customDevisNumber}
                       onChange={e => setCustomDevisNumber(e.target.value)}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '40px', fontWeight: '700', color: 'var(--bardahl-yellow)' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', fontWeight: '800', color: 'var(--bardahl-yellow)', width: '100%', boxSizing: 'border-box' }}
                     />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
-                      Validité Offre
-                    </label>
-                    <select
-                      value={validityDays}
-                      onChange={e => setValidityDays(parseInt(e.target.value, 10))}
-                      className="input-field"
-                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
-                    >
-                      <option value={15}>15 Jours</option>
-                      <option value={30}>30 Jours (Standard)</option>
-                      <option value={45}>45 Jours</option>
-                      <option value={60}>60 Jours</option>
-                      <option value={90}>90 Jours</option>
-                    </select>
                   </div>
                 </div>
 
-                {/* Payment & Shipping */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* Ligne 2 : Paiement Proposé + Mode d'Expédition (Large et aéré) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(280px, 1.5fr)', gap: '14px', alignItems: 'flex-start' }}>
+                  {/* Paiement Proposé */}
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+                    <label style={{ fontSize: '12px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Coins size={14} style={{ color: 'var(--bardahl-yellow)' }} />
                       Paiement Proposé
                     </label>
                     <select
                       value={paymentMethod}
                       onChange={e => setPaymentMethod(e.target.value)}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box', width: '100%', fontWeight: '600' }}
                     >
                       <option value="Chèque">Chèque</option>
                       <option value="Traite 60J">Traite 60 Jours</option>
@@ -1077,19 +1061,22 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       <option value="Espèces">Espèces</option>
                     </select>
                   </div>
+
+                  {/* Mode d'Expédition (Spacieux, plus de texte tronqué) */}
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
+                    <label style={{ fontSize: '12px', fontWeight: '800', color: '#FFFFFF', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Truck size={14} style={{ color: 'var(--bardahl-yellow)' }} />
                       Mode d'Expédition
                     </label>
                     <select
                       value={modeExpedition}
                       onChange={e => setModeExpedition(e.target.value)}
                       className="input-field"
-                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box' }}
+                      style={{ fontSize: '13px', height: '42px', padding: '8px 14px', boxSizing: 'border-box', width: '100%', fontWeight: '600' }}
                     >
-                      <option value="Transport Bardahl">Transport Bardahl</option>
-                      <option value="Comptoir / Enlèvement">Comptoir / Enlèvement</option>
+                      <option value="Transport Bardahl">Transport Bardahl (Livraison directe)</option>
                       <option value="Messagerie CTM / Ghazala">Messagerie CTM / Ghazala</option>
+                      <option value="Comptoir / Enlèvement">Comptoir / Enlèvement sur place</option>
                     </select>
                   </div>
                 </div>
@@ -1627,7 +1614,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                   {renderStatusBadge(selectedDevisDetails.status)}
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  Émis le {selectedDevisDetails.date} {selectedDevisDetails.validityDate ? `• Valide jusqu'au ${selectedDevisDetails.validityDate}` : ''}
+                  Émis le {selectedDevisDetails.date}
                 </div>
               </div>
 
