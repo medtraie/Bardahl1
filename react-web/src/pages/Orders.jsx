@@ -18,7 +18,7 @@ import { getNextOrderNumber } from '../utils/numberGenerators'
 
 export default function Orders({ openWizardTrigger }) {
   const { 
-    orders, clients, products, commercials, promotions, 
+    orders, allOrders = [], clients, products, commercials, promotions, 
     addOrder, updateOrder, deleteOrder, updateOrderStatus, currentUser,
     clientCompensations = [], addClientCompensation, updateClientCompensation, consumeClientCompensation, deleteClientCompensation,
     productFamilies = [],
@@ -214,7 +214,8 @@ export default function Orders({ openWizardTrigger }) {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [selectedProductCategoryFilter, setSelectedProductCategoryFilter] = useState('ALL')
 
-  const suggestedOrderNumber = useMemo(() => getNextOrderNumber(orders), [orders])
+  const ordersListForNumbering = (allOrders && allOrders.length > 0) ? allOrders : (orders || [])
+  const suggestedOrderNumber = useMemo(() => getNextOrderNumber(ordersListForNumbering), [ordersListForNumbering])
   const activeOrderNumber = customOrderNumber.trim() || suggestedOrderNumber
 
   // Trigger modal open from header / dashboard buttons

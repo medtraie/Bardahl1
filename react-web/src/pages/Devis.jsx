@@ -17,6 +17,7 @@ import { getNextDevisNumber } from '../utils/numberGenerators'
 export default function Devis({ openWizardTrigger, setActiveTab }) {
   const {
     devis = [],
+    allDevis = [],
     clients = [],
     products = [],
     commercials = [],

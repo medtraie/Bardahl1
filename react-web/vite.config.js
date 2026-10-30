@@ -7,5 +7,17 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true
+  },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          jspdf: ['jspdf', 'jspdf-autotable'],
+          xlsx: ['xlsx']
+        }
+      }
+    }
   }
 })

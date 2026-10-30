@@ -56,7 +56,7 @@ export const BARDAHL_FAMILIES_METRICS = [
 
 export default function Analytics() {
   const context = useApp() || {}
-  const orders = Array.isArray(context.orders) ? context.orders : []
+  const orders = Array.isArray(context.allOrders && context.allOrders.length > 0 ? context.allOrders : context.orders) ? (context.allOrders && context.allOrders.length > 0 ? context.allOrders : context.orders) : []
   const clients = Array.isArray(context.clients) ? context.clients : []
   const promotions = Array.isArray(context.promotions) ? context.promotions : []
   const commercials = Array.isArray(context.commercials) ? context.commercials : []
@@ -226,19 +226,7 @@ export default function Analytics() {
       }
     })
 
-    if (totalPromoOrders === 0 && filteredOrders.length > 0) {
-      totalPromoOrders = Math.max(1, Math.round(filteredOrders.length * 0.4))
-      promoCaTtc = totalCaTtc * 0.42
-      totalCartonsUnderPromo = Math.round(totalCaTtc / 450) || 20
-      totalFreeCartons = Math.max(2, Math.round(totalCartonsUnderPromo * 0.08))
-      totalPromoDiscountsDh = totalCaTtc * 0.05
-      
-      activeFamiliesList.forEach((f, idx) => {
-        const weights = [0.45, 0.25, 0.15, 0.10, 0.05]
-        const w = weights[idx] || (1 / activeFamiliesList.length)
-        familyCartons[f.label] = Math.round(totalCartonsUnderPromo * w)
-      })
-    }
+    
 
     const standardCaTtc = Math.max(0, totalCaTtc - promoCaTtc)
     const promoSharePercent = totalCaTtc > 0 ? Math.round((promoCaTtc / totalCaTtc) * 100) : 0
@@ -285,15 +273,7 @@ export default function Analytics() {
         revenue: `${(p.revenue || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`
       }))
 
-    if (fromOrders.length > 0) return fromOrders
-
-    return [
-      { ref: '34131', name: 'Bardahl XTRA 10W40 1L (Huile Moteur)', volume: '1,840 Bidons', revenue: '143,520.00 DH' },
-      { ref: 'BH001', name: 'BARDAHL HUILE Anti-Usure 250ml', volume: '2,400 Flacons', revenue: '60,000.00 DH' },
-      { ref: 'GAL01', name: 'Graisse Lithium All Purpose N°2 400g', volume: '1,950 Cartouches', revenue: '52,650.00 DH' },
-      { ref: '7313', name: 'XCL UNIVERSEL -25°C 5L (Liquide LR)', volume: '620 Bidons', revenue: '81,840.00 DH' },
-      { ref: '4451E', name: 'Brake Cleaner Nettoyant Freins 600ml', volume: '1,200 Spray', revenue: '56,400.00 DH' }
-    ]
+    return fromOrders
   }, [filteredOrders])
 
   // French Dictionary for Segment Inspector (Zero Arabic)
@@ -399,6 +379,32 @@ export default function Analytics() {
   }
 
   const handleInspectSegment = (name) => {
+    const matchedComm = (commercials || []).find(c => (c.name || '').trim().toLowerCase() === name.trim().toLowerCase() || c.matricule === name)
+    if (matchedComm) {
+      let commSales = 0
+      let commOrders = 0
+      filteredOrders.forEach(o => {
+        if (!o) return
+        const isMatch = (o.commercialDbId && (o.commercialDbId === matchedComm.dbId || o.commercialDbId === matchedComm.id)) ||
+                        (o.commercialName && o.commercialName.trim().toLowerCase() === (matchedComm.name || '').trim().toLowerCase())
+        if (isMatch) {
+          commSales += (parseFloat(o.totalTtc) || 0)
+          commOrders += 1
+        }
+      })
+      const target = parseFloat(matchedComm.monthlyTarget) || 100000
+      const achievePct = target > 0 ? Math.round((commSales / target) * 100) : 0
+      setSelectedSegment({
+        name: matchedComm.name,
+        category: `Délégué Commercial (${matchedComm.matricule || 'REP'}) - ${matchedComm.zone || matchedComm.region || 'Maroc'}`,
+        color: '#FFD000',
+        value: `${commSales.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH TTC (${commOrders} bon(s), ${achievePct}% de l'objectif)`,
+        description: `Délégué commercial responsable du secteur ${matchedComm.zone || matchedComm.region || 'affecté'}. Objectif mensuel : ${target.toLocaleString('fr-FR')} DH TTC. Email: ${matchedComm.email || 'N/A'}.`,
+        actionPlan: achievePct >= 100 ? "Féliciter pour l'atteinte des objectifs et stimuler la vente des gammes à haute valeur ajoutée." : "Accompagner sur le terrain pour accélérer le réassort auprès des clients en attente de visite."
+      })
+      return
+    }
+
     let details = segmentDetails[name]
     if (!details) {
       const fam = getFamilyInfo(name, activeFamiliesList)
@@ -415,7 +421,7 @@ export default function Analytics() {
   }
 
   // 6. Chart: Évolution Mensuelle du CA par Gamme Bardahl
-  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct']
+  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
   
   // Dynamic Family Metrics Calculation Engine
   const familyMetricsData = useMemo(() => {
@@ -431,7 +437,7 @@ export default function Analytics() {
         color: f.color || colorPalette[idx % colorPalette.length],
         revenue: 0,
         cartons: 0,
-        monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }
     })
 
@@ -443,7 +449,7 @@ export default function Analytics() {
       let mIdx = 9 // Default Oct
       if (oDate.length >= 7) {
         const mNum = parseInt(oDate.substring(5, 7), 10)
-        if (mNum >= 1 && mNum <= 10) mIdx = mNum - 1
+        if (mNum >= 1 && mNum <= 12) mIdx = mNum - 1
       }
 
       o.items.forEach(it => {
@@ -460,7 +466,7 @@ export default function Analytics() {
             color: famInfo.color || '#FFD000',
             revenue: 0,
             cartons: 0,
-            monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            monthlyData: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
           }
         }
 
@@ -484,12 +490,7 @@ export default function Analytics() {
       const share = realShare > 0 ? realShare : fallbackShare
       const pct = Math.round(share * 100) || 5
 
-      const monthlyData = monthLabels.map((_, mIdx) => {
-        const val = f.monthlyData[mIdx]
-        if (val > 0) return val
-        const baseMonthly = Math.round(grandTotal * share * defaultMonthlyFactors[mIdx])
-        return Math.max(12000, baseMonthly)
-      })
+      const monthlyData = monthLabels.map((_, mIdx) => f.monthlyData[mIdx] || 0)
 
       return {
         ...f,
@@ -577,36 +578,64 @@ export default function Analytics() {
     }
   }
 
-  // 7. Chart: Objectif vs Ventes Réelles par Commercial
-  const repLineData = {
-    labels: monthLabels,
-    datasets: [
-      {
-        label: 'Mohammed amine',
-        data: [85000, 95000, 90000, 110000, 115000, 125000, 130000, 140000, 145000, Math.max(150000, totalCaTtc * 0.55)],
-        borderColor: '#FFD000',
-        backgroundColor: 'rgba(255, 208, 0, 0.1)',
+  // 7. Chart: Objectif vs Ventes Réelles par Commercial (100% Données Réelles Supabase)
+  const commColors = ['#FFD000', '#2EC4B6', '#007AFF', '#9B51E0', '#FF5252', '#E0A800', '#34C759', '#FF9F43']
+  const repLineData = useMemo(() => {
+    const activeComms = (commercials && commercials.length > 0)
+      ? commercials
+      : [{ name: 'Commercial Bardahl', monthlyTarget: 100000 }]
+
+    const datasets = activeComms.map((c, idx) => {
+      const monthlyValues = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      const color = commColors[idx % commColors.length]
+
+      filteredOrders.forEach(o => {
+        if (!o) return
+        const isMatch = (o.commercialDbId && (o.commercialDbId === c.dbId || o.commercialDbId === c.id)) ||
+                        (o.commercialName && o.commercialName.trim().toLowerCase() === (c.name || '').trim().toLowerCase()) ||
+                        (o.commercialEmail && c.email && o.commercialEmail.trim().toLowerCase() === c.email.trim().toLowerCase())
+
+        if (isMatch) {
+          const oDate = (o.date || o.created_at || '').substring(0, 10)
+          let mIdx = new Date().getMonth()
+          if (oDate.length >= 7) {
+            const mNum = parseInt(oDate.substring(5, 7), 10)
+            if (mNum >= 1 && mNum <= 12) mIdx = mNum - 1
+          }
+          monthlyValues[mIdx] += (parseFloat(o.totalTtc) || 0)
+        }
+      })
+
+      return {
+        label: c.name || `Commercial ${idx + 1}`,
+        data: monthlyValues,
+        borderColor: color,
+        backgroundColor: color.startsWith('#') && color.length === 7
+          ? `rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, 0.12)`
+          : 'rgba(255, 208, 0, 0.12)',
         tension: 0.35,
         borderWidth: 2.5
-      },
-      {
-        label: 'Bahjaji',
-        data: [70000, 80000, 78000, 92000, 98000, 105000, 112000, 118000, 122000, Math.max(130000, totalCaTtc * 0.45)],
-        borderColor: '#2EC4B6',
-        backgroundColor: 'rgba(46, 196, 182, 0.1)',
-        tension: 0.35,
-        borderWidth: 2.5
-      },
-      {
-        label: 'Objectif Moyen Mensuel',
-        data: [100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000],
-        borderColor: '#34C759',
-        borderDash: [6, 6],
-        borderWidth: 2,
-        pointRadius: 0
       }
-    ]
-  }
+    })
+
+    const avgTarget = Math.round(
+      activeComms.reduce((sum, c) => sum + (parseFloat(c.monthlyTarget) || 100000), 0) / Math.max(1, activeComms.length)
+    )
+
+    datasets.push({
+      label: `Objectif Moyen (${avgTarget.toLocaleString('fr-FR')} DH)`,
+      data: Array(12).fill(avgTarget),
+      borderColor: '#34C759',
+      borderDash: [6, 6],
+      borderWidth: 2,
+      pointRadius: 0
+    })
+
+    return {
+      labels: monthLabels,
+      datasets
+    }
+  }, [commercials, filteredOrders, monthLabels])
 
   const repLineOptions = {
     responsive: true,
@@ -1222,32 +1251,50 @@ export default function Analytics() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          {[
-            { name: 'Mohammed amine', color: '#FFD000' },
-            { name: 'Bahjaji', color: '#2EC4B6' },
-            { name: 'Objectif Moyen Mensuel', color: '#34C759' }
-          ].map(c => (
-            <button
-              key={c.name}
-              onClick={() => handleInspectSegment(c.name)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                background: '#14171F',
-                border: `1px solid ${c.color}`,
-                color: '#FFFFFF',
-                fontSize: '11px',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: c.color }} />
-              {c.name}
-            </button>
-          ))}
+          {commercials.map((c, idx) => {
+            const color = commColors[idx % commColors.length]
+            return (
+              <button
+                key={c.id || c.name}
+                onClick={() => handleInspectSegment(c.name)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  background: '#14171F',
+                  border: `1px solid ${color}`,
+                  color: '#FFFFFF',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: color }} />
+                {c.name}
+              </button>
+            )
+          })}
+          <button
+            onClick={() => handleInspectSegment('Objectif Moyen Mensuel')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: '#14171F',
+              border: '1px dashed #34C759',
+              color: '#34C759',
+              fontSize: '11px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#34C759' }} />
+            Objectif Réseau
+          </button>
         </div>
 
         <div style={{ height: '280px', width: '100%' }}>
@@ -1318,7 +1365,7 @@ export default function Analytics() {
             <Doughnut key="gamme_donut" data={donutData} options={donutOptions} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', width: '100%' }}>
             {familyMetricsData.map(seg => (
               <button
                 key={seg.label}
@@ -1357,31 +1404,45 @@ export default function Analytics() {
           <Trophy size={18} style={{ color: 'var(--bardahl-yellow)' }} /> Top 5 Produits les Plus Vendus (Bardahl Maroc)
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {topProducts.map((p, i) => (
-            <div 
-              key={i} 
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between', 
-                padding: '10px 14px', 
-                borderRadius: '10px', 
-                background: '#14171F', 
-                border: '1px solid var(--border-card)' 
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Star size={16} style={{ color: 'var(--bardahl-yellow)', fill: 'var(--bardahl-yellow)' }} />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>{p.name}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    Réf: <strong style={{ color: 'var(--bardahl-yellow)' }}>{p.ref}</strong> | {p.volume}
+          {topProducts.length === 0 ? (
+            <div style={{
+              padding: '24px',
+              textAlign: 'center',
+              borderRadius: '10px',
+              background: '#14171F',
+              border: '1px dashed var(--border-card)',
+              color: 'var(--text-secondary)',
+              fontSize: '13px'
+            }}>
+              📦 Aucune vente enregistrée pour la période sélectionnée
+            </div>
+          ) : (
+            topProducts.map((p, i) => (
+              <div 
+                key={i} 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: '10px 14px', 
+                  borderRadius: '10px', 
+                  background: '#14171F', 
+                  border: '1px solid var(--border-card)' 
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Star size={16} style={{ color: 'var(--bardahl-yellow)', fill: 'var(--bardahl-yellow)' }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>{p.name}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      Réf: <strong style={{ color: 'var(--bardahl-yellow)' }}>{p.ref}</strong> | {p.volume}
+                    </div>
                   </div>
                 </div>
+                <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>{p.revenue}</span>
               </div>
-              <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>{p.revenue}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
