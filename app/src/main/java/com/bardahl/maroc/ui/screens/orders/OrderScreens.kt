@@ -52,7 +52,10 @@ fun OrderListScreen(
 ) {
     val orders by orderViewModel.orders.collectAsState()
     val authState by authViewModel.authState.collectAsState()
-    val currentUser = (authState as? AuthState.Success)?.user
+    val isRefreshing by orderViewModel.isRefreshing.collectAsState()
+    val successState = authState as? AuthState.Success
+    val currentUser = successState?.user
+    val currentComm = successState?.commercial
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val context = LocalContext.current
 
@@ -62,22 +65,37 @@ fun OrderListScreen(
     }
 
     // Role-based order filtering - mirrors Web AppContext visibleOrders logic
-    val userCommId = currentUser?.id ?: ""
-    val userCommName = currentUser?.firstName ?: ""
-    val userEmail = currentUser?.email ?: ""
+    val userCommId = currentComm?.id ?: currentUser?.id ?: ""
+    val userCommName = currentComm?.name ?: currentUser?.firstName ?: ""
+    val userEmail = currentComm?.email ?: currentUser?.email ?: ""
+    val userMatricule = currentComm?.matricule ?: ""
+
     val visibleOrders = if (isAdmin) {
         orders
     } else {
         orders.filter { o ->
-            o.commercialId == userCommId ||
-            (userCommName.isNotBlank() && o.commercialName.contains(userCommName, ignoreCase = true)) ||
-            (userEmail.isNotBlank() && o.observations?.contains(userEmail, ignoreCase = true) == true)
+            // 1. Direct commercialId match
+            (userCommId.isNotBlank() && o.commercialId.equals(userCommId, ignoreCase = true)) ||
+            // 2. Commercial Name match (exact, contains, e.g. "BAH", "BAM", "AMIA")
+            (userCommName.isNotBlank() && (
+                o.commercialName.equals(userCommName, ignoreCase = true) ||
+                o.commercialName.contains(userCommName, ignoreCase = true) ||
+                userCommName.contains(o.commercialName, ignoreCase = true)
+            )) ||
+            // 3. Commercial Email match in observations or commercialName
+            (userEmail.isNotBlank() && (
+                o.observations?.contains(userEmail, ignoreCase = true) == true ||
+                o.commercialName.contains(userEmail, ignoreCase = true) ||
+                (userEmail.contains("@") && o.observations?.contains(userEmail.substringBefore("@"), ignoreCase = true) == true)
+            )) ||
+            // 4. Commercial Matricule match (e.g. REP0007)
+            (userMatricule.isNotBlank() && o.observations?.contains(userMatricule, ignoreCase = true) == true)
         }
     }
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("TOUS") }
-    val statusFilters = listOf("TOUS", "VALIDÉ", "BROUILLON", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
+    val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
     var selectedOrderForDetails by remember { mutableStateOf<Order?>(null) }
 
     val filteredOrders = visibleOrders.filter { o ->
@@ -93,8 +111,8 @@ fun OrderListScreen(
 
         val matchesStatus = when (selectedStatusFilter) {
             "TOUS" -> true
+            "EN ATTENTE", "BROUILLON" -> o.status == OrderStatus.DRAFT
             "VALIDÉ" -> o.status == OrderStatus.VALIDATED
-            "BROUILLON" -> o.status == OrderStatus.DRAFT
             "ENVOYÉ" -> o.status == OrderStatus.SENT
             "LIVRÉ" -> o.status == OrderStatus.DELIVERED
             "ANNULÉ" -> o.status == OrderStatus.CANCELLED
@@ -111,6 +129,29 @@ fun OrderListScreen(
                 subtitle = "Historique & Duplicatas",
                 onSettingsClick = onSettingsClick,
                 actions = {
+                    // Bouton Actualiser (Refresh)
+                    IconButton(
+                        onClick = {
+                            orderViewModel.refreshOrdersFromSupabase {
+                                Toast.makeText(context, "Données actualisées avec succès", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = BardahlYellow,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Actualiser les données",
+                                tint = BardahlYellow
+                            )
+                        }
+                    }
+
                     IconButton(onClick = {
                         val file = ExcelExporter.exportOrdersToCsv(context, orders)
                         Toast.makeText(context, "Export Excel généré : ${file.name}", Toast.LENGTH_LONG).show()
@@ -148,7 +189,47 @@ fun OrderListScreen(
                 leadingIcon = Icons.Default.Search
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Quick Sync Info & Actualiser Button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${visibleOrders.size} bon(s) de commande",
+                    fontSize = 11.sp,
+                    color = TextSecondaryDark,
+                    fontWeight = FontWeight.Medium
+                )
+                TextButton(
+                    onClick = {
+                        orderViewModel.refreshOrdersFromSupabase {
+                            Toast.makeText(context, "Données actualisées avec succès", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = BardahlYellow,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isRefreshing) "Actualisation..." else "Actualiser",
+                        fontSize = 11.sp,
+                        color = BardahlYellow,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Status Filter Chips Row
             Row(
@@ -161,8 +242,8 @@ fun OrderListScreen(
                     val isSelected = selectedStatusFilter == status
                     val count = when (status) {
                         "TOUS" -> visibleOrders.size
+                        "EN ATTENTE" -> visibleOrders.count { it.status == OrderStatus.DRAFT }
                         "VALIDÉ" -> visibleOrders.count { it.status == OrderStatus.VALIDATED }
-                        "BROUILLON" -> visibleOrders.count { it.status == OrderStatus.DRAFT }
                         "ENVOYÉ" -> visibleOrders.count { it.status == OrderStatus.SENT }
                         "LIVRÉ" -> visibleOrders.count { it.status == OrderStatus.DELIVERED }
                         "ANNULÉ" -> visibleOrders.count { it.status == OrderStatus.CANCELLED }

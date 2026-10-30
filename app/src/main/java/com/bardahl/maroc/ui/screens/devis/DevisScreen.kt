@@ -116,6 +116,15 @@ fun DevisScreen(
                 subtitle = if (isAdmin) "Direction Bardahl • Duplicatas" else "Commercial • Offres de Prix",
                 onSettingsClick = onSettingsClick,
                 actions = {
+                    IconButton(
+                        onClick = {
+                            orderViewModel.refreshDevisFromSupabase()
+                            Toast.makeText(context, "Devis actualisés avec succès", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Actualiser", tint = BardahlYellow)
+                    }
+
                     Surface(
                         color = BardahlYellow,
                         shape = RoundedCornerShape(10.dp),

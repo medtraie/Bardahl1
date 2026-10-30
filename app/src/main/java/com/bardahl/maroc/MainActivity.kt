@@ -149,6 +149,11 @@ fun MainAppNavHost(
                                     .background(bgColor)
                                     .border(1.dp, if (isSelected) BardahlYellow else BardahlCardBorder, RoundedCornerShape(14.dp))
                                     .clickable {
+                                        if (screen == Screen.Orders) {
+                                            orderViewModel.refreshOrdersFromSupabase()
+                                        } else if (screen == Screen.Devis) {
+                                            orderViewModel.refreshDevisFromSupabase()
+                                        }
                                         if (currentRoute != screen.route) {
                                             navController.navigate(screen.route) {
                                                 popUpTo(Screen.Dashboard.route) { saveState = true }

@@ -14,6 +14,18 @@ class SupabaseService(
     private val apiKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVva25ua3JwaHRsc212cmRrZW92Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTg3ODA2OCwiZXhwIjoyMTAxNDU0MDY4fQ.iN0xqCHWT_ZeqUAIuxwgJ0_AsVmKLPgVlj87mc3YX4s"
 ) {
 
+    private var cachedCommercialsList: List<Commercial>? = null
+
+    suspend fun getCachedCommercials(): List<Commercial> {
+        val cached = cachedCommercialsList
+        if (cached != null && cached.isNotEmpty()) return cached
+        val fresh = fetchCommercials()
+        if (fresh.isNotEmpty()) {
+            cachedCommercialsList = fresh
+        }
+        return fresh
+    }
+
     private fun getConnection(endpoint: String, method: String = "GET"): HttpURLConnection {
         val url = URL("$baseUrl/$endpoint")
         val conn = url.openConnection() as HttpURLConnection
@@ -22,6 +34,10 @@ class SupabaseService(
         conn.setRequestProperty("Authorization", "Bearer $apiKey")
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("Prefer", "return=representation")
+        conn.useCaches = false
+        conn.defaultUseCaches = false
+        conn.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+        conn.setRequestProperty("Pragma", "no-cache")
         conn.connectTimeout = 10000
         conn.readTimeout = 10000
         return conn
@@ -345,9 +361,7 @@ class SupabaseService(
 
     suspend fun fetchOrders(): List<Order> = withContext(Dispatchers.IO) {
         try {
-            val clientsList = fetchClients()
-            val commercialsList = fetchCommercials()
-            val clientsMap = clientsList.associateBy { it.id }
+            val commercialsList = getCachedCommercials()
             val commercialsMap = commercialsList.associateBy { it.id }
 
             val conn = getConnection("orders?select=*&order=created_at.desc")
@@ -368,7 +382,6 @@ class SupabaseService(
                     val cId = obj.optString("client_id", "")
                     val commId = obj.optString("commercial_id", "")
 
-                    val clientObj = clientsMap[cId]
                     val commObj = commercialsMap[commId]
 
                     val obs = obj.optString("observations", "")
@@ -382,6 +395,7 @@ class SupabaseService(
                     var parsedVoucherDiscount = 0.0
                     var customClientName = ""
                     var customCommName = ""
+                    var customCommEmail = ""
 
                     if (obs.trim().startsWith("{") && obs.trim().endsWith("}")) {
                         try {
@@ -395,6 +409,7 @@ class SupabaseService(
                             parsedVoucherDiscount = obsJson.optDouble("voucherDiscount", 0.0)
                             customClientName = obsJson.optString("clientName", "")
                             customCommName = obsJson.optString("commercialName", "")
+                            customCommEmail = obsJson.optString("commercialEmail", "")
 
                             val itemsArr = obsJson.optJSONArray("items")
                             if (itemsArr != null) {
@@ -434,15 +449,26 @@ class SupabaseService(
                     val isAdminOrder = commId == "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" ||
                             customCommName.contains("Admin", ignoreCase = true) ||
                             customCommName.contains("Direction", ignoreCase = true) ||
+                            customCommEmail.contains("bardahl@gmail.com", ignoreCase = true) ||
                             obs.contains("bardahl@gmail.com", ignoreCase = true)
 
-                    val clientName = if (customClientName.isNotBlank()) customClientName else clientObj?.companyName ?: "Client Bardahl"
+                    val clientName = if (customClientName.isNotBlank()) customClientName else "Client Bardahl"
                     val commName = if (isAdminOrder) {
                         "Créé par Administrateur"
                     } else if (customCommName.isNotBlank()) {
                         customCommName
                     } else {
                         commObj?.name ?: "Commercial Bardahl"
+                    }
+
+                    val resolvedCommId = if (isAdminOrder) {
+                        "e7fa1dfe-4bfc-49fb-82a6-142e4724942c"
+                    } else if (commId.isNotBlank()) {
+                        commId
+                    } else if (commObj != null) {
+                        commObj.id
+                    } else {
+                        commercialsList.find { it.name.equals(customCommName, ignoreCase = true) || (customCommEmail.isNotBlank() && it.email.equals(customCommEmail, ignoreCase = true)) }?.id ?: ""
                     }
 
                     val totalFreeUnits = parsedItems.sumOf { it.freeQuantity }
@@ -452,7 +478,7 @@ class SupabaseService(
                         Order(
                             id = obj.getString("id"),
                             orderNumber = obj.optString("order_number", "BC-2026-0000"),
-                            commercialId = if (isAdminOrder) "e7fa1dfe-4bfc-49fb-82a6-142e4724942c" else commId,
+                            commercialId = resolvedCommId,
                             commercialName = commName,
                             clientId = cId,
                             clientName = clientName,

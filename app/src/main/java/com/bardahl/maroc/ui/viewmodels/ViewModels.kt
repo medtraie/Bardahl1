@@ -338,15 +338,24 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
         }
     }
 
-    fun refreshOrdersFromSupabase() {
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    fun refreshOrdersFromSupabase(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
+            _isRefreshing.value = true
             try {
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
                 val current = _orders.value
                 val merged = (current.filter { it.isSynced.not() } + remote).distinctBy { it.orderNumber }
                 _orders.value = if (merged.isNotEmpty()) merged else remote
+                refreshPromotions()
+                refreshDevisFromSupabase()
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                _isRefreshing.value = false
+                onComplete?.invoke()
             }
         }
     }
