@@ -1703,8 +1703,12 @@ fun OrderCreateScreen(
                             )
                             orderViewModel.createOrder(newOrder)
 
-                            // Automatically generate & save PDF
-                            PdfGenerator.generateOrderPdf(context, newOrder)
+                            // Automatically generate & save PDF safely
+                            try {
+                                PdfGenerator.generateOrderPdf(context, newOrder)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
 
                             Toast.makeText(context, "Bon de Commande ${newOrder.orderNumber} créé avec succès!", Toast.LENGTH_LONG).show()
                             onOrderCreated()

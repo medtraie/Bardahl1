@@ -328,7 +328,8 @@ object PdfGenerator {
         pdfDocument.finishPage(page)
 
         // Save PDF to Cache File
-        val pdfFileName = "Bon_de_Commande_${order.orderNumber.replace(" ", "_")}.pdf"
+        val safeNumber = order.orderNumber.replace("/", "-").replace(":", "-").replace(" ", "_")
+        val pdfFileName = "Bon_de_Commande_${safeNumber}.pdf"
         val outputFile = File(context.cacheDir, pdfFileName)
         FileOutputStream(outputFile).use { pdfDocument.writeTo(it) }
         pdfDocument.close()
@@ -435,7 +436,8 @@ object PdfGenerator {
 
         pdfDocument.finishPage(page)
 
-        val pdfFileName = "Fiche_Client_${client.companyName.replace(" ", "_")}.pdf"
+        val safeClient = client.companyName.replace("/", "-").replace(":", "-").replace(" ", "_")
+        val pdfFileName = "Fiche_Client_${safeClient}.pdf"
         val outputFile = File(context.cacheDir, pdfFileName)
         FileOutputStream(outputFile).use { pdfDocument.writeTo(it) }
         pdfDocument.close()
@@ -644,7 +646,8 @@ object PdfGenerator {
 
         pdfDocument.finishPage(page)
 
-        val pdfFileName = "Devis_${devis.devisNumber.replace(" ", "_")}.pdf"
+        val safeNumber = devis.devisNumber.replace("/", "-").replace(":", "-").replace(" ", "_")
+        val pdfFileName = "Devis_${safeNumber}.pdf"
         val outputFile = File(context.cacheDir, pdfFileName)
         FileOutputStream(outputFile).use { pdfDocument.writeTo(it) }
         pdfDocument.close()
