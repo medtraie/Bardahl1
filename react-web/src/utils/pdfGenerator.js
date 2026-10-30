@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { BARDAHL_LOGO_BASE64 } from './logoBase64'
+import { BARDAHL_COMPANY_INFO } from '../data/companyData'
 
 /**
  * Renders a single order page into the provided jsPDF document instance.
@@ -21,22 +22,22 @@ export function renderOrderPage(doc, order) {
   doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(13, 15, 18)
-  doc.text("BARDAHL - MAGHREB", 196, 15, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.name, 196, 13, { align: 'right' })
 
-  doc.setFontSize(7.5)
+  doc.setFontSize(6.8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(50, 50, 50)
-  doc.text("S.A. au Capital de 1.800.000 DHs", 196, 20, { align: 'right' })
-  doc.text("107, Rue Amir Abdelkader - CASABLANCA 20 300", 196, 24, { align: 'right' })
-  doc.text("Tél. : 05 22 61 89 56 - Fax : 05 22 62 03 05", 196, 28, { align: 'right' })
-  doc.text("E-mail : bardahlmaghreb@menara.ma | www.bardahl.ma", 196, 32, { align: 'right' })
-  doc.text("R.C. 44907 Casa - B.P. 2177 - Patente 31400690 - I.F. : 01620063", 196, 36, { align: 'right' })
-  doc.text("C.C.P. Rabat 147213 P - C.N.S.S. 1601716 - I.C.E. : 000084015000037", 196, 40, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.capital, 196, 17.5, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.address, 196, 21.5, { align: 'right' })
+  doc.text("Tél. : " + BARDAHL_COMPANY_INFO.phones, 196, 25.5, { align: 'right' })
+  doc.text("Email : " + BARDAHL_COMPANY_INFO.email + " - Site web : " + BARDAHL_COMPANY_INFO.website, 196, 29.5, { align: 'right' })
+  doc.text("R.C. : " + BARDAHL_COMPANY_INFO.rc + " - T.P. : " + BARDAHL_COMPANY_INFO.tp + " - I.F. : " + BARDAHL_COMPANY_INFO.if, 196, 33.5, { align: 'right' })
+  doc.text("C.N.S.S. : " + BARDAHL_COMPANY_INFO.cnss + " - ICE : " + BARDAHL_COMPANY_INFO.ice, 196, 37.5, { align: 'right' })
 
   // Golden Divider Bar
   doc.setDrawColor(255, 208, 0)
-  doc.setLineWidth(1)
-  doc.line(14, 44, 196, 44)
+  doc.setLineWidth(1.2)
+  doc.line(14, 41, 196, 41)
 
   // 2. Document Title Box
   doc.setFillColor(20, 23, 31)
@@ -383,7 +384,7 @@ export function renderOrderPage(doc, order) {
   doc.line(14, 280, 196, 280)
   doc.setFontSize(7)
   doc.setTextColor(113, 128, 150)
-  doc.text("BARDAHL MAGHREB S.A - 107, Rue Amir Abdelkader, Casablanca - ICE: 000084015000037 - RC: 44907 Casa", 105, 285, { align: 'center' })
+  doc.text(BARDAHL_COMPANY_INFO.footerLegal, 105, 285, { align: 'center' })
 }
 
 export function generateOrderPdf(order) {
@@ -575,7 +576,7 @@ export function generateClientPdf(client, clientOrders = []) {
     doc.line(14, 280, 196, 280)
     doc.setFontSize(7)
     doc.setTextColor(113, 128, 150)
-    doc.text("BARDAHL MAGHREB S.A - Document Officiel d'Analyse du Portefeuille Clients - ICE: 000084015000037", 105, 285, { align: 'center' })
+    doc.text(BARDAHL_COMPANY_INFO.footerLegal, 105, 285, { align: 'center' })
   }
 
   const safeFileName = (client.companyName || 'Client').replace(/[^a-zA-Z0-9]/g, '_')
@@ -982,22 +983,22 @@ export function renderDevisPage(doc, devis) {
   doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(13, 15, 18)
-  doc.text("BARDAHL - MAGHREB", 196, 15, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.name, 196, 13, { align: 'right' })
 
-  doc.setFontSize(7.5)
+  doc.setFontSize(6.8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(50, 50, 50)
-  doc.text("S.A. au Capital de 1.800.000 DHs", 196, 20, { align: 'right' })
-  doc.text("107, Rue Amir Abdelkader - CASABLANCA 20 300", 196, 24, { align: 'right' })
-  doc.text("Tél. : 05 22 61 89 56 - Fax : 05 22 62 03 05", 196, 28, { align: 'right' })
-  doc.text("E-mail : bardahlmaghreb@menara.ma | www.bardahl.ma", 196, 32, { align: 'right' })
-  doc.text("R.C. 44907 Casa - B.P. 2177 - Patente 31400690 - I.F. : 01620063", 196, 36, { align: 'right' })
-  doc.text("C.C.P. Rabat 147213 P - C.N.S.S. 1601716 - I.C.E. : 000084015000037", 196, 40, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.capital, 196, 17.5, { align: 'right' })
+  doc.text(BARDAHL_COMPANY_INFO.address, 196, 21.5, { align: 'right' })
+  doc.text("Tél. : " + BARDAHL_COMPANY_INFO.phones, 196, 25.5, { align: 'right' })
+  doc.text("Email : " + BARDAHL_COMPANY_INFO.email + " - Site web : " + BARDAHL_COMPANY_INFO.website, 196, 29.5, { align: 'right' })
+  doc.text("R.C. : " + BARDAHL_COMPANY_INFO.rc + " - T.P. : " + BARDAHL_COMPANY_INFO.tp + " - I.F. : " + BARDAHL_COMPANY_INFO.if, 196, 33.5, { align: 'right' })
+  doc.text("C.N.S.S. : " + BARDAHL_COMPANY_INFO.cnss + " - ICE : " + BARDAHL_COMPANY_INFO.ice, 196, 37.5, { align: 'right' })
 
   // Golden Divider Bar
   doc.setDrawColor(255, 208, 0)
-  doc.setLineWidth(1)
-  doc.line(14, 44, 196, 44)
+  doc.setLineWidth(1.2)
+  doc.line(14, 41, 196, 41)
 
   // 2. Document Title Box (Devis)
   doc.setFillColor(20, 23, 31)
@@ -1159,7 +1160,7 @@ export function renderDevisPage(doc, devis) {
   doc.line(14, 280, 196, 280)
   doc.setFontSize(7)
   doc.setTextColor(113, 128, 150)
-  doc.text("BARDAHL MAGHREB S.A - 107, Rue Amir Abdelkader, Casablanca - ICE: 000084015000037 - RC: 44907 Casa", 105, 285, { align: 'center' })
+  doc.text(BARDAHL_COMPANY_INFO.footerLegal, 105, 285, { align: 'center' })
 }
 
 export function generateDevisPdf(devis) {

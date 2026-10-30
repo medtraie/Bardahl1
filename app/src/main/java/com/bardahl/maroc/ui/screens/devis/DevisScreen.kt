@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.bardahl.maroc.domain.model.*
+import com.bardahl.maroc.util.PdfGenerator
 import com.bardahl.maroc.ui.theme.*
 import com.bardahl.maroc.ui.viewmodels.*
 import java.text.SimpleDateFormat
@@ -72,6 +73,7 @@ fun DevisScreen(
     val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "CONVERTI", "EXPIRÉ")
 
     var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedDevisForDetails by remember { mutableStateOf<Devis?>(null) }
 
     val filteredDevis = visibleDevis.filter { d ->
         val q = searchQuery.trim().lowercase()
@@ -295,6 +297,13 @@ fun DevisScreen(
                     items(filteredDevis, key = { it.id }) { devis ->
                         DevisCard(
                             devis = devis,
+                            onPdfClick = {
+                                PdfGenerator.generateDevisPdf(context, devis)
+                                Toast.makeText(context, "Téléchargement Devis PDF en cours...", Toast.LENGTH_SHORT).show()
+                            },
+                            onClick = {
+                                selectedDevisForDetails = devis
+                            },
                             onConvertClick = {
                                 val createdOrder = orderViewModel.convertDevisToOrder(devis)
                                 Toast.makeText(
@@ -305,6 +314,191 @@ fun DevisScreen(
                             },
                             onNavigateToOrders = onNavigateToOrders
                         )
+                    }
+                }
+            }
+        }
+    }
+
+
+    // Devis Detail Dialog with Company Info Header
+    selectedDevisForDetails?.let { devis ->
+        Dialog(onDismissRequest = { selectedDevisForDetails = null }) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f),
+                shape = RoundedCornerShape(16.dp),
+                color = BardahlCardDark,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BardahlCardBorder)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // Title Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DEVIS : ${devis.devisNumber}",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 17.sp,
+                            color = BardahlYellow
+                        )
+                        IconButton(onClick = { selectedDevisForDetails = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = TextSecondaryDark)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 1. Official Company Legal Header Box
+                    Surface(
+                        color = DarkSurface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(CompanyInfo.FULL_NAME, fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color.White)
+                            Text(CompanyInfo.CAPITAL, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = BardahlYellow)
+                            Text(CompanyInfo.ADDRESS, fontSize = 10.sp, color = TextSecondaryDark)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("ICE: ${CompanyInfo.ICE} • RC: ${CompanyInfo.RC} • TP: ${CompanyInfo.TP}", fontSize = 9.5.sp, color = TextSecondaryDark)
+                            Text("C.N.S.S.: ${CompanyInfo.CNSS} • I.F.: ${CompanyInfo.IF}", fontSize = 9.5.sp, color = TextSecondaryDark)
+                            Text("Tél: ${CompanyInfo.PHONES}", fontSize = 9.5.sp, color = TextSecondaryDark)
+                            Text("Email: ${CompanyInfo.EMAIL} • ${CompanyInfo.WEBSITE}", fontSize = 9.5.sp, color = BardahlYellow)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 2. Client & Terms
+                    Surface(
+                        color = DarkSurface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BardahlCardBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("INFORMATIONS CLIENT", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = BardahlYellow)
+                            Text(devis.clientName, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                            if (devis.clientCity.isNotBlank()) Text("Ville: ${devis.clientCity}", fontSize = 11.sp, color = TextSecondaryDark)
+                            if (devis.clientIce.isNotBlank()) Text("ICE: ${devis.clientIce}", fontSize = 11.sp, color = TextSecondaryDark)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = BardahlCardBorder)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("MODALITÉS", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = BardahlYellow)
+                            Text("Date: ${devis.date}", fontSize = 11.sp, color = TextSecondaryDark)
+                            Text("Paiement: ${devis.paymentMethod}", fontSize = 11.sp, color = TextSecondaryDark)
+                            Text("Expédition: ${devis.modeExpedition}", fontSize = 11.sp, color = TextSecondaryDark)
+                            Text("Commercial: ${devis.commercialName.ifBlank { "Direction Bardahl" }}", fontSize = 11.sp, color = TextSecondaryDark)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 3. Articles Table
+                    Text("ARTICLES DU DEVIS (${devis.items.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextPrimaryDark)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    devis.items.forEach { item ->
+                        Surface(
+                            color = DarkSurface,
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, BardahlCardBorder),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("[${item.productReference}] ${item.productName}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1)
+                                    Text("${item.quantity} un. x ${String.format("%.2f", item.unitPriceTtc)} DH", fontSize = 10.sp, color = TextSecondaryDark)
+                                }
+                                Text(String.format("%.2f DH", item.totalTtc), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 4. Financial Totals Card
+                    Surface(
+                        color = DarkSurface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Total H.T :", fontSize = 11.sp, color = TextSecondaryDark)
+                                Text(String.format("%.2f DH", devis.totalHt), fontSize = 11.sp, color = Color.White)
+                            }
+                            if (devis.totalDiscount > 0) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Remise Accordée :", fontSize = 11.sp, color = StatusCancelled)
+                                    Text(String.format("-%.2f DH", devis.totalDiscount), fontSize = 11.sp, color = StatusCancelled)
+                                }
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("T.V.A (20%) :", fontSize = 11.sp, color = TextSecondaryDark)
+                                Text(String.format("%.2f DH", devis.totalTva), fontSize = 11.sp, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = BardahlYellow.copy(alpha = 0.4f))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("TOTAL NET TTC :", fontSize = 13.sp, fontWeight = FontWeight.Black, color = BardahlYellow)
+                                Text(String.format("%.2f DH", devis.totalTtc), fontSize = 14.sp, fontWeight = FontWeight.Black, color = BardahlYellow)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    // 5. Action Buttons
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                PdfGenerator.generateDevisPdf(context, devis)
+                                Toast.makeText(context, "Téléchargement Devis PDF en cours...", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = BardahlBlack, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Télécharger PDF", color = BardahlBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        if (devis.status != DevisStatus.CONVERTI) {
+                            Button(
+                                onClick = {
+                                    selectedDevisForDetails = null
+                                    val createdOrder = orderViewModel.convertDevisToOrder(devis)
+                                    Toast.makeText(
+                                        context,
+                                        "Devis ${devis.devisNumber} converti avec succès en bon N° ${createdOrder.orderNumber} !",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusDelivered),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Transform, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Convertir", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -353,6 +547,8 @@ fun DevisKpiCard(title: String, value: String, icon: androidx.compose.ui.graphic
 @Composable
 fun DevisCard(
     devis: Devis,
+    onPdfClick: () -> Unit,
+    onClick: () -> Unit,
     onConvertClick: () -> Unit,
     onNavigateToOrders: () -> Unit
 ) {
@@ -367,7 +563,7 @@ fun DevisCard(
         color = BardahlCardDark,
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, BardahlCardBorder),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // Header: Devis Number & Status
@@ -387,19 +583,32 @@ fun DevisCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(statusColor.copy(alpha = 0.15f))
-                        .border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = devis.status.label,
-                        color = statusColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = onPdfClick,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = "PDF",
+                            tint = BardahlYellow,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(statusColor.copy(alpha = 0.15f))
+                            .border(1.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = devis.status.label,
+                            color = statusColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 

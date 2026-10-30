@@ -11,6 +11,7 @@ import { generateDevisPdf } from '../utils/pdfGenerator'
 import { exportDevisToExcel } from '../utils/excelExporter'
 import { getProductUnitsPerCarton } from '../data/productsData'
 import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
+import { BARDAHL_COMPANY_INFO } from '../data/companyData'
 
 export default function Devis({ openWizardTrigger, setActiveTab }) {
   const {
@@ -1635,6 +1636,46 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             {/* Content */}
             <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
               
+              {/* Official Bardahl Company Header Card */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(20,23,31,0.95) 0%, rgba(28,32,42,0.95) 100%)',
+                border: '1px solid rgba(255, 208, 0, 0.35)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <img
+                    src="/bardahl_logo.png"
+                    alt="Bardahl"
+                    style={{ height: '44px', width: 'auto', filter: 'drop-shadow(0 2px 8px rgba(255,208,0,0.3))' }}
+                  />
+                  <div>
+                    <h4 style={{ fontSize: '15px', fontWeight: '900', color: '#FFFFFF', margin: 0, letterSpacing: '0.5px' }}>
+                      {BARDAHL_COMPANY_INFO.fullName}
+                    </h4>
+                    <div style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: '700', marginTop: '2px' }}>
+                      {BARDAHL_COMPANY_INFO.capital}
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {BARDAHL_COMPANY_INFO.address}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right', fontSize: '10.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  <div><strong style={{ color: '#FFFFFF' }}>ICE :</strong> {BARDAHL_COMPANY_INFO.ice} | <strong style={{ color: '#FFFFFF' }}>RC :</strong> {BARDAHL_COMPANY_INFO.rc}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>T.P. :</strong> {BARDAHL_COMPANY_INFO.tp} | <strong style={{ color: '#FFFFFF' }}>C.N.S.S. :</strong> {BARDAHL_COMPANY_INFO.cnss} | <strong style={{ color: '#FFFFFF' }}>I.F. :</strong> {BARDAHL_COMPANY_INFO.if}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>Tél :</strong> {BARDAHL_COMPANY_INFO.phones}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>Email :</strong> {BARDAHL_COMPANY_INFO.email} | <strong style={{ color: 'var(--bardahl-yellow)' }}>{BARDAHL_COMPANY_INFO.website}</strong></div>
+                </div>
+              </div>
+
               {/* Client & Commercial info cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>

@@ -21,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
+import com.bardahl.maroc.domain.model.CompanyInfo
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -75,6 +77,7 @@ fun OrderListScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("TOUS") }
     val statusFilters = listOf("TOUS", "VALIDÉ", "BROUILLON", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
+    var selectedOrderForDetails by remember { mutableStateOf<Order?>(null) }
 
     val filteredOrders = visibleOrders.filter { o ->
         val q = searchQuery.trim().lowercase()

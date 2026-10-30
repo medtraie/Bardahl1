@@ -4,7 +4,7 @@ import {
   CreditCard, Hash, Percent, Filter, Truck, MessageSquare, Gift, Tag,
   Sparkles, AlertCircle, Package, X, ShoppingBag, Layers,
   Scale, Calculator, ArrowRight, Clock, History, AlertTriangle, RefreshCw, BadgePercent, Coins, CheckSquare, Square,
-  ChevronDown, User
+  ChevronDown, User, Eye, Building2, MapPin, Calendar, Phone
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { generateOrderPdf, generateMultipleOrdersPdf } from '../utils/pdfGenerator'
@@ -12,6 +12,7 @@ import { exportOrdersToExcel } from '../utils/excelExporter'
 import { evaluatePromotions } from '../utils/promotionEngine'
 import { getProductUnitsPerCarton } from '../data/productsData'
 import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
+import { BARDAHL_COMPANY_INFO } from '../data/companyData'
 
 
 export default function Orders({ openWizardTrigger }) {
@@ -24,6 +25,7 @@ export default function Orders({ openWizardTrigger }) {
   } = useApp()
 
   const isAdmin = currentUser?.role === 'ADMIN'
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null)
 
   const handleStatusChange = async (order, newStatus) => {
     const statusLabels = {
@@ -1525,6 +1527,28 @@ export default function Orders({ openWizardTrigger }) {
                                 <option value="CANCELLED" style={{ background: '#12151C', color: '#FF453A' }}>✕ Annulé</option>
                               </select>
                             )}
+
+                            <button
+                              onClick={() => setSelectedOrderDetails(o)}
+                              className="btn-secondary"
+                              style={{
+                                height: '32px',
+                                padding: '0 10px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                borderRadius: '8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                color: '#FFFFFF',
+                                background: 'rgba(255, 208, 0, 0.1)',
+                                borderColor: 'rgba(255, 208, 0, 0.35)'
+                              }}
+                              title="Aperçu & Détails Officiels du Bon"
+                            >
+                              <Eye style={{ width: '13px', height: '13px', color: 'var(--bardahl-yellow)' }} />
+                              <span>Aperçu</span>
+                            </button>
 
                             <button
                               onClick={() => generateOrderPdf(o)}
@@ -4142,6 +4166,251 @@ export default function Orders({ openWizardTrigger }) {
           </div>
         </div>
       )}
+
+      {/* ── MODAL: APERÇU OFFICIEL DU BON DE COMMANDE ── */}
+      {selectedOrderDetails && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+          zIndex: 9999
+        }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '860px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+            
+            {/* Modal Top Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255, 208, 0, 0.05)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '900', color: 'var(--bardahl-yellow)', margin: 0 }}>
+                    BON DE COMMANDE : {selectedOrderDetails.orderNumber}
+                  </h3>
+                  {renderOrderStatusBadge(selectedOrderDetails.status)}
+                  {isOrderPriceAnormal(selectedOrderDetails, products) && (
+                    <span style={{ fontSize: '11px', fontWeight: '800', background: 'rgba(255, 69, 58, 0.2)', color: '#FF453A', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(255, 69, 58, 0.4)' }}>
+                      ⚠️ Prix Modifié
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Date d'enregistrement : {selectedOrderDetails.date || selectedOrderDetails.orderDate}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => generateOrderPdf(selectedOrderDetails)}
+                  className="btn-bardahl"
+                  style={{ padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <FileText size={14} /> Télécharger PDF
+                </button>
+
+                <button
+                  onClick={() => setSelectedOrderDetails(null)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+              
+              {/* Official Bardahl Company Header Card */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(20,23,31,0.95) 0%, rgba(28,32,42,0.95) 100%)',
+                border: '1px solid rgba(255, 208, 0, 0.35)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <img
+                    src="/bardahl_logo.png"
+                    alt="Bardahl"
+                    style={{ height: '44px', width: 'auto', filter: 'drop-shadow(0 2px 8px rgba(255,208,0,0.3))' }}
+                  />
+                  <div>
+                    <h4 style={{ fontSize: '15px', fontWeight: '900', color: '#FFFFFF', margin: 0, letterSpacing: '0.5px' }}>
+                      {BARDAHL_COMPANY_INFO.fullName}
+                    </h4>
+                    <div style={{ fontSize: '11px', color: 'var(--bardahl-yellow)', fontWeight: '700', marginTop: '2px' }}>
+                      {BARDAHL_COMPANY_INFO.capital}
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {BARDAHL_COMPANY_INFO.address}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right', fontSize: '10.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  <div><strong style={{ color: '#FFFFFF' }}>ICE :</strong> {BARDAHL_COMPANY_INFO.ice} | <strong style={{ color: '#FFFFFF' }}>RC :</strong> {BARDAHL_COMPANY_INFO.rc}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>T.P. :</strong> {BARDAHL_COMPANY_INFO.tp} | <strong style={{ color: '#FFFFFF' }}>C.N.S.S. :</strong> {BARDAHL_COMPANY_INFO.cnss} | <strong style={{ color: '#FFFFFF' }}>I.F. :</strong> {BARDAHL_COMPANY_INFO.if}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>Tél :</strong> {BARDAHL_COMPANY_INFO.phones}</div>
+                  <div><strong style={{ color: '#FFFFFF' }}>Email :</strong> {BARDAHL_COMPANY_INFO.email} | <strong style={{ color: 'var(--bardahl-yellow)' }}>{BARDAHL_COMPANY_INFO.website}</strong></div>
+                </div>
+              </div>
+
+              {/* Client & Commande Info Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <h5 style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', marginBottom: '8px', textTransform: 'uppercase' }}>Client Bénéficiaire</h5>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#FFFFFF' }}>{selectedOrderDetails.clientName}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    <div>{selectedOrderDetails.clientCity || 'Maroc'} {selectedOrderDetails.clientIce ? `• ICE: ${selectedOrderDetails.clientIce}` : ''}</div>
+                    {selectedOrderDetails.clientPhone && <div>Tél: {selectedOrderDetails.clientPhone}</div>}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <h5 style={{ fontSize: '12px', fontWeight: '800', color: 'var(--bardahl-yellow)', marginBottom: '8px', textTransform: 'uppercase' }}>Modalités & Expédition</h5>
+                  <div style={{ fontSize: '12px', color: '#FFFFFF' }}>Commercial : <strong>{selectedOrderDetails.commercialName || 'Direction Bardahl'}</strong></div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    <div>Paiement : <strong>{selectedOrderDetails.paymentMethod || 'Chèque'}</strong></div>
+                    <div>Expédition : <strong>{selectedOrderDetails.modeExpedition || 'Transport Bardahl'}</strong></div>
+                    {selectedOrderDetails.remarque && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>Note : « {selectedOrderDetails.remarque} »</div>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <h5 style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Package size={15} style={{ color: 'var(--bardahl-yellow)' }} />
+                  Articles Commandés ({ (selectedOrderDetails.items || []).length })
+                </h5>
+
+                <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', overflow: 'hidden' }}>
+                  <table className="custom-table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '90px' }}>Réf.</th>
+                        <th>Désignation Produit</th>
+                        <th style={{ width: '130px', textAlign: 'center' }}>Quantité</th>
+                        <th style={{ width: '110px', textAlign: 'right' }}>P.U TTC</th>
+                        <th style={{ width: '90px', textAlign: 'right' }}>Remise</th>
+                        <th style={{ width: '120px', textAlign: 'right' }}>Total TTC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedOrderDetails.items || []).map((it, idx) => {
+                        const qty = (it.qty !== undefined && it.qty !== null) ? it.qty : ((it.quantity !== undefined && it.quantity !== null) ? it.quantity : 0)
+                        const pu = parseFloat(it.priceTtc || it.unitPriceTtc || 0)
+                        const rem = parseFloat(it.remisePercent || 0)
+                        const total = parseFloat(it.totalTtc || (qty * pu * (1 - rem / 100)) || 0)
+                        const upc = getProductUnitsPerCarton(it.productReference || it.reference, it.productName || it.name)
+                        const cartons = Math.floor(qty / upc)
+                        const un = qty % upc
+
+                        return (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                              {it.productReference || it.reference || '-'}
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: '700', color: '#FFFFFF' }}>{it.productName || it.name}</div>
+                              {it.freeQuantity > 0 && (
+                                <span style={{ fontSize: '10px', color: '#34C759', fontWeight: '800' }}>
+                                  🎁 +{it.freeQuantity} unité(s) offerte(s)
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ fontWeight: '700' }}>{qty} un.</span>
+                              {cartons > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}> ({cartons} ctn{un > 0 ? ` + ${un}` : ''})</span>}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>{pu.toFixed(2)} DH</td>
+                            <td style={{ textAlign: 'right', color: rem > 0 ? '#34C759' : 'var(--text-secondary)', fontWeight: rem > 0 ? '800' : 'normal' }}>
+                              {rem > 0 ? `${rem}%` : '-'}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: '800', color: '#FFFFFF' }}>
+                              {total.toFixed(2)} DH
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals Summary */}
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                padding: '16px 20px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 208, 0, 0.3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                marginLeft: 'auto',
+                width: '100%',
+                maxWidth: '340px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <span>Total H.T :</span>
+                  <span style={{ fontWeight: '700', color: '#FFFFFF' }}>{(parseFloat(selectedOrderDetails.totalHt) || 0).toFixed(2)} DH</span>
+                </div>
+                {parseFloat(selectedOrderDetails.remiseMontant || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#34C759' }}>
+                    <span>Remise Accordée :</span>
+                    <span style={{ fontWeight: '700' }}>-{(parseFloat(selectedOrderDetails.remiseMontant) || 0).toFixed(2)} DH</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <span>T.V.A (20%) :</span>
+                  <span style={{ fontWeight: '700', color: '#FFFFFF' }}>{(parseFloat(selectedOrderDetails.totalTva) || 0).toFixed(2)} DH</span>
+                </div>
+                <div style={{ height: '1px', background: 'rgba(255, 208, 0, 0.3)', margin: '4px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: '900', color: 'var(--bardahl-yellow)' }}>
+                  <span>TOTAL NET TTC :</span>
+                  <span>{(parseFloat(selectedOrderDetails.totalTtc) || 0).toFixed(2)} DH</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Bottom Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.3)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                {BARDAHL_COMPANY_INFO.footerLegal}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderDetails(null)}
+                  className="btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '12px' }}
+                >
+                  Fermer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => generateOrderPdf(selectedOrderDetails)}
+                  className="btn-bardahl"
+                  style={{ padding: '8px 18px', fontSize: '12px' }}
+                >
+                  <FileText size={14} /> Imprimer / Exporter PDF
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
