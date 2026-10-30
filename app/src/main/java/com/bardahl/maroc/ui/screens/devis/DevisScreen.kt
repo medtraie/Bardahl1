@@ -13,6 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -743,6 +745,9 @@ fun CreateDevisDialog(
     var selectedProductsList by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
 
     var productSearch by remember { mutableStateOf("") }
+    var itemToEditIndex by remember { mutableStateOf<Int?>(null) }
+    var editCartonsInput by remember { mutableStateOf("") }
+    var editUnitsInput by remember { mutableStateOf("") }
     val filteredProducts = products.filter {
         productSearch.isBlank() ||
                 it.name.contains(productSearch, ignoreCase = true) ||
@@ -759,6 +764,90 @@ fun CreateDevisDialog(
     val totalTtc = selectedProductsList.sumOf { it.totalTtc }
     val totalHt = totalTtc / 1.20
     val totalTva = totalTtc - totalHt
+
+    // Saisie directe de Cartons & Unités par clavier
+    if (itemToEditIndex != null && itemToEditIndex!! in selectedProductsList.indices) {
+        val itm = selectedProductsList[itemToEditIndex!!]
+        val upb = if (itm.unitsPerBox > 0) itm.unitsPerBox else 12
+
+        AlertDialog(
+            onDismissRequest = { itemToEditIndex = null },
+            containerColor = DarkSurface,
+            title = {
+                Text(
+                    text = "Saisie Quantité (Carton / Unité)",
+                    color = BardahlYellow,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(itm.productName, fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    Text("Conditionnement: $upb unités par carton", fontSize = 11.sp, color = TextSecondaryDark)
+
+                    OutlinedTextField(
+                        value = editCartonsInput,
+                        onValueChange = { valNum ->
+                            val clean = valNum.filter { it.isDigit() }
+                            editCartonsInput = clean
+                            val c = clean.toIntOrNull() ?: 0
+                            editUnitsInput = (c * upb).toString()
+                        },
+                        label = { Text("Nombre de Cartons") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BardahlYellow,
+                            unfocusedBorderColor = BardahlCardBorder,
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = editUnitsInput,
+                        onValueChange = { valNum ->
+                            val clean = valNum.filter { it.isDigit() }
+                            editUnitsInput = clean
+                            val u = clean.toIntOrNull() ?: 0
+                            editCartonsInput = (u / upb).toString()
+                        },
+                        label = { Text("Nombre Total d'Unités") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BardahlYellow,
+                            unfocusedBorderColor = BardahlCardBorder,
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalUnits = editUnitsInput.toIntOrNull() ?: ((editCartonsInput.toIntOrNull() ?: 1) * upb)
+                        if (finalUnits > 0) {
+                            selectedProductsList = selectedProductsList.mapIndexed { i, old ->
+                                if (i == itemToEditIndex) old.copy(quantity = finalUnits) else old
+                            }
+                        }
+                        itemToEditIndex = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack)
+                ) {
+                    Text("Valider", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToEditIndex = null }) {
+                    Text("Annuler", color = TextSecondaryDark)
+                }
+            }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1049,18 +1138,280 @@ fun CreateDevisDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Selected Items Summary
-                    if (selectedProductsList.isNotEmpty()) {
-                        Text("Articles dans le devis :", fontSize = 11.sp, color = TextSecondaryDark)
-                        selectedProductsList.forEach { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                    // 5. Articles dans le Devis (Liste interactive avec Cartons, Unités, Remise et Suppression)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Articles dans le Devis (${selectedProductsList.size})",
+                            fontSize = 12.sp,
+                            color = TextPrimaryDark,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (selectedProductsList.isNotEmpty()) {
+                            TextButton(
+                                onClick = { selectedProductsList = emptyList() },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                             ) {
-                                Text(text = "${item.quantity}x ${item.productName}", fontSize = 11.sp, color = TextPrimaryDark, modifier = Modifier.weight(1f))
-                                Text(text = String.format("%.2f DH", item.totalTtc), fontSize = 11.sp, color = BardahlYellow, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = StatusCancelled, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Tout vider", color = StatusCancelled, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    if (selectedProductsList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(DarkSurface, RoundedCornerShape(8.dp))
+                                .border(1.dp, BardahlCardBorder, RoundedCornerShape(8.dp))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Aucun article sélectionné.\nCliquez sur un produit ci-dessus pour l'ajouter au devis.",
+                                color = TextSecondaryDark,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            selectedProductsList.forEachIndexed { idx, item ->
+                                val upb = if (item.unitsPerBox > 0) item.unitsPerBox else 12
+                                val cartons = item.quantity / upb
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(DarkSurface)
+                                        .border(1.dp, BardahlCardBorder, RoundedCornerShape(10.dp))
+                                        .padding(10.dp)
+                                ) {
+                                    // Row 1: Nom, Réf et Bouton Supprimer
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.productName,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimaryDark,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Réf: ${item.productReference} • Cond: ${upb} un./ctn",
+                                                fontSize = 10.sp,
+                                                color = TextSecondaryDark
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                selectedProductsList = selectedProductsList.filterIndexed { i, _ -> i != idx }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Supprimer l'article",
+                                                tint = StatusCancelled,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // Row 2: Sélecteurs Cartons et Unités interactifs
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Cartons Stepper & Direct Click
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Cartons: ", fontSize = 11.sp, color = TextSecondaryDark)
+                                            IconButton(
+                                                onClick = {
+                                                    if (cartons > 0) {
+                                                        val newQty = (item.quantity - upb).coerceAtLeast(1)
+                                                        selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
+                                                            if (i == idx) itm.copy(quantity = newQty) else itm
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.RemoveCircleOutline,
+                                                    contentDescription = "Moins Cartons",
+                                                    tint = if (cartons > 0) BardahlYellow else TextSecondaryDark,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFF2B313E))
+                                                    .border(1.dp, BardahlYellow.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        itemToEditIndex = idx
+                                                        editCartonsInput = cartons.toString()
+                                                        editUnitsInput = item.quantity.toString()
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "$cartons Ctn",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = BardahlYellow
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    val newQty = item.quantity + upb
+                                                    selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
+                                                        if (i == idx) itm.copy(quantity = newQty) else itm
+                                                    }
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.AddCircleOutline,
+                                                    contentDescription = "Plus Cartons",
+                                                    tint = BardahlYellow,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Unités Stepper & Direct Click
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Unités: ", fontSize = 11.sp, color = TextSecondaryDark)
+                                            IconButton(
+                                                onClick = {
+                                                    if (item.quantity > 1) {
+                                                        selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
+                                                            if (i == idx) itm.copy(quantity = itm.quantity - 1) else itm
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.RemoveCircleOutline,
+                                                    contentDescription = "Moins Unités",
+                                                    tint = if (item.quantity > 1) Color(0xFF007AFF) else TextSecondaryDark,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFF1E2838))
+                                                    .border(1.dp, Color(0xFF007AFF).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        itemToEditIndex = idx
+                                                        editCartonsInput = cartons.toString()
+                                                        editUnitsInput = item.quantity.toString()
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${item.quantity} Un.",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFF5AC8FA)
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
+                                                        if (i == idx) itm.copy(quantity = itm.quantity + 1) else itm
+                                                    }
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.AddCircleOutline,
+                                                    contentDescription = "Plus Unités",
+                                                    tint = Color(0xFF007AFF),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // Row 3: Prix unitaire, Remise % et Total ligne TTC
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "${String.format(java.util.Locale.US, "%.2f", item.unitPriceTtc)} DH/U",
+                                                fontSize = 11.sp,
+                                                color = TextSecondaryDark
+                                            )
+
+                                            // Remise % Button Chip
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(if (item.discountPercentage > 0) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF222834))
+                                                    .border(1.dp, if (item.discountPercentage > 0) Color(0xFF007AFF) else BardahlCardBorder, RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        val nextRemise = when (item.discountPercentage) {
+                                                            0.0 -> 5.0
+                                                            5.0 -> 10.0
+                                                            10.0 -> 15.0
+                                                            15.0 -> 20.0
+                                                            else -> 0.0
+                                                        }
+                                                        selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
+                                                            if (i == idx) itm.copy(discountPercentage = nextRemise) else itm
+                                                        }
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (item.discountPercentage > 0.0) "-${item.discountPercentage.toInt()}%" else "Remise %",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (item.discountPercentage > 0.0) Color(0xFF007AFF) else TextSecondaryDark
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = String.format(java.util.Locale.US, "%.2f DH TTC", item.totalTtc),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = BardahlYellow
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
