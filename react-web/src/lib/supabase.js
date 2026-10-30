@@ -1089,15 +1089,31 @@ export async function dbDeleteDevis(id) {
 
 
 export function subscribeToTable(table, callback) {
-  const channel = supabase
-    .channel(`realtime-${table}-${Date.now()}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, callback)
-    .subscribe()
-  return channel
+  try {
+    const channelId = `realtime-${table}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+    const channel = supabase
+      .channel(channelId)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+        try {
+          callback(payload)
+        } catch (err) {
+          console.warn('Realtime callback error:', err)
+        }
+      })
+      .subscribe()
+    return channel
+  } catch (e) {
+    console.warn('Realtime subscribe error:', e)
+    return null
+  }
 }
 
 export function unsubscribeChannel(channel) {
-  if (channel) supabase.removeChannel(channel)
+  try {
+    if (channel) supabase.removeChannel(channel)
+  } catch (e) {
+    console.warn('Realtime unsubscribe error:', e)
+  }
 }
 
 // ─── MAC FILTERING & DEVICE SECURITY ─────────────────────────────────────────
