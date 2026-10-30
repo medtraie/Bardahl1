@@ -36,6 +36,7 @@ import com.bardahl.maroc.domain.model.*
 import com.bardahl.maroc.util.PdfGenerator
 import com.bardahl.maroc.ui.theme.*
 import com.bardahl.maroc.ui.viewmodels.*
+import com.bardahl.maroc.ui.components.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -104,195 +105,187 @@ fun DevisScreen(
 
     Scaffold(
         topBar = {
-            Surface(
-                color = BardahlCardDark,
-                tonalElevation = 4.dp
+            BardahlHeader(
+                title = "Devis & Estimations",
+                subtitle = if (isAdmin) "Direction Bardahl • Duplicatas" else "Commercial • Offres de Prix",
+                onSettingsClick = onSettingsClick,
+                actions = {
+                    Surface(
+                        color = BardahlYellow,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showCreateDialog = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = BardahlBlack, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Nouveau", color = BardahlBlack, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showCreateDialog = true },
+                containerColor = BardahlYellow,
+                contentColor = BardahlBlack,
+                shape = RoundedCornerShape(16.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                icon = {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = BardahlBlack, modifier = Modifier.size(20.dp))
+                },
+                text = {
+                    Text("Nouveau Devis", fontWeight = FontWeight.Black, fontSize = 13.sp, color = BardahlBlack)
+                }
+            )
+        },
+        containerColor = DarkBackground
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Search Bar
+            BardahlTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = "Rechercher numéro, client, ville...",
+                leadingIcon = Icons.Default.Search
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Status Filter Chips Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
+                statusFilters.forEach { filter ->
+                    val isSelected = selectedStatusFilter == filter
+                    val count = when (filter) {
+                        "TOUS" -> visibleDevis.size
+                        "EN ATTENTE" -> visibleDevis.count { it.status == DevisStatus.EN_ATTENTE }
+                        "VALIDÉ" -> visibleDevis.count { it.status == DevisStatus.VALIDE }
+                        "CONVERTI" -> visibleDevis.count { it.status == DevisStatus.CONVERTI }
+                        "EXPIRÉ" -> visibleDevis.count { it.status == DevisStatus.EXPIRE }
+                        else -> 0
+                    }
+
+                    val chipBg = if (isSelected) BardahlYellow else DarkSurface
+                    val chipTextColor = if (isSelected) BardahlBlack else TextSecondaryDark
+                    val chipBorder = if (isSelected) BardahlYellow else BardahlCardBorder
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(chipBg)
+                            .border(1.dp, chipBorder, RoundedCornerShape(20.dp))
+                            .clickable { selectedStatusFilter = filter }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Devis & Estimations",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = TextPrimaryDark
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isAdmin) BardahlYellow.copy(alpha = 0.2f) else StatusValidated.copy(alpha = 0.2f))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = if (isAdmin) "Direction Bardahl" else "Commercial",
-                                        color = if (isAdmin) BardahlYellow else StatusValidated,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                        Text(
+                            text = filter,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                            color = chipTextColor
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) BardahlBlack.copy(alpha = 0.2f) else BardahlCardBorder)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
                             Text(
-                                text = "Gestion et conversion rapide en bons de commande",
-                                fontSize = 11.sp,
-                                color = TextSecondaryDark
+                                text = "$count",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) BardahlBlack else TextSecondaryDark
                             )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Button(
-                                onClick = { showCreateDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = BardahlBlack, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Nouveau", color = BardahlBlack, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            IconButton(onClick = onSettingsClick) {
-                                Icon(Icons.Default.Settings, contentDescription = "Paramètres", tint = TextSecondaryDark)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // KPI Cards Horizontal Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        DevisKpiCard("Total Devis", "$totalDevisCount", Icons.Default.Description, BardahlYellow)
-                        DevisKpiCard("CA Devisé TTC", String.format("%.0f DH", totalCaDevise), Icons.Default.MonetizationOn, StatusDelivered)
-                        DevisKpiCard("En Attente", "$pendingCount", Icons.Default.HourglassTop, Color(0xFFFF9500))
-                        DevisKpiCard("Convertis", "$convertedCount", Icons.Default.CheckCircle, StatusDelivered)
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Search Input
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(DarkSurface)
-                            .border(1.dp, BardahlCardBorder, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            BasicTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                singleLine = true,
-                                textStyle = TextStyle(color = TextPrimaryDark, fontSize = 13.sp),
-                                cursorBrush = SolidColor(BardahlYellow),
-                                modifier = Modifier.weight(1f),
-                                decorationBox = { innerTextField ->
-                                    if (searchQuery.isEmpty()) {
-                                        Text("Rechercher numéro, client, ville...", color = TextSecondaryDark, fontSize = 13.sp)
-                                    }
-                                    innerTextField()
-                                }
-                            )
-                            if (searchQuery.isNotEmpty()) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Effacer",
-                                    tint = TextSecondaryDark,
-                                    modifier = Modifier.size(16.dp).clickable { searchQuery = "" }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Status Filters Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        statusFilters.forEach { filter ->
-                            val isSelected = selectedStatusFilter == filter
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) BardahlYellow else DarkSurface)
-                                    .border(1.dp, if (isSelected) BardahlYellow else BardahlCardBorder, RoundedCornerShape(8.dp))
-                                    .clickable { selectedStatusFilter = filter }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = filter,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) BardahlBlack else TextPrimaryDark
-                                )
-                            }
                         }
                     }
                 }
             }
-        },
-        containerColor = DarkBackground
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // KPI Cards Horizontal Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DevisKpiCard("Total Devis", "$totalDevisCount", Icons.Default.Description, BardahlYellow)
+                DevisKpiCard("Montant TTC", String.format("%.0f DH", totalCaDevise), Icons.Default.MonetizationOn, StatusDelivered)
+                DevisKpiCard("En Attente", "$pendingCount", Icons.Default.HourglassTop, Color(0xFFFF9500))
+                DevisKpiCard("Convertis", "$convertedCount", Icons.Default.CheckCircle, StatusDelivered)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Content List or Empty State
             if (filteredDevis.isEmpty()) {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Description,
-                        contentDescription = null,
-                        tint = TextSecondaryDark.copy(alpha = 0.5f),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Aucun devis trouvé",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimaryDark
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Appuyez sur \"Nouveau\" en haut pour créer une offre de prix commerciale.",
-                        fontSize = 12.sp,
-                        color = TextSecondaryDark,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Description,
+                            contentDescription = null,
+                            tint = TextSecondaryDark.copy(alpha = 0.4f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Aucun devis trouvé",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimaryDark
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Appuyez sur \"Nouveau Devis\" pour créer une offre de prix commerciale.",
+                            fontSize = 12.sp,
+                            color = TextSecondaryDark,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Button(
+                            onClick = { showCreateDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = BardahlBlack, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Nouveau Devis", color = BardahlBlack, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp)
                 ) {
                     items(filteredDevis, key = { it.id }) { devis ->
                         DevisCard(
@@ -319,7 +312,6 @@ fun DevisScreen(
             }
         }
     }
-
 
     // Devis Detail Dialog with Company Info Header
     selectedDevisForDetails?.let { devis ->
