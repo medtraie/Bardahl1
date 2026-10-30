@@ -818,4 +818,290 @@ class SupabaseService(
             return@withContext false
         }
     }
+
+    // ─── DEVIS / ESTIMATIONS (Stored via Supabase logs table with entity = 'devis') ────
+
+    suspend fun fetchDevis(): List<Devis> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<Devis>()
+        try {
+            val conn = getConnection("logs?entity=eq.devis&select=*&order=created_at.desc&limit=500")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                for (i in 0 until jsonArray.length()) {
+                    val row = jsonArray.getJSONObject(i)
+                    val details = row.optJSONObject("details") ?: continue
+
+                    // Parse items
+                    val itemsList = mutableListOf<OrderItem>()
+                    val itemsArr = details.optJSONArray("items")
+                    if (itemsArr != null) {
+                        for (j in 0 until itemsArr.length()) {
+                            val itObj = itemsArr.getJSONObject(j)
+                            itemsList.add(
+                                OrderItem(
+                                    id = itObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                    orderId = itObj.optString("orderId", ""),
+                                    productId = itObj.optString("productId", ""),
+                                    productName = itObj.optString("productName", itObj.optString("name", "")),
+                                    productReference = itObj.optString("productReference", itObj.optString("reference", "")),
+                                    quantity = itObj.optInt("quantity", itObj.optInt("qty", 1)),
+                                    freeQuantity = itObj.optInt("freeQuantity", itObj.optInt("qtyGratuit", 0)),
+                                    unitPriceTtc = itObj.optDouble("unitPriceTtc", itObj.optDouble("priceTtc", 0.0)),
+                                    discountPercentage = itObj.optDouble("discountPercentage", itObj.optDouble("remise", 0.0)),
+                                    promoTag = itObj.optString("promoTag", ""),
+                                    tvaRate = itObj.optDouble("tvaRate", 20.0),
+                                    unitsPerBox = itObj.optInt("unitsPerBox", 12),
+                                    isPriceModified = itObj.optBoolean("isPriceModified", false)
+                                )
+                            )
+                        }
+                    }
+
+                    val rawStatus = details.optString("status", "EN_ATTENTE").uppercase()
+                    val st = when (rawStatus) {
+                        "VALIDE", "VALIDATED" -> DevisStatus.VALIDE
+                        "CONVERTI", "CONVERTED" -> DevisStatus.CONVERTI
+                        "EXPIRE", "EXPIRED" -> DevisStatus.EXPIRE
+                        else -> DevisStatus.EN_ATTENTE
+                    }
+
+                    list.add(
+                        Devis(
+                            id = details.optString("id", row.getString("id")),
+                            devisNumber = details.optString("devisNumber", "DEV-2026-0001"),
+                            commercialId = details.optString("commercialId", details.optString("commercialDbId", row.optString("entity_id", ""))),
+                            commercialName = details.optString("commercialName", ""),
+                            commercialEmail = details.optString("commercialEmail", ""),
+                            clientId = details.optString("clientId", details.optString("clientDbId", "")),
+                            clientName = details.optString("clientName", ""),
+                            clientIce = details.optString("clientIce", ""),
+                            clientCity = details.optString("clientCity", ""),
+                            clientAddress = details.optString("clientAddress", ""),
+                            clientPhone = details.optString("clientPhone", ""),
+                            date = details.optString("date", row.optString("created_at", "").take(10)),
+                            validityDate = details.optString("validityDate", ""),
+                            status = st,
+                            items = itemsList,
+                            paymentMethod = details.optString("paymentMethod", "Chèque"),
+                            modeExpedition = details.optString("modeExpedition", "Transport Bardahl"),
+                            remarque = details.optString("remarque", ""),
+                            remisePercent = details.optDouble("remisePercent", 0.0),
+                            remiseMontant = details.optDouble("remiseMontant", 0.0),
+                            totalHt = details.optDouble("totalHt", 0.0),
+                            totalDiscount = details.optDouble("totalDiscount", 0.0),
+                            totalTva = details.optDouble("totalTva", 0.0),
+                            totalTtc = details.optDouble("totalTtc", 0.0),
+                            convertedOrderNumber = details.optString("convertedOrderNumber", null).takeIf { !it.isNullOrBlank() },
+                            convertedOrderId = details.optString("convertedOrderId", null).takeIf { !it.isNullOrBlank() },
+                            convertedAt = details.optString("convertedAt", null).takeIf { !it.isNullOrBlank() }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext list
+    }
+
+    suspend fun postDevis(devis: Devis): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("logs", "POST")
+            conn.doOutput = true
+            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+
+            val itemsArr = JSONArray()
+            devis.items.forEach { itm ->
+                itemsArr.put(
+                    JSONObject().apply {
+                        put("id", itm.id)
+                        put("productId", itm.productId)
+                        put("productName", itm.productName)
+                        put("productReference", itm.productReference)
+                        put("quantity", itm.quantity)
+                        put("freeQuantity", itm.freeQuantity)
+                        put("unitPriceTtc", itm.unitPriceTtc)
+                        put("discountPercentage", itm.discountPercentage)
+                        put("promoTag", itm.promoTag)
+                        put("tvaRate", itm.tvaRate)
+                        put("unitsPerBox", itm.unitsPerBox)
+                        put("isPriceModified", itm.isPriceModified)
+                    }
+                )
+            }
+
+            val details = JSONObject().apply {
+                put("id", devis.id)
+                put("devisNumber", devis.devisNumber)
+                put("commercialId", devis.commercialId)
+                put("commercialDbId", devis.commercialId)
+                put("commercialName", devis.commercialName)
+                put("commercialEmail", devis.commercialEmail)
+                put("clientId", devis.clientId)
+                put("clientDbId", devis.clientId)
+                put("clientName", devis.clientName)
+                put("clientIce", devis.clientIce)
+                put("clientCity", devis.clientCity)
+                put("clientAddress", devis.clientAddress)
+                put("clientPhone", devis.clientPhone)
+                put("date", devis.date)
+                put("validityDate", devis.validityDate)
+                put("status", devis.status.name)
+                put("items", itemsArr)
+                put("paymentMethod", devis.paymentMethod)
+                put("modeExpedition", devis.modeExpedition)
+                put("remarque", devis.remarque)
+                put("remisePercent", devis.remisePercent)
+                put("remiseMontant", devis.remiseMontant)
+                put("totalHt", devis.totalHt)
+                put("totalDiscount", devis.totalDiscount)
+                put("totalTva", devis.totalTva)
+                put("totalTtc", devis.totalTtc)
+                put("convertedOrderNumber", devis.convertedOrderNumber)
+                put("convertedOrderId", devis.convertedOrderId)
+                put("convertedAt", devis.convertedAt)
+                put("createdAt", nowIso)
+            }
+
+            val payload = JSONObject().apply {
+                put("action", "DEVIS_" + devis.status.name)
+                put("entity", "devis")
+                if (devis.commercialId.contains("-")) {
+                    put("entity_id", devis.commercialId)
+                }
+                put("details", details)
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
+            val code = conn.responseCode
+            return@withContext code in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun updateDevis(devis: Devis): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val getConn = getConnection("logs?entity=eq.devis&select=id,details&limit=200")
+            var targetRowId: String? = null
+            if (getConn.responseCode == 200) {
+                val str = getConn.inputStream.bufferedReader().use { it.readText() }
+                val arr = JSONArray(str)
+                for (i in 0 until arr.length()) {
+                    val r = arr.getJSONObject(i)
+                    val d = r.optJSONObject("details")
+                    if (d != null) {
+                        val dId = d.optString("id", "")
+                        val dNum = d.optString("devisNumber", "")
+                        if (dId == devis.id || (dNum.isNotBlank() && dNum == devis.devisNumber)) {
+                            targetRowId = r.getString("id")
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (targetRowId != null) {
+                val patchConn = getConnection("logs?id=eq.$targetRowId", "PATCH")
+                patchConn.doOutput = true
+
+                val itemsArr = JSONArray()
+                devis.items.forEach { itm ->
+                    itemsArr.put(
+                        JSONObject().apply {
+                            put("id", itm.id)
+                            put("productId", itm.productId)
+                            put("productName", itm.productName)
+                            put("productReference", itm.productReference)
+                            put("quantity", itm.quantity)
+                            put("freeQuantity", itm.freeQuantity)
+                            put("unitPriceTtc", itm.unitPriceTtc)
+                            put("discountPercentage", itm.discountPercentage)
+                            put("promoTag", itm.promoTag)
+                            put("tvaRate", itm.tvaRate)
+                            put("unitsPerBox", itm.unitsPerBox)
+                            put("isPriceModified", itm.isPriceModified)
+                        }
+                    )
+                }
+
+                val details = JSONObject().apply {
+                    put("id", devis.id)
+                    put("devisNumber", devis.devisNumber)
+                    put("commercialId", devis.commercialId)
+                    put("commercialDbId", devis.commercialId)
+                    put("commercialName", devis.commercialName)
+                    put("commercialEmail", devis.commercialEmail)
+                    put("clientId", devis.clientId)
+                    put("clientDbId", devis.clientId)
+                    put("clientName", devis.clientName)
+                    put("clientIce", devis.clientIce)
+                    put("clientCity", devis.clientCity)
+                    put("clientAddress", devis.clientAddress)
+                    put("clientPhone", devis.clientPhone)
+                    put("date", devis.date)
+                    put("validityDate", devis.validityDate)
+                    put("status", devis.status.name)
+                    put("items", itemsArr)
+                    put("paymentMethod", devis.paymentMethod)
+                    put("modeExpedition", devis.modeExpedition)
+                    put("remarque", devis.remarque)
+                    put("remisePercent", devis.remisePercent)
+                    put("remiseMontant", devis.remiseMontant)
+                    put("totalHt", devis.totalHt)
+                    put("totalDiscount", devis.totalDiscount)
+                    put("totalTva", devis.totalTva)
+                    put("totalTtc", devis.totalTtc)
+                    put("convertedOrderNumber", devis.convertedOrderNumber)
+                    put("convertedOrderId", devis.convertedOrderId)
+                    put("convertedAt", devis.convertedAt)
+                }
+
+                val payload = JSONObject().apply {
+                    put("action", "DEVIS_" + devis.status.name)
+                    put("details", details)
+                }
+
+                patchConn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
+                return@withContext patchConn.responseCode in 200..299
+            } else {
+                return@withContext postDevis(devis)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun deleteDevis(devisId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val getConn = getConnection("logs?entity=eq.devis&select=id,details&limit=200")
+            var targetRowId: String? = null
+            if (getConn.responseCode == 200) {
+                val str = getConn.inputStream.bufferedReader().use { it.readText() }
+                val arr = JSONArray(str)
+                for (i in 0 until arr.length()) {
+                    val r = arr.getJSONObject(i)
+                    val d = r.optJSONObject("details")
+                    if (d != null && (d.optString("id", "") == devisId || r.getString("id") == devisId)) {
+                        targetRowId = r.getString("id")
+                        break
+                    }
+                }
+            }
+
+            if (targetRowId != null) {
+                val delConn = getConnection("logs?id=eq.$targetRowId", "DELETE")
+                return@withContext delConn.responseCode in 200..299
+            }
+            return@withContext false
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
 }

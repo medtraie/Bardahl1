@@ -309,6 +309,20 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
     init {
         refreshOrdersFromSupabase()
         refreshPromotions()
+        refreshDevisFromSupabase()
+    }
+
+    fun refreshDevisFromSupabase() {
+        viewModelScope.launch {
+            try {
+                val remote = supabaseService.fetchDevis()
+                if (remote.isNotEmpty()) {
+                    _devis.value = remote
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun refreshPromotions() {
@@ -380,18 +394,33 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
     fun createDevis(d: Devis) {
         viewModelScope.launch {
             _devis.value = listOf(d) + _devis.value.filter { it.id != d.id && it.devisNumber != d.devisNumber }
+            try {
+                supabaseService.postDevis(d)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun updateDevis(d: Devis) {
         viewModelScope.launch {
             _devis.value = _devis.value.map { if (it.id == d.id || it.devisNumber == d.devisNumber) d else it }
+            try {
+                supabaseService.updateDevis(d)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun deleteDevis(id: String) {
         viewModelScope.launch {
             _devis.value = _devis.value.filter { it.id != id }
+            try {
+                supabaseService.deleteDevis(id)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

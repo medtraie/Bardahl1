@@ -878,122 +878,208 @@ export function rowToDevis(row) {
   }
 }
 
+// ─── DEVIS / ESTIMATIONS (Stored via Supabase logs table with entity = 'devis') ────────
+
 export async function dbGetDevis() {
   try {
     const { data, error } = await supabase
-      .from('devis')
+      .from('logs')
       .select('*')
+      .eq('entity', 'devis')
       .order('created_at', { ascending: false })
 
     if (error) {
+      console.warn('Error fetching devis from logs:', error)
       return null
     }
-    return (data || []).map(rowToDevis)
+
+    return (data || []).map(r => {
+      const details = r.details || {}
+      return {
+        id: details.id || r.id,
+        dbId: r.id,
+        devisNumber: details.devisNumber || r.action?.replace('DEVIS_', '') || 'DEV',
+        date: details.date || (r.created_at ? String(r.created_at).substring(0, 10) : new Date().toISOString().substring(0, 10)),
+        validityDate: details.validityDate || '',
+        status: (details.status || 'EN_ATTENTE').toUpperCase(),
+        totalHt: parseFloat(details.totalHt || 0),
+        totalDiscount: parseFloat(details.totalDiscount || 0),
+        totalTva: parseFloat(details.totalTva || 0),
+        totalTtc: parseFloat(details.totalTtc || 0),
+        convertedOrderNumber: details.convertedOrderNumber || '',
+        convertedOrderId: details.convertedOrderId || null,
+        convertedAt: details.convertedAt || null,
+        commercialDbId: details.commercialDbId || r.entity_id || '',
+        commercialName: details.commercialName || '',
+        commercialEmail: details.commercialEmail || '',
+        clientDbId: details.clientDbId || '',
+        clientName: details.clientName || '',
+        clientIce: details.clientIce || '',
+        clientCity: details.clientCity || '',
+        clientAddress: details.clientAddress || '',
+        clientPhone: details.clientPhone || '',
+        paymentMethod: details.paymentMethod || 'Chèque',
+        modeExpedition: details.modeExpedition || 'Transport Bardahl',
+        remisePercent: parseFloat(details.remisePercent || 0),
+        remiseMontant: parseFloat(details.remiseMontant || 0),
+        remarque: details.remarque || '',
+        items: details.items || [],
+        createdAt: details.createdAt || r.created_at
+      }
+    })
   } catch (e) {
+    console.warn('Exception in dbGetDevis:', e)
     return null
   }
 }
 
 export async function dbAddDevis(d) {
   try {
-    const payload = {
-      id: d.id || `dev_${Date.now()}`,
-      devis_number: d.devisNumber,
-      commercial_id: d.commercialDbId && String(d.commercialDbId).includes('-') ? d.commercialDbId : null,
-      client_id: d.clientDbId && String(d.clientDbId).includes('-') ? d.clientDbId : null,
+    const devId = d.id || `dev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    const fullDevis = {
+      id: devId,
+      devisNumber: d.devisNumber,
+      commercialDbId: d.commercialDbId,
+      commercialName: d.commercialName,
+      commercialEmail: d.commercialEmail,
+      clientDbId: d.clientDbId,
+      clientName: d.clientName,
+      clientIce: d.clientIce,
+      clientCity: d.clientCity,
+      clientAddress: d.clientAddress,
+      clientPhone: d.clientPhone,
       date: d.date || new Date().toISOString().substring(0, 10),
-      validity_date: d.validityDate || null,
+      validityDate: d.validityDate || '',
       status: (d.status || 'EN_ATTENTE').toUpperCase(),
-      total_ht: parseFloat(d.totalHt) || 0,
-      total_discount: parseFloat(d.totalDiscount) || 0,
-      total_tva: parseFloat(d.totalTva) || 0,
-      total_ttc: parseFloat(d.totalTtc) || 0,
-      converted_order_number: d.convertedOrderNumber || null,
-      converted_order_id: d.convertedOrderId || null,
-      converted_at: d.convertedAt || null,
-      details: {
-        commercialDbId: d.commercialDbId,
-        commercialName: d.commercialName,
-        commercialEmail: d.commercialEmail,
-        clientDbId: d.clientDbId,
-        clientName: d.clientName,
-        clientIce: d.clientIce,
-        clientCity: d.clientCity,
-        clientAddress: d.clientAddress,
-        clientPhone: d.clientPhone,
-        paymentMethod: d.paymentMethod,
-        modeExpedition: d.modeExpedition,
-        remisePercent: d.remisePercent,
-        remiseMontant: d.remiseMontant,
-        remarque: d.remarque,
-        items: d.items,
-        createdAt: d.createdAt || new Date().toISOString()
-      }
+      totalHt: parseFloat(d.totalHt || 0),
+      totalDiscount: parseFloat(d.totalDiscount || 0),
+      totalTva: parseFloat(d.totalTva || 0),
+      totalTtc: parseFloat(d.totalTtc || 0),
+      paymentMethod: d.paymentMethod || 'Chèque',
+      modeExpedition: d.modeExpedition || 'Transport Bardahl',
+      remisePercent: parseFloat(d.remisePercent || 0),
+      remiseMontant: parseFloat(d.remiseMontant || 0),
+      remarque: d.remarque || '',
+      items: d.items || [],
+      convertedOrderNumber: d.convertedOrderNumber || null,
+      convertedOrderId: d.convertedOrderId || null,
+      convertedAt: d.convertedAt || null,
+      createdAt: d.createdAt || new Date().toISOString()
     }
 
-    const { data, error } = await supabase.from('devis').insert([payload]).select().single()
+    const { data, error } = await supabase
+      .from('logs')
+      .insert([{
+        action: 'DEVIS_' + fullDevis.status,
+        entity: 'devis',
+        entity_id: d.commercialDbId && String(d.commercialDbId).includes('-') ? d.commercialDbId : null,
+        details: fullDevis
+      }])
+      .select()
+      .single()
+
     if (error) {
+      console.warn('Error adding devis to Supabase logs:', error)
       return null
     }
-    return rowToDevis(data)
+
+    return {
+      ...fullDevis,
+      dbId: data.id
+    }
   } catch (e) {
+    console.warn('Exception in dbAddDevis:', e)
     return null
   }
 }
 
 export async function dbUpdateDevis(d) {
   try {
-    const payload = {
-      devis_number: d.devisNumber,
-      commercial_id: d.commercialDbId && String(d.commercialDbId).includes('-') ? d.commercialDbId : null,
-      client_id: d.clientDbId && String(d.clientDbId).includes('-') ? d.clientDbId : null,
+    const fullDevis = {
+      id: d.id,
+      devisNumber: d.devisNumber,
+      commercialDbId: d.commercialDbId,
+      commercialName: d.commercialName,
+      commercialEmail: d.commercialEmail,
+      clientDbId: d.clientDbId,
+      clientName: d.clientName,
+      clientIce: d.clientIce,
+      clientCity: d.clientCity,
+      clientAddress: d.clientAddress,
+      clientPhone: d.clientPhone,
       date: d.date || new Date().toISOString().substring(0, 10),
-      validity_date: d.validityDate || null,
+      validityDate: d.validityDate || '',
       status: (d.status || 'EN_ATTENTE').toUpperCase(),
-      total_ht: parseFloat(d.totalHt) || 0,
-      total_discount: parseFloat(d.totalDiscount) || 0,
-      total_tva: parseFloat(d.totalTva) || 0,
-      total_ttc: parseFloat(d.totalTtc) || 0,
-      converted_order_number: d.convertedOrderNumber || null,
-      converted_order_id: d.convertedOrderId || null,
-      converted_at: d.convertedAt || null,
-      details: {
-        commercialDbId: d.commercialDbId,
-        commercialName: d.commercialName,
-        commercialEmail: d.commercialEmail,
-        clientDbId: d.clientDbId,
-        clientName: d.clientName,
-        clientIce: d.clientIce,
-        clientCity: d.clientCity,
-        clientAddress: d.clientAddress,
-        clientPhone: d.clientPhone,
-        paymentMethod: d.paymentMethod,
-        modeExpedition: d.modeExpedition,
-        remisePercent: d.remisePercent,
-        remiseMontant: d.remiseMontant,
-        remarque: d.remarque,
-        items: d.items,
-        createdAt: d.createdAt || new Date().toISOString()
-      },
-      updated_at: new Date().toISOString()
+      totalHt: parseFloat(d.totalHt || 0),
+      totalDiscount: parseFloat(d.totalDiscount || 0),
+      totalTva: parseFloat(d.totalTva || 0),
+      totalTtc: parseFloat(d.totalTtc || 0),
+      paymentMethod: d.paymentMethod || 'Chèque',
+      modeExpedition: d.modeExpedition || 'Transport Bardahl',
+      remisePercent: parseFloat(d.remisePercent || 0),
+      remiseMontant: parseFloat(d.remiseMontant || 0),
+      remarque: d.remarque || '',
+      items: d.items || [],
+      convertedOrderNumber: d.convertedOrderNumber || null,
+      convertedOrderId: d.convertedOrderId || null,
+      convertedAt: d.convertedAt || null,
+      updatedAt: new Date().toISOString()
     }
 
-    const targetId = d.dbId || d.id
-    const { data, error } = await supabase.from('devis').update(payload).eq('id', targetId).select().single()
-    if (error) {
-      return null
+    if (d.dbId && String(d.dbId).includes('-')) {
+      await supabase
+        .from('logs')
+        .update({
+          action: 'DEVIS_' + fullDevis.status,
+          details: fullDevis
+        })
+        .eq('id', d.dbId)
+    } else {
+      const { data: rows } = await supabase
+        .from('logs')
+        .select('id, details')
+        .eq('entity', 'devis')
+
+      const row = (rows || []).find(r => r.details?.id === d.id || r.details?.devisNumber === d.devisNumber)
+      if (row) {
+        await supabase
+          .from('logs')
+          .update({
+            action: 'DEVIS_' + fullDevis.status,
+            details: fullDevis
+          })
+          .eq('id', row.id)
+      } else {
+        await dbAddDevis(fullDevis)
+      }
     }
-    return rowToDevis(data)
+
+    return fullDevis
   } catch (e) {
+    console.warn('Exception in dbUpdateDevis:', e)
     return null
   }
 }
 
 export async function dbDeleteDevis(id) {
   try {
-    const { error } = await supabase.from('devis').delete().eq('id', id)
-    if (error) return false
-    return true
+    if (String(id).includes('-')) {
+      const { error } = await supabase.from('logs').delete().eq('id', id)
+      if (!error) return true
+    }
+
+    const { data: rows } = await supabase
+      .from('logs')
+      .select('id, details')
+      .eq('entity', 'devis')
+
+    const row = (rows || []).find(r => r.details?.id === id || r.id === id)
+    if (row) {
+      await supabase.from('logs').delete().eq('id', row.id)
+      return true
+    }
+
+    return false
   } catch (e) {
     return false
   }

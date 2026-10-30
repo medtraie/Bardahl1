@@ -503,13 +503,13 @@ export function AppProvider({ children }) {
     const chCli  = subscribeToTable('clients',     refreshAll)
     const chOrd  = subscribeToTable('orders',      refreshAll)
     const chFam  = subscribeToTable('product_families', refreshAll)
-    const chDev  = subscribeToTable('devis', refreshAll)
+    const chLogs = subscribeToTable('logs', refreshAll)
     return () => {
       unsubscribeChannel(chComm)
       unsubscribeChannel(chCli)
       unsubscribeChannel(chOrd)
       unsubscribeChannel(chFam)
-      unsubscribeChannel(chDev)
+      unsubscribeChannel(chLogs)
     }
   }, [refreshAll])
 

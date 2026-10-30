@@ -69,6 +69,10 @@ fun DevisScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        orderViewModel.refreshDevisFromSupabase()
+    }
+
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("TOUS") }
     val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "CONVERTI", "EXPIRÉ")
