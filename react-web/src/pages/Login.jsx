@@ -127,13 +127,6 @@ export default function Login() {
             <LogIn style={{ width: '18px', height: '18px' }} /> SE CONNECTER
           </button>
         </form>
-
-        {/* Quick Demo Shortcuts */}
-        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-          <div>Tester Connexion Admin : <button onClick={() => { setEmail('bardahl@gmail.com'); setPassword('123456'); setErrorMsg(''); }} style={{ color: 'var(--bardahl-yellow)', textDecoration: 'underline', fontWeight: '800' }}>bardahl@gmail.com</button></div>
-          <div>Tester Connexion Commercial : <button onClick={() => { setEmail('karim@bardahl.ma'); setPassword('123'); setErrorMsg(''); }} style={{ color: '#007AFF', textDecoration: 'underline', fontWeight: '800' }}>karim@bardahl.ma</button></div>
-        </div>
-
       </div>
     </div>
   )

@@ -326,63 +326,6 @@ fun LoginScreen(
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Quick Demo Shortcuts (Matching Web Login)
-                    HorizontalDivider(color = BardahlCardBorder)
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = "Tester Connexion Admin : ",
-                                fontSize = 11.sp,
-                                color = TextSecondaryDark
-                            )
-                            Text(
-                                text = "bardahl@gmail.com",
-                                fontSize = 11.sp,
-                                color = BardahlYellow,
-                                fontWeight = FontWeight.Bold,
-                                textDecoration = TextDecoration.Underline,
-                                modifier = Modifier.clickable {
-                                    email = "bardahl@gmail.com"
-                                    password = "123456"
-                                }
-                            )
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = "Tester Connexion Commercial : ",
-                                fontSize = 11.sp,
-                                color = TextSecondaryDark
-                            )
-                            Text(
-                                text = "karim@bardahl.ma",
-                                fontSize = 11.sp,
-                                color = Color(0xFF007AFF),
-                                fontWeight = FontWeight.Bold,
-                                textDecoration = TextDecoration.Underline,
-                                modifier = Modifier.clickable {
-                                    email = "karim@bardahl.ma"
-                                    password = "123"
-                                }
-                            )
-                        }
-                    }
                 }
             }
         }
