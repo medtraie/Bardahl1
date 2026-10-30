@@ -45,7 +45,7 @@ export function renderOrderPage(doc, order) {
   doc.setTextColor(255, 208, 0)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text("BON DE COMMANDE N° : " + (order.orderNumber || "BC-2026-004334"), 18, 56)
+  doc.text("BON DE COMMANDE N° : " + (order.orderNumber || "BC-10/26-0001"), 18, 56)
 
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(9)
@@ -1006,7 +1006,7 @@ export function renderDevisPage(doc, devis) {
   doc.setTextColor(255, 208, 0)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text("DEVIS ESTIMATIF N° : " + (devis.devisNumber || "DEV-2026-0001"), 18, 56)
+  doc.text("DEVIS ESTIMATIF N° : " + (devis.devisNumber || "DEV-10/26-0001"), 18, 56)
 
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(9)

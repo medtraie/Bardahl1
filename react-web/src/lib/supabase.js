@@ -296,7 +296,7 @@ export async function dbAddOrder(o) {
   const { data, error } = await supabase.from('orders').insert([{
     commercial_id: o.commercialDbId,
     client_id: o.clientDbId,
-    order_number: o.orderNumber || `BC-${Date.now()}`,
+    order_number: o.orderNumber || ('BC-' + String(new Date().getMonth() + 1).padStart(2, '0') + '/' + String(new Date().getFullYear()).slice(-2) + '-0001'),
     order_date: o.date || new Date().toISOString(),
     status: dbStatus,
     total_ht: parseFloat(o.totalHt) || 0,

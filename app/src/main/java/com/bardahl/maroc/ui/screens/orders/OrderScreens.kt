@@ -414,8 +414,7 @@ fun OrderCreateScreen(
 
     // Suggested Next Serial Number
     val suggestedOrderNumber = remember(existingOrders) {
-        val nextSeq = 4332 + existingOrders.size + 1
-        "BC-2026-00$nextSeq"
+        com.bardahl.maroc.util.NumberGenerator.getNextOrderNumber(existingOrders)
     }
 
     var customOrderNumber by remember { mutableStateOf("") }

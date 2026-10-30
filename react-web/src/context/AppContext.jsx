@@ -16,6 +16,7 @@ import {
   dbGetMacSecurityLogs, dbAddMacSecurityLog, dbGetMacSecurityConfig, dbSaveMacSecurityConfig,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
+import { getNextOrderNumber, getNextDevisNumber } from '../utils/numberGenerators'
 
 export const ADMIN_COMMERCIAL_ID = 'e7fa1dfe-4bfc-49fb-82a6-142e4724942c'
 export const ADMIN_COMMERCIAL_NAME = 'Créé par Administrateur'
@@ -726,8 +727,10 @@ export function AppProvider({ children }) {
       ? 'bardahl@gmail.com'
       : (o.commercialEmail || currentUser?.email || 'commercial@bardahl.ma')
 
+    const finalOrderNumber = o.orderNumber || getNextOrderNumber(orders)
     const orderPayload = {
       ...o,
+      orderNumber: finalOrderNumber,
       commercialDbId: commDbId,
       clientDbId: clientDbId,
       clientName: clientRecord?.companyName || o.clientName,
@@ -951,7 +954,7 @@ export function AppProvider({ children }) {
     const comm = commercials.find(cm => cm.dbId === commDbId || cm.id === commDbId)
     const client = clients.find(cl => cl.id === d.clientDbId || cl.dbId === d.clientDbId)
 
-    const nextDevisNumber = d.devisNumber || `DEV-2026-${String(devis.length + 1).padStart(4, '0')}`
+    const nextDevisNumber = d.devisNumber || getNextDevisNumber(devis)
     const newDevis = {
       ...d,
       id: d.id || `dev_${Date.now()}`,
@@ -1007,7 +1010,7 @@ export function AppProvider({ children }) {
     if (!targetDevis) throw new Error("Devis introuvable pour la conversion.")
 
     const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
-    const generatedOrderNumber = options.orderNumber || `BC-2026-${String(4332 + orders.length + 1).padStart(6, '0')}`
+    const generatedOrderNumber = options.orderNumber || getNextOrderNumber(orders)
 
     const newOrder = {
       id: `ord_${Date.now()}`,

@@ -507,6 +507,7 @@ fun DevisScreen(
             clientViewModel = clientViewModel,
             productViewModel = productViewModel,
             authViewModel = authViewModel,
+            existingDevis = devisList,
             onDismiss = { showCreateDialog = false },
             onDevisCreated = { newDevis ->
                 orderViewModel.createDevis(newDevis)
@@ -712,6 +713,7 @@ fun CreateDevisDialog(
     clientViewModel: ClientViewModel,
     productViewModel: ProductViewModel,
     authViewModel: AuthViewModel,
+    existingDevis: List<Devis> = emptyList(),
     onDismiss: () -> Unit,
     onDevisCreated: (Devis) -> Unit
 ) {
@@ -720,6 +722,9 @@ fun CreateDevisDialog(
     val authState by authViewModel.authState.collectAsState()
     val currentUser = (authState as? AuthState.Success)?.user
 
+    val suggestedDevisNumber = remember(existingDevis) {
+        com.bardahl.maroc.util.NumberGenerator.getNextDevisNumber(existingDevis)
+    }
     var selectedClient by remember { mutableStateOf<Client?>(clients.firstOrNull()) }
     var clientSearch by remember { mutableStateOf("") }
     var showClientPicker by remember { mutableStateOf(false) }
@@ -779,8 +784,8 @@ fun CreateDevisDialog(
                         Icon(Icons.Default.Description, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Nouveau Devis",
-                            fontSize = 18.sp,
+                            text = "Nouveau Devis • $suggestedDevisNumber",
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Black,
                             color = BardahlYellow
                         )
@@ -1092,7 +1097,7 @@ fun CreateDevisDialog(
                     Button(
                         onClick = {
                             val client = selectedClient ?: clients.firstOrNull() ?: return@Button
-                            val nextDevisNumber = String.format("DEV-2026-%04d", (1..9999).random())
+                            val nextDevisNumber = suggestedDevisNumber
                             val newDevis = Devis(
                                 devisNumber = nextDevisNumber,
                                 commercialId = currentUser?.id ?: "comm_bardahl",

@@ -360,8 +360,10 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
 
     fun createOrder(order: Order) {
         viewModelScope.launch {
-            _orders.value = listOf(order) + _orders.value.filter { it.orderNumber != order.orderNumber }
-            orderRepository.saveOrder(order)
+            val finalNum = if (order.orderNumber.isBlank()) com.bardahl.maroc.util.NumberGenerator.getNextOrderNumber(_orders.value) else order.orderNumber
+            val finalizedOrder = order.copy(orderNumber = finalNum)
+            _orders.value = listOf(finalizedOrder) + _orders.value.filter { it.orderNumber != finalizedOrder.orderNumber }
+            orderRepository.saveOrder(finalizedOrder)
             try {
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
                 val merged = (listOf(order) + remote).distinctBy { it.orderNumber }
@@ -393,7 +395,9 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
 
     fun createDevis(d: Devis) {
         viewModelScope.launch {
-            _devis.value = listOf(d) + _devis.value.filter { it.id != d.id && it.devisNumber != d.devisNumber }
+            val finalNum = if (d.devisNumber.isBlank()) com.bardahl.maroc.util.NumberGenerator.getNextDevisNumber(_devis.value) else d.devisNumber
+            val finalizedDevis = d.copy(devisNumber = finalNum)
+            _devis.value = listOf(finalizedDevis) + _devis.value.filter { it.id != finalizedDevis.id && it.devisNumber != finalizedDevis.devisNumber }
             try {
                 supabaseService.postDevis(d)
             } catch (e: Exception) {
@@ -425,7 +429,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
     }
 
     fun convertDevisToOrder(targetDevis: Devis): Order {
-        val nextNum = String.format("BC-2026-%06d", 4332 + _orders.value.size + 1)
+        val nextNum = com.bardahl.maroc.util.NumberGenerator.getNextOrderNumber(_orders.value)
         val newOrder = Order(
             id = "ord_" + System.currentTimeMillis(),
             orderNumber = nextNum,

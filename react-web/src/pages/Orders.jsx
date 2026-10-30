@@ -13,6 +13,7 @@ import { evaluatePromotions } from '../utils/promotionEngine'
 import { getProductUnitsPerCarton } from '../data/productsData'
 import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
 import { BARDAHL_COMPANY_INFO } from '../data/companyData'
+import { getNextOrderNumber } from '../utils/numberGenerators'
 
 
 export default function Orders({ openWizardTrigger }) {
@@ -213,7 +214,7 @@ export default function Orders({ openWizardTrigger }) {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [selectedProductCategoryFilter, setSelectedProductCategoryFilter] = useState('ALL')
 
-  const suggestedOrderNumber = `BC-2026-00${4332 + orders.length + 1}`
+  const suggestedOrderNumber = useMemo(() => getNextOrderNumber(orders), [orders])
   const activeOrderNumber = customOrderNumber.trim() || suggestedOrderNumber
 
   // Trigger modal open from header / dashboard buttons

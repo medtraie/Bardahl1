@@ -12,6 +12,7 @@ import { exportDevisToExcel } from '../utils/excelExporter'
 import { getProductUnitsPerCarton } from '../data/productsData'
 import { getFamilyInfo, DEFAULT_BARDAHL_FAMILIES } from '../data/familiesData'
 import { BARDAHL_COMPANY_INFO } from '../data/companyData'
+import { getNextDevisNumber } from '../utils/numberGenerators'
 
 export default function Devis({ openWizardTrigger, setActiveTab }) {
   const {
@@ -72,8 +73,8 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
   }, [openWizardTrigger])
 
   const suggestedDevisNumber = useMemo(() => {
-    return `DEV-2026-${String(devis.length + 1).padStart(4, '0')}`
-  }, [devis.length])
+    return getNextDevisNumber(devis)
+  }, [devis])
 
   const handleOpenWizard = (dev = null) => {
     if (dev) {
@@ -1495,7 +1496,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
             </div>
 
             <div style={{ background: 'rgba(0, 122, 255, 0.08)', border: '1px solid rgba(0, 122, 255, 0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#A0AEC0', marginBottom: '20px' }}>
-              ℹ️ Cette action créera immédiatement un <strong>Bon de Commande officiel (BC-2026-...)</strong>, déduira le stock nécessaire des articles et marquera le devis comme <strong>« Converti »</strong>.
+              ℹ️ Cette action créera immédiatement un <strong>Bon de Commande officiel (BC-MM/YY-...)</strong>, déduira le stock nécessaire des articles et marquera le devis comme <strong>« Converti »</strong>.
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
