@@ -715,4 +715,107 @@ class SupabaseService(
         }
         return@withContext if (list.isNotEmpty()) list else com.bardahl.maroc.util.PromotionEngine.defaultPromotions
     }
+
+    // ─── MAC FILTERING & DEVICE SECURITY (Stored via Supabase logs table) ────────
+
+    suspend fun fetchAuthorizedMacsForCommercial(commercialId: String): List<String> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<String>()
+        try {
+            val conn = getConnection("logs?entity=eq.commercial_device&select=*&limit=200")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                for (i in 0 until jsonArray.length()) {
+                    val row = jsonArray.getJSONObject(i)
+                    val details = row.optJSONObject("details") ?: continue
+                    val cId = details.optString("commercialId", row.optString("entity_id", ""))
+                    val isActive = details.optBoolean("isActive", true)
+                    val mac = details.optString("macAddress", "").trim().uppercase()
+                    if (cId.equals(commercialId, ignoreCase = true) && isActive && mac.isNotBlank()) {
+                        list.add(mac)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext list
+    }
+
+    suspend fun fetchMacFilteringConfig(): Pair<Boolean, Map<String, Boolean>> = withContext(Dispatchers.IO) {
+        var isGlobalActive = true
+        val statusMap = mutableMapOf<String, Boolean>()
+        try {
+            val conn = getConnection("logs?entity=eq.mac_filtering_config&select=*&limit=1&order=created_at.desc")
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(jsonStr)
+                if (jsonArray.length() > 0) {
+                    val row = jsonArray.getJSONObject(0)
+                    val details = row.optJSONObject("details")
+                    if (details != null) {
+                        isGlobalActive = details.optBoolean("isGlobalFilteringActive", true)
+                        val statusObj = details.optJSONObject("commercialsMacStatus")
+                        if (statusObj != null) {
+                            val keys = statusObj.keys()
+                            while (keys.hasNext()) {
+                                val k = keys.next()
+                                statusMap[k] = statusObj.optBoolean(k, true)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext Pair(isGlobalActive, statusMap)
+    }
+
+    suspend fun postMacSecurityLog(
+        commercialId: String,
+        commercialName: String,
+        commercialEmail: String,
+        attemptedMac: String,
+        deviceModel: String,
+        status: String,
+        reason: String,
+        ipAddress: String = "Réseau Mobile / Wi-Fi"
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("logs", "POST")
+            conn.doOutput = true
+            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+
+            val details = JSONObject().apply {
+                put("commercialId", commercialId)
+                put("commercialName", commercialName)
+                put("commercialEmail", commercialEmail)
+                put("attemptedMac", attemptedMac.trim().uppercase())
+                put("deviceModel", deviceModel)
+                put("status", status.trim().uppercase())
+                put("reason", reason)
+                put("ipAddress", ipAddress)
+                put("timestamp", nowIso)
+            }
+
+            val payload = JSONObject().apply {
+                put("action", "MAC_ATTEMPT_${status.trim().uppercase()}")
+                put("entity", "mac_security_log")
+                if (commercialId.contains("-")) {
+                    put("entity_id", commercialId)
+                }
+                put("details", details)
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
+            val code = conn.responseCode
+            return@withContext code in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
 }

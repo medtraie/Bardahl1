@@ -1029,80 +1029,143 @@ export function rowToCommercialDevice(row) {
   }
 }
 
+// ─── MAC FILTERING & DEVICE SECURITY (Stored via Supabase logs table) ────────
+
 export async function dbGetCommercialDevices() {
   try {
     const { data, error } = await supabase
-      .from('commercial_devices')
+      .from('logs')
       .select('*')
-      .order('added_at', { ascending: false })
+      .eq('entity', 'commercial_device')
+      .order('created_at', { ascending: false })
 
-    if (error) return null
-    return (data || []).map(rowToCommercialDevice)
+    if (error) {
+      console.warn('Error fetching commercial devices from Supabase logs:', error)
+      return null
+    }
+
+    return (data || []).map(r => ({
+      dbRowId: r.id,
+      id: r.details?.id || r.id,
+      commercialId: r.details?.commercialId || r.entity_id,
+      macAddress: (r.details?.macAddress || '').toUpperCase().trim(),
+      deviceName: r.details?.deviceName || 'Appareil Android',
+      deviceModel: r.details?.deviceModel || 'Android Device',
+      isActive: r.details?.isActive !== false,
+      addedAt: r.details?.addedAt || r.created_at,
+      lastUsedAt: r.details?.lastUsedAt || null
+    }))
   } catch (e) {
+    console.warn('Exception fetching commercial devices:', e)
     return null
   }
 }
 
 export async function dbAddCommercialDevice(device) {
   try {
-    const payload = {
-      id: device.id || undefined,
-      commercial_id: device.commercialId,
-      mac_address: (device.macAddress || '').toUpperCase().trim(),
-      device_name: device.deviceName || 'Appareil Android Commercial',
-      device_model: device.deviceModel || 'Android Device',
-      is_active: device.isActive !== false,
-      added_at: device.addedAt || new Date().toISOString()
+    const devId = device.id || 'dev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
+    const cleanDevice = {
+      id: devId,
+      commercialId: device.commercialId,
+      macAddress: (device.macAddress || '').toUpperCase().trim(),
+      deviceName: device.deviceName || 'Appareil Android Commercial',
+      deviceModel: device.deviceModel || 'Android Device',
+      isActive: device.isActive !== false,
+      addedAt: device.addedAt || new Date().toISOString(),
+      lastUsedAt: device.lastUsedAt || null
     }
 
     const { data, error } = await supabase
-      .from('commercial_devices')
-      .insert([payload])
+      .from('logs')
+      .insert([{
+        action: 'DEVICE_REGISTERED',
+        entity: 'commercial_device',
+        entity_id: device.commercialId && device.commercialId.includes('-') ? device.commercialId : null,
+        details: cleanDevice
+      }])
       .select()
       .single()
 
-    if (error) return null
-    return rowToCommercialDevice(data)
+    if (error) {
+      console.warn('Error adding commercial device:', error)
+      return null
+    }
+
+    return {
+      dbRowId: data.id,
+      ...cleanDevice
+    }
   } catch (e) {
+    console.warn('Exception adding commercial device:', e)
     return null
   }
 }
 
 export async function dbUpdateCommercialDevice(device) {
   try {
-    const payload = {
-      mac_address: (device.macAddress || '').toUpperCase().trim(),
-      device_name: device.deviceName,
-      device_model: device.deviceModel,
-      is_active: device.isActive !== false,
-      last_used_at: device.lastUsedAt || undefined,
-      updated_at: new Date().toISOString()
+    const targetId = device.dbRowId || device.id
+    const cleanDevice = {
+      id: device.id,
+      commercialId: device.commercialId,
+      macAddress: (device.macAddress || '').toUpperCase().trim(),
+      deviceName: device.deviceName,
+      deviceModel: device.deviceModel,
+      isActive: device.isActive !== false,
+      addedAt: device.addedAt,
+      lastUsedAt: device.lastUsedAt || new Date().toISOString()
     }
 
-    const targetId = device.id
-    const { data, error } = await supabase
-      .from('commercial_devices')
-      .update(payload)
-      .eq('id', targetId)
-      .select()
-      .single()
+    if (device.dbRowId) {
+      await supabase
+        .from('logs')
+        .update({ details: cleanDevice })
+        .eq('id', device.dbRowId)
+    } else {
+      // Find row matching details->>id
+      const { data: found } = await supabase
+        .from('logs')
+        .select('id, details')
+        .eq('entity', 'commercial_device')
 
-    if (error) return null
-    return rowToCommercialDevice(data)
+      const row = (found || []).find(r => r.details?.id === device.id || r.details?.macAddress === device.macAddress)
+      if (row) {
+        await supabase
+          .from('logs')
+          .update({ details: cleanDevice })
+          .eq('id', row.id)
+      }
+    }
+
+    return cleanDevice
   } catch (e) {
+    console.warn('Exception updating commercial device:', e)
     return null
   }
 }
 
 export async function dbDeleteCommercialDevice(id) {
   try {
+    // Delete by row id or by details id
     const { error } = await supabase
-      .from('commercial_devices')
+      .from('logs')
       .delete()
       .eq('id', id)
 
-    if (error) return false
-    return true
+    if (!error) return true
+
+    // Fallback: search by details->>id
+    const { data: found } = await supabase
+      .from('logs')
+      .select('id, details')
+      .eq('entity', 'commercial_device')
+
+    const row = (found || []).find(r => r.details?.id === id || r.id === id)
+    if (row) {
+      await supabase.from('logs').delete().eq('id', row.id)
+      return true
+    }
+
+    return false
   } catch (e) {
     return false
   }
@@ -1111,42 +1174,116 @@ export async function dbDeleteCommercialDevice(id) {
 export async function dbGetMacSecurityLogs() {
   try {
     const { data, error } = await supabase
-      .from('mac_security_logs')
+      .from('logs')
       .select('*')
+      .eq('entity', 'mac_security_log')
       .order('created_at', { ascending: false })
       .limit(100)
 
-    if (error) return null
-    return data || []
+    if (error) {
+      console.warn('Error fetching mac security logs:', error)
+      return null
+    }
+
+    return (data || []).map(r => ({
+      id: r.id,
+      commercialId: r.details?.commercialId || r.entity_id || '',
+      commercialName: r.details?.commercialName || 'Commercial Terrain',
+      commercialEmail: r.details?.commercialEmail || '',
+      attemptedMac: (r.details?.attemptedMac || '').toUpperCase().trim(),
+      deviceModel: r.details?.deviceModel || 'Android Device',
+      status: r.details?.status || (r.action?.includes('BLOCKED') ? 'BLOCKED' : 'AUTHORIZED'),
+      reason: r.details?.reason || (r.action?.includes('BLOCKED') ? 'Tentative refusée' : 'Connexion autorisée'),
+      ipAddress: r.details?.ipAddress || 'Réseau Mobile / Wi-Fi',
+      createdAt: r.details?.timestamp || r.created_at
+    }))
   } catch (e) {
+    console.warn('Exception fetching mac security logs:', e)
     return null
   }
 }
 
 export async function dbAddMacSecurityLog(log) {
   try {
+    const status = (log.status || 'BLOCKED').toUpperCase()
     const payload = {
-      id: log.id || undefined,
-      commercial_id: log.commercialId || null,
-      commercial_name: log.commercialName || '',
-      commercial_email: log.commercialEmail || '',
-      attempted_mac: (log.attemptedMac || '').toUpperCase().trim(),
-      device_model: log.deviceModel || 'Android Device',
-      status: log.status || 'BLOCKED',
-      reason: log.reason || 'Appareil non enregistré',
-      ip_address: log.ipAddress || 'Réseau Mobile / Wi-Fi',
-      created_at: log.createdAt || new Date().toISOString()
+      commercialId: log.commercialId || log.commercial_id || null,
+      commercialName: log.commercialName || '',
+      commercialEmail: log.commercialEmail || '',
+      attemptedMac: (log.attemptedMac || '').toUpperCase().trim(),
+      deviceModel: log.deviceModel || 'Android Device',
+      status: status,
+      reason: log.reason || (status === 'BLOCKED' ? 'Tentative depuis un appareil non enregistré' : 'Appareil autorisé conforme'),
+      ipAddress: log.ipAddress || 'Réseau Mobile / Wi-Fi',
+      timestamp: log.createdAt || new Date().toISOString()
     }
 
     const { data, error } = await supabase
-      .from('mac_security_logs')
-      .insert([payload])
+      .from('logs')
+      .insert([{
+        action: 'MAC_ATTEMPT_' + status,
+        entity: 'mac_security_log',
+        entity_id: payload.commercialId && payload.commercialId.includes('-') ? payload.commercialId : null,
+        details: payload
+      }])
       .select()
       .single()
 
-    if (error) return null
-    return data
+    if (error) {
+      console.warn('Error adding mac security log:', error)
+      return null
+    }
+
+    return {
+      id: data.id,
+      ...payload,
+      createdAt: data.created_at
+    }
+  } catch (e) {
+    console.warn('Exception adding mac security log:', e)
+    return null
+  }
+}
+
+export async function dbGetMacSecurityConfig() {
+  try {
+    const { data, error } = await supabase
+      .from('logs')
+      .select('*')
+      .eq('entity', 'mac_filtering_config')
+      .limit(1)
+
+    if (error || !data || data.length === 0) return null
+    return data[0].details
   } catch (e) {
     return null
+  }
+}
+
+export async function dbSaveMacSecurityConfig(config) {
+  try {
+    const { data: existing } = await supabase
+      .from('logs')
+      .select('id')
+      .eq('entity', 'mac_filtering_config')
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from('logs')
+        .update({ details: config, action: 'CONFIG_UPDATED' })
+        .eq('id', existing[0].id)
+    } else {
+      await supabase
+        .from('logs')
+        .insert([{
+          action: 'CONFIG_INIT',
+          entity: 'mac_filtering_config',
+          details: config
+        }])
+    }
+    return true
+  } catch (e) {
+    return false
   }
 }

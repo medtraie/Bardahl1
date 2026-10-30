@@ -22,8 +22,22 @@ export default function MacFiltering() {
     deleteCommercialDevice,
     commercialsLastLogin = {},
     macSecurityLogs = [],
-    approveBlockedAttempt
+    approveBlockedAttempt,
+    refreshMacData
   } = useApp()
+
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      if (typeof refreshMacData === 'function') {
+        await refreshMacData()
+      }
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600)
+    }
+  }
 
   const isAdmin = currentUser?.role === 'ADMIN' || (currentUser?.email || '').toLowerCase() === 'bardahl@gmail.com'
 
@@ -210,6 +224,16 @@ export default function MacFiltering() {
         {/* Global Master Switch & Export */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           
+          <button
+            onClick={handleManualRefresh}
+            className="btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '13px', fontWeight: '700' }}
+            title="Recharger en temps réel depuis Supabase"
+          >
+            <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} style={{ color: 'var(--bardahl-yellow)' }} />
+            <span>{isRefreshing ? 'Synchronisation...' : 'Actualiser en direct'}</span>
+          </button>
+
           <button
             onClick={handleExportExcel}
             className="btn-secondary"
@@ -706,13 +730,25 @@ export default function MacFiltering() {
               </p>
             </div>
 
-            <button
-              onClick={handleExportExcel}
-              className="btn-secondary"
-              style={{ padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <FileSpreadsheet size={14} style={{ color: '#34C759' }} /> Exporter Logs (Excel)
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={handleManualRefresh}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                title="Recharger les logs en temps réel"
+              >
+                <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} style={{ color: 'var(--bardahl-yellow)' }} />
+                <span>{isRefreshing ? 'Actualisation...' : 'Actualiser en direct'}</span>
+              </button>
+
+              <button
+                onClick={handleExportExcel}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileSpreadsheet size={14} style={{ color: '#34C759' }} /> Exporter Logs (Excel)
+              </button>
+            </div>
           </div>
 
           {macSecurityLogs.length === 0 ? (

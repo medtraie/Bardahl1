@@ -13,7 +13,7 @@ import {
   dbUpdateOrderStatus,
   dbGetDevis, dbAddDevis, dbUpdateDevis, dbDeleteDevis,
   dbGetCommercialDevices, dbAddCommercialDevice, dbUpdateCommercialDevice, dbDeleteCommercialDevice,
-  dbGetMacSecurityLogs, dbAddMacSecurityLog,
+  dbGetMacSecurityLogs, dbAddMacSecurityLog, dbGetMacSecurityConfig, dbSaveMacSecurityConfig,
   subscribeToTable, unsubscribeChannel,
 } from '../lib/supabase'
 
@@ -504,14 +504,16 @@ export function AppProvider({ children }) {
     const chOrd  = subscribeToTable('orders',      refreshAll)
     const chFam  = subscribeToTable('product_families', refreshAll)
     const chDev  = subscribeToTable('devis', refreshAll)
+    const chLogs = subscribeToTable('logs', refreshMacData)
     return () => {
       unsubscribeChannel(chComm)
       unsubscribeChannel(chCli)
       unsubscribeChannel(chOrd)
       unsubscribeChannel(chFam)
       unsubscribeChannel(chDev)
+      unsubscribeChannel(chLogs)
     }
-  }, [refreshAll])
+  }, [refreshAll, refreshMacData])
 
   // ── AUTH ─────────────────────────────────────────────────────────────────────
   const login = useCallback((inputEmail, inputPassword) => {
@@ -1244,28 +1246,7 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem('bardahl_commercial_devices')
       if (saved) return JSON.parse(saved)
     } catch (e) {}
-    return [
-      {
-        id: 'dev_init_1',
-        commercialId: '443e06e8-8eff-4dbd-86f1-7fae0f4f936c',
-        macAddress: '4E:8A:3C:91:2E:75',
-        deviceName: 'Samsung Galaxy A54 (Téléphone Pro)',
-        deviceModel: 'Samsung SM-A546B',
-        isActive: true,
-        addedAt: '2026-10-25T10:00:00.000Z',
-        lastUsedAt: '2026-10-29T14:32:00.000Z'
-      },
-      {
-        id: 'dev_init_2',
-        commercialId: '443e06e8-8eff-4dbd-86f1-7fae0f4f936c',
-        macAddress: 'A0:B1:C2:D3:E4:F5',
-        deviceName: 'Tablette Terrain Commerciale',
-        deviceModel: 'Lenovo Tab M10',
-        isActive: true,
-        addedAt: '2026-10-26T11:15:00.000Z',
-        lastUsedAt: '2026-10-28T09:20:00.000Z'
-      }
-    ]
+    return []
   })
 
   useEffect(() => {
@@ -1274,21 +1255,13 @@ export function AppProvider({ children }) {
     } catch (e) {}
   }, [commercialDevices])
 
-  // Last login records per commercial (commercialId -> { date, mac, deviceModel, ip, appVersion })
+  // Last login records per commercial (commercialId -> { date, mac, deviceModel, ip, appVersion, status })
   const [commercialsLastLogin, setCommercialsLastLogin] = useState(() => {
     try {
       const saved = localStorage.getItem('bardahl_commercials_last_login')
       if (saved) return JSON.parse(saved)
     } catch (e) {}
-    return {
-      '443e06e8-8eff-4dbd-86f1-7fae0f4f936c': {
-        date: new Date(Date.now() - 38 * 60 * 1000).toISOString(),
-        mac: '4E:8A:3C:91:2E:75',
-        deviceModel: 'Samsung Galaxy A54 5G (Android 14)',
-        ip: '105.158.42.18 (4G Maroc Telecom)',
-        appVersion: 'v2.5.0 (Build 44)'
-      }
-    }
+    return {}
   })
 
   useEffect(() => {
@@ -1303,32 +1276,7 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem('bardahl_mac_security_logs')
       if (saved) return JSON.parse(saved)
     } catch (e) {}
-    return [
-      {
-        id: 'log_seed_1',
-        commercialId: '443e06e8-8eff-4dbd-86f1-7fae0f4f936c',
-        commercialName: 'Commercial Terrain',
-        commercialEmail: 'commercial@bardahl.ma',
-        attemptedMac: 'B8:27:EB:14:9C:20',
-        deviceModel: 'Xiaomi Redmi Note 12',
-        status: 'BLOCKED',
-        reason: 'Tentative depuis un appareil non enregistré (MAC inconnue)',
-        ipAddress: '196.200.150.22 (Wi-Fi Public)',
-        createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
-      },
-      {
-        id: 'log_seed_2',
-        commercialId: '443e06e8-8eff-4dbd-86f1-7fae0f4f936c',
-        commercialName: 'Commercial Terrain',
-        commercialEmail: 'commercial@bardahl.ma',
-        attemptedMac: '4E:8A:3C:91:2E:75',
-        deviceModel: 'Samsung Galaxy A54 5G',
-        status: 'AUTHORIZED',
-        reason: 'Appareil autorisé conforme',
-        ipAddress: '105.158.42.18',
-        createdAt: new Date(Date.now() - 38 * 60 * 1000).toISOString()
-      }
-    ]
+    return []
   })
 
   useEffect(() => {
@@ -1337,18 +1285,76 @@ export function AppProvider({ children }) {
     } catch (e) {}
   }, [macSecurityLogs])
 
+  // Refresh MAC Filtering data from Supabase logs table
+  const refreshMacData = useCallback(async () => {
+    try {
+      const [devices, logs, config] = await Promise.all([
+        dbGetCommercialDevices(),
+        dbGetMacSecurityLogs(),
+        dbGetMacSecurityConfig()
+      ])
+
+      if (devices && Array.isArray(devices)) {
+        setCommercialDevices(devices)
+      }
+      if (logs && Array.isArray(logs)) {
+        setMacSecurityLogs(logs)
+        const lastLogins = {}
+        logs.forEach(l => {
+          if (l.commercialId && !lastLogins[l.commercialId]) {
+            lastLogins[l.commercialId] = {
+              date: l.createdAt,
+              mac: l.attemptedMac,
+              deviceModel: l.deviceModel,
+              ip: l.ipAddress,
+              status: l.status,
+              appVersion: 'Android'
+            }
+          }
+        })
+        setCommercialsLastLogin(prev => ({ ...prev, ...lastLogins }))
+      }
+      if (config) {
+        if (config.isGlobalFilteringActive !== undefined) {
+          setIsGlobalMacFilteringActive(config.isGlobalFilteringActive)
+        }
+        if (config.commercialsMacStatus) {
+          setCommercialsMacStatus(config.commercialsMacStatus)
+        }
+      }
+    } catch (e) {
+      console.warn('refreshMacData error:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshMacData()
+  }, [refreshMacData])
+
   // Toggle Global MAC filtering
   const toggleGlobalMacFiltering = useCallback((active) => {
-    setIsGlobalMacFilteringActive(prev => (active !== undefined ? active : !prev))
-  }, [])
+    setIsGlobalMacFilteringActive(prev => {
+      const nextVal = (active !== undefined ? active : !prev)
+      dbSaveMacSecurityConfig({
+        isGlobalFilteringActive: nextVal,
+        commercialsMacStatus: commercialsMacStatus
+      }).catch(e => console.warn('Save MAC config error:', e))
+      return nextVal
+    })
+  }, [commercialsMacStatus])
 
   // Toggle filtering for specific commercial
   const toggleCommercialMacFiltering = useCallback((commercialId) => {
     setCommercialsMacStatus(prev => {
       const current = prev[commercialId] !== false
-      return { ...prev, [commercialId]: !current }
+      const nextStatus = { ...prev, [commercialId]: !current }
+      dbSaveMacSecurityConfig({
+        isGlobalFilteringActive: isGlobalMacFilteringActive,
+        commercialsMacStatus: nextStatus
+      }).catch(e => console.warn('Save MAC config error:', e))
+      return nextStatus
     })
-  }, [])
+  }, [isGlobalMacFilteringActive])
 
   // Add new MAC device for commercial (STRICT 3 MAC LIMIT!)
   const addCommercialDevice = useCallback(async (commercialId, deviceData) => {
@@ -1378,27 +1384,24 @@ export function AppProvider({ children }) {
     }
 
     setCommercialDevices(prev => [newDevice, ...prev])
-    dbAddCommercialDevice(newDevice).catch(e => console.warn('Supabase device add:', e))
+    await dbAddCommercialDevice(newDevice)
     return newDevice
   }, [commercialDevices])
 
   // Update existing device
   const updateCommercialDevice = useCallback(async (deviceId, updatedFields) => {
-    setCommercialDevices(prev => prev.map(d => {
-      if (d.id === deviceId) {
-        const cleanMac = updatedFields.macAddress ? updatedFields.macAddress.toUpperCase().trim() : d.macAddress
-        const updated = { ...d, ...updatedFields, macAddress: cleanMac, updatedAt: new Date().toISOString() }
-        dbUpdateCommercialDevice(updated).catch(e => console.warn('Supabase device update:', e))
-        return updated
-      }
-      return d
-    }))
-  }, [])
+    const target = commercialDevices.find(d => d.id === deviceId || d.dbRowId === deviceId)
+    const cleanMac = updatedFields.macAddress ? updatedFields.macAddress.toUpperCase().trim() : (target?.macAddress || '')
+    const updated = { ...(target || {}), ...updatedFields, macAddress: cleanMac, updatedAt: new Date().toISOString() }
+
+    setCommercialDevices(prev => prev.map(d => (d.id === deviceId || d.dbRowId === deviceId) ? updated : d))
+    await dbUpdateCommercialDevice(updated)
+  }, [commercialDevices])
 
   // Delete device (frees up slot)
   const deleteCommercialDevice = useCallback(async (deviceId) => {
-    setCommercialDevices(prev => prev.filter(d => d.id !== deviceId))
-    dbDeleteCommercialDevice(deviceId).catch(e => console.warn('Supabase device delete:', e))
+    setCommercialDevices(prev => prev.filter(d => d.id !== deviceId && d.dbRowId !== deviceId))
+    await dbDeleteCommercialDevice(deviceId)
   }, [])
 
   // 1-Click Approval of blocked attempt from audit log
@@ -1457,7 +1460,7 @@ export function AppProvider({ children }) {
       createdAt: nowIso
     }
     setMacSecurityLogs(prev => [log, ...prev.slice(0, 99)])
-    dbAddMacSecurityLog(log).catch(e => console.warn('Supabase security log error:', e))
+    await dbAddMacSecurityLog(log)
   }, [commercials])
 
   // ── Role-based visibility ────────────────────────────────────────────────────
@@ -1506,6 +1509,7 @@ export function AppProvider({ children }) {
       commercialsMacStatus, toggleCommercialMacFiltering,
       commercialDevices, addCommercialDevice, updateCommercialDevice, deleteCommercialDevice,
       commercialsLastLogin, macSecurityLogs, approveBlockedAttempt, recordDeviceLogin,
+      refreshMacData,
       refreshAll,
     }}>
       {children}

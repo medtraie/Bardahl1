@@ -108,14 +108,51 @@ class AuthViewModel : ViewModel() {
             val currentMac = com.bardahl.maroc.util.DeviceSecurityUtil.getDeviceMacAddress(context)
             val deviceInfo = com.bardahl.maroc.util.DeviceSecurityUtil.getDeviceInfo(context)
 
-            if (comm.isMacFilteringActive && comm.authorizedMacs.isNotEmpty()) {
-                val isAuthorized = comm.authorizedMacs.any { authMac ->
-                    authMac.replace(":", "").replace("-", "").equals(currentMac.replace(":", "").replace("-", ""), ignoreCase = true)
+            // Check if MAC filtering is active globally and for this commercial
+            val (isGlobalFilteringActive, commsMacStatus) = supabaseService.fetchMacFilteringConfig()
+            val isFilteringActiveForComm = isGlobalFilteringActive && (commsMacStatus[comm.id] != false)
+
+            if (isFilteringActiveForComm) {
+                // Fetch authorized MACs from Supabase
+                val authorizedMacs = supabaseService.fetchAuthorizedMacsForCommercial(comm.id)
+                val cleanCurrentMac = currentMac.replace(":", "").replace("-", "").uppercase()
+
+                val isAuthorized = authorizedMacs.any { authMac ->
+                    authMac.replace(":", "").replace("-", "").equals(cleanCurrentMac, ignoreCase = true)
                 }
+
                 if (!isAuthorized) {
+                    val reason = if (authorizedMacs.isEmpty()) {
+                        "Aucun appareil enregistré pour ce commercial (Accès restreint Direction)"
+                    } else {
+                        "Tentative depuis un appareil non enregistré (MAC non autorisée)"
+                    }
+
+                    // Record blocked attempt in Supabase logs table immediately!
+                    supabaseService.postMacSecurityLog(
+                        commercialId = comm.id,
+                        commercialName = comm.name,
+                        commercialEmail = comm.email,
+                        attemptedMac = currentMac,
+                        deviceModel = deviceInfo.deviceModel,
+                        status = "BLOCKED",
+                        reason = reason
+                    )
+
                     val errorMsg = "🔒 ACCÈS REFUSÉ : Cet appareil n'est pas autorisé par la Direction Bardahl.\n\nAdresse MAC : $currentMac\nModèle : ${deviceInfo.deviceModel}\n\nMaximum 3 appareils autorisés. Contactez votre administrateur pour enregistrer ce téléphone."
                     _authState.value = AuthState.Error(errorMsg)
                     return@launch
+                } else {
+                    // Record successful authorized login attempt in Supabase logs table!
+                    supabaseService.postMacSecurityLog(
+                        commercialId = comm.id,
+                        commercialName = comm.name,
+                        commercialEmail = comm.email,
+                        attemptedMac = currentMac,
+                        deviceModel = deviceInfo.deviceModel,
+                        status = "AUTHORIZED",
+                        reason = "Appareil autorisé conforme"
+                    )
                 }
             }
 
