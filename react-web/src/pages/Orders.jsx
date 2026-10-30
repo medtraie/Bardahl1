@@ -1224,7 +1224,7 @@ export default function Orders({ openWizardTrigger }) {
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
                   className="input-field"
-                  style={{ padding: '10px' }}
+                  style={{ width: "100%", cursor: "pointer" }}
                 >
                   <option value="ALL">Tous les Statuts ({orders.length})</option>
                   <option value="EN_ATTENTE">⏳ En Attente ({orders.filter(o => o.status === 'EN_ATTENTE' || o.status === 'DRAFT').length})</option>
@@ -1239,7 +1239,7 @@ export default function Orders({ openWizardTrigger }) {
                   value={commercialFilter}
                   onChange={e => setCommercialFilter(e.target.value)}
                   className="input-field"
-                  style={{ padding: '10px' }}
+                  style={{ width: "100%", cursor: "pointer" }}
                 >
                   <option value="ALL">Tous les Représentants</option>
                   <option value="Administrateur">🛡️ Créé par Administrateur</option>
@@ -1713,7 +1713,7 @@ export default function Orders({ openWizardTrigger }) {
                   value={compensationStatusFilter}
                   onChange={e => setCompensationStatusFilter(e.target.value)}
                   className="input-field"
-                  style={{ padding: '10px' }}
+                  style={{ width: "100%", cursor: "pointer" }}
                 >
                   <option value="ALL">Tous les Dossiers ({clientCompensations.length})</option>
                   <option value="PENDING">En Attente de compensation ({clientCompensations.filter(c => c.status === 'PENDING').length})</option>

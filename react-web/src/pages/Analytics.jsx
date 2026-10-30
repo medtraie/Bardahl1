@@ -936,7 +936,7 @@ export default function Analytics() {
               value={commercialFilter}
               onChange={(e) => setCommercialFilter(e.target.value)}
               className="input-field"
-              style={{ fontSize: '12px', padding: '9px 12px', cursor: 'pointer' }}
+              style={{ width: "100%", cursor: "pointer" }}
             >
               <option value="ALL">👤 Tous les Commerciaux</option>
               {commercials.map(c => (
@@ -950,7 +950,7 @@ export default function Analytics() {
               value={regionFilter}
               onChange={(e) => setRegionFilter(e.target.value)}
               className="input-field"
-              style={{ fontSize: '12px', padding: '9px 12px', cursor: 'pointer' }}
+              style={{ width: "100%", cursor: "pointer" }}
             >
               <option value="ALL">📍 Toutes les Régions</option>
               {MOROCCAN_REGIONS.map(r => (
