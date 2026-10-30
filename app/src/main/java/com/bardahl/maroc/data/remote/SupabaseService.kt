@@ -683,6 +683,11 @@ class SupabaseService(
                         }
                     }
 
+                    val rawTargetRefs = obj.optString("target_product_ref", "")
+                    val parsedTargetRefs = if (rawTargetRefs.isNotBlank()) {
+                        rawTargetRefs.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    } else emptyList()
+
                     list.add(
                         Promotion(
                             id = obj.getString("id"),
@@ -692,7 +697,8 @@ class SupabaseService(
                             targetType = tTargetType,
                             targetFamily = obj.optString("target_family", null),
                             targetProductId = obj.optString("target_product_id", null),
-                            targetProductRef = obj.optString("target_product_ref", null),
+                            targetProductRef = if (parsedTargetRefs.isNotEmpty()) parsedTargetRefs.first() else obj.optString("target_product_ref", null),
+                            targetProductRefs = parsedTargetRefs,
                             targetProductName = obj.optString("target_product_name", null),
                             threshold = obj.optDouble("threshold", 10.0),
                             discountPercent = obj.optDouble("discount_percent", 0.0),

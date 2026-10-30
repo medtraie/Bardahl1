@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bardahl.maroc.domain.model.*
@@ -439,6 +440,9 @@ fun OrderCreateScreen(
     // PRIX-01: Price edit state
     var itemIndexToEditPrice by remember { mutableStateOf<Int?>(null) }
     var tempPriceInput by remember { mutableStateOf("") }
+    var itemToEditIndex by remember { mutableStateOf<Int?>(null) }
+    var editCartonsInput by remember { mutableStateOf("") }
+    var editUnitsInput by remember { mutableStateOf("") }
 
     // Pre-fill state when editing an order
     LaunchedEffect(orderToEdit, clients, products) {
@@ -510,12 +514,13 @@ fun OrderCreateScreen(
     val totalTva = netTotalTtc - totalHt
 
     val applyPromotionToOrder: (Promotion) -> Unit = { promo ->
-        // 1. Locate the target product in catalog
-        val targetProduct = if (promo.targetType == PromoTargetType.PRODUCT) {
+        // 1. Locate the target product in catalog (multi-refs, normalized family & keywords)
+        val targetProduct = (if (promo.targetType == PromoTargetType.PRODUCT) {
             products.find { p ->
                 p.id == promo.targetProductId ||
                 p.reference == promo.targetProductRef ||
-                (promo.targetProductRef != null && p.code == promo.targetProductRef) ||
+                (promo.targetProductRefs.isNotEmpty() && promo.targetProductRefs.any { r -> r.equals(p.reference, ignoreCase = true) || r.equals(p.code, ignoreCase = true) || r.equals(p.id, ignoreCase = true) }) ||
+                (promo.targetProductRef != null && p.code.equals(promo.targetProductRef, ignoreCase = true)) ||
                 (promo.targetProductName != null && p.name.contains(promo.targetProductName!!, ignoreCase = true)) ||
                 (promo.targetProductRef != null && p.name.contains(promo.targetProductRef!!, ignoreCase = true))
             }
@@ -529,12 +534,19 @@ fun OrderCreateScreen(
                 products.find { it.id == existingItem.productId || it.reference == existingItem.productReference }
             } else {
                 products.find { p ->
-                    PromotionEngine.normalizeFamily(p.categoryId) == targetFam
+                    PromotionEngine.normalizeFamily(p.categoryId) == targetFam ||
+                    p.name.contains(targetFam, ignoreCase = true) ||
+                    (p.categoryId != null && p.categoryId.contains(targetFam, ignoreCase = true))
                 }
             }
-        } ?: products.find { p ->
-            promo.name.contains(p.name, ignoreCase = true) || (p.reference.isNotBlank() && promo.name.contains(p.reference, ignoreCase = true))
-        }
+        }) ?: products.find { p ->
+            (promo.targetProductRefs.isNotEmpty() && promo.targetProductRefs.any { r -> r.equals(p.reference, ignoreCase = true) || r.equals(p.code, ignoreCase = true) }) ||
+            promo.name.contains(p.name, ignoreCase = true) ||
+            (p.reference.isNotBlank() && promo.name.contains(p.reference, ignoreCase = true)) ||
+            (promo.name.contains("ADDITIF", ignoreCase = true) && (p.name.contains("ADDITIF", ignoreCase = true) || p.name.contains("TRAITEMENT", ignoreCase = true) || PromotionEngine.normalizeFamily(p.categoryId) == "ADDITIFS")) ||
+            (promo.name.contains("HUILE", ignoreCase = true) && (p.name.contains("HUILE", ignoreCase = true) || PromotionEngine.normalizeFamily(p.categoryId) == "LUB_AUTO")) ||
+            (promo.name.contains("GRAISSE", ignoreCase = true) && (p.name.contains("GRAISSE", ignoreCase = true) || PromotionEngine.normalizeFamily(p.categoryId) == "IND_GRAISSES"))
+        } ?: products.firstOrNull()
 
         val upb = targetProduct?.unitsPerBox ?: 12
 
@@ -918,6 +930,8 @@ fun OrderCreateScreen(
                         selectedItems.forEachIndexed { idx, item ->
                             val earnedFreeItem = promoAnalysis.freeItems.find { it.productId == item.productId || it.productReference == item.productReference }
                             val hasAutoPromoGift = earnedFreeItem != null && earnedFreeItem.freeQuantity > 0
+                            val upb = if (item.unitsPerBox > 0) item.unitsPerBox else 12
+                            val cartons = item.quantity / upb
 
                             Column(
                                 modifier = Modifier
@@ -927,32 +941,50 @@ fun OrderCreateScreen(
                                     .border(1.dp, if (item.quantity == 0 && item.freeQuantity > 0) StatusDelivered.copy(alpha = 0.5f) else BardahlCardBorder, RoundedCornerShape(10.dp))
                                     .padding(10.dp)
                             ) {
-                                // Line 1: Nom produit et bouton supprimer la ligne
+                                // Row 1: Nom produit, Réf, Cond & Bouton Supprimer (Rouge)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(item.productName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark, modifier = Modifier.weight(1f))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.productName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimaryDark,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Réf: ${item.productReference} • Cond: ${upb} un./ctn",
+                                            fontSize = 10.sp,
+                                            color = TextSecondaryDark
+                                        )
+                                    }
                                     IconButton(
                                         onClick = {
                                             selectedItems = selectedItems.filterIndexed { i, _ -> i != idx }
                                         },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = StatusCancelled, modifier = Modifier.size(18.dp))
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Supprimer",
+                                            tint = StatusCancelled,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
 
-                                // Line 2: Référence & Prix Unitaire TTC Modifiable (PRIX-01)
+                                // Row 2: Prix Unitaire TTC Modifiable (PRIX-01) & Gratuités
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Réf: ${item.productReference}", fontSize = 11.sp, color = TextSecondaryDark)
-
                                     // PRIX-01: Bouton interactif pour modifier le prix unitaire TTC
                                     Box(
                                         modifier = Modifier
@@ -975,37 +1007,18 @@ fun OrderCreateScreen(
                                             )
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Line 3: Gestion Gratuités (LIG-01 & LIG-03)
-                                if (earnedFreeItem != null && earnedFreeItem.freeQuantity > 0) {
-                                    // LIG-01: Calculé automatiquement par la promotion, non modifiable manuellement
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(StatusDelivered.copy(alpha = 0.12f))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
+                                    // Gratuités Auto ou Manuel
+                                    if (earnedFreeItem != null && earnedFreeItem.freeQuantity > 0) {
                                         Text(
-                                            text = "🔒 🎁 +${earnedFreeItem.freeQuantity} Gratuit(s) Auto (${earnedFreeItem.promoTag.ifBlank { "Offre Promo" }})",
+                                            text = "🔒 +${earnedFreeItem.freeQuantity} Offert(s)",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = StatusDelivered
                                         )
-                                    }
-                                } else {
-                                    // LIG-03: Produit sans cadeau promo -> Le commercial peut modifier la quantité gratuite manuellement
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
+                                    } else {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Gratuit manuel: ", fontSize = 11.sp, color = TextSecondaryDark)
+                                            Text("Gratuit: ", fontSize = 11.sp, color = TextSecondaryDark)
                                             IconButton(
                                                 onClick = {
                                                     selectedItems = selectedItems.mapIndexed { i, itm ->
@@ -1021,7 +1034,7 @@ fun OrderCreateScreen(
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (item.freeQuantity > 0) StatusDelivered else TextPrimaryDark,
-                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                                modifier = Modifier.padding(horizontal = 2.dp)
                                             )
                                             IconButton(
                                                 onClick = {
@@ -1034,95 +1047,177 @@ fun OrderCreateScreen(
                                                 Icon(Icons.Default.AddCircleOutline, contentDescription = "Plus gratuit", tint = StatusDelivered, modifier = Modifier.size(16.dp))
                                             }
                                         }
-
-                                        if (item.quantity > 0) {
-                                            TextButton(
-                                                onClick = {
-                                                    selectedItems = selectedItems.mapIndexed { i, itm ->
-                                                        if (i == idx) itm.copy(quantity = 0, freeQuantity = itm.quantity.coerceAtLeast(1), promoTag = "Échantillon 100% Offert") else itm
-                                                    }
-                                                },
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text("Offrir 100%", fontSize = 10.sp, color = BardahlYellow, fontWeight = FontWeight.Bold)
-                                            }
-                                        } else {
-                                            Text("Échantillon (0 DH)", fontSize = 10.sp, color = StatusDelivered, fontWeight = FontWeight.Bold)
-                                        }
                                     }
                                 }
 
                                 Spacer(modifier = Modifier.height(6.dp))
 
-                                // Line 4: Quantité Achetée & Remise & Montant Net Ligne
+                                // Row 3: Sélecteurs interactifs Cartons et Unités (comme sur le Web et Devis)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Cartons Stepper & Direct Click
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Acheté: ", fontSize = 11.sp, color = TextSecondaryDark)
+                                        Text("Cartons: ", fontSize = 11.sp, color = TextSecondaryDark)
                                         IconButton(
                                             onClick = {
-                                                val minQty = if (item.freeQuantity > 0 || hasAutoPromoGift) 0 else 1
-                                                selectedItems = selectedItems.mapIndexed { i, itm ->
-                                                    if (i == idx) itm.copy(quantity = (itm.quantity - 1).coerceAtLeast(minQty)) else itm
+                                                if (cartons > 0) {
+                                                    val minAllowed = if (item.freeQuantity > 0 || hasAutoPromoGift) 0 else 1
+                                                    val newQty = (item.quantity - upb).coerceAtLeast(minAllowed)
+                                                    selectedItems = selectedItems.mapIndexed { i, itm ->
+                                                        if (i == idx) itm.copy(quantity = newQty) else itm
+                                                    }
                                                 }
                                             },
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(24.dp)
                                         ) {
-                                            Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Moins", tint = BardahlYellow, modifier = Modifier.size(18.dp))
+                                            Icon(
+                                                Icons.Default.RemoveCircleOutline,
+                                                contentDescription = "Moins Cartons",
+                                                tint = if (cartons > 0) BardahlYellow else TextSecondaryDark,
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                         }
-                                        Text(
-                                            text = "${item.quantity}",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = TextPrimaryDark,
-                                            modifier = Modifier.padding(horizontal = 4.dp)
-                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF2B313E))
+                                                .border(1.dp, BardahlYellow.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    itemToEditIndex = idx
+                                                    editCartonsInput = cartons.toString()
+                                                    editUnitsInput = item.quantity.toString()
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "$cartons Ctn",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = BardahlYellow
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                val newQty = item.quantity + upb
+                                                selectedItems = selectedItems.mapIndexed { i, itm ->
+                                                    if (i == idx) itm.copy(quantity = newQty) else itm
+                                                }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AddCircleOutline,
+                                                contentDescription = "Plus Cartons",
+                                                tint = BardahlYellow,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Unités Stepper & Direct Click
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Unités: ", fontSize = 11.sp, color = TextSecondaryDark)
+                                        IconButton(
+                                            onClick = {
+                                                val minAllowed = if (item.freeQuantity > 0 || hasAutoPromoGift) 0 else 1
+                                                if (item.quantity > minAllowed) {
+                                                    selectedItems = selectedItems.mapIndexed { i, itm ->
+                                                        if (i == idx) itm.copy(quantity = item.quantity - 1) else itm
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.RemoveCircleOutline,
+                                                contentDescription = "Moins Unités",
+                                                tint = if (item.quantity > 0) Color(0xFF007AFF) else TextSecondaryDark,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF1E2838))
+                                                .border(1.dp, Color(0xFF007AFF).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    itemToEditIndex = idx
+                                                    editCartonsInput = cartons.toString()
+                                                    editUnitsInput = item.quantity.toString()
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "${item.quantity} Un.",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF5AC8FA)
+                                            )
+                                        }
+
                                         IconButton(
                                             onClick = {
                                                 selectedItems = selectedItems.mapIndexed { i, itm ->
                                                     if (i == idx) itm.copy(quantity = itm.quantity + 1) else itm
                                                 }
                                             },
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(24.dp)
                                         ) {
-                                            Icon(Icons.Default.AddCircleOutline, contentDescription = "Plus", tint = BardahlYellow, modifier = Modifier.size(18.dp))
-                                        }
-
-                                        Spacer(modifier = Modifier.width(6.dp))
-
-                                        // Quick Remise Cycle Button
-                                        IconButton(
-                                            onClick = {
-                                                selectedItems = selectedItems.mapIndexed { i, itm ->
-                                                    if (i == idx) {
-                                                        val nextRemise = when (itm.discountPercentage) {
-                                                            0.0 -> 5.0
-                                                            5.0 -> 10.0
-                                                            10.0 -> 15.0
-                                                            15.0 -> 20.0
-                                                            else -> 0.0
-                                                        }
-                                                        itm.copy(discountPercentage = nextRemise)
-                                                    } else itm
-                                                }
-                                            },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Text(
-                                                text = if (item.discountPercentage > 0.0) "${item.discountPercentage.toInt()}%" else "%",
-                                                color = if (item.discountPercentage > 0.0) Color(0xFF007AFF) else TextSecondaryDark,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
+                                            Icon(
+                                                Icons.Default.AddCircleOutline,
+                                                contentDescription = "Plus Unités",
+                                                tint = Color(0xFF007AFF),
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Row 4: Remise % et Montant Net Ligne TTC
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Remise % Button Chip
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (item.discountPercentage > 0) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF222834))
+                                            .border(1.dp, if (item.discountPercentage > 0) Color(0xFF007AFF) else BardahlCardBorder, RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                val nextRemise = when (item.discountPercentage) {
+                                                    0.0 -> 5.0
+                                                    5.0 -> 10.0
+                                                    10.0 -> 15.0
+                                                    15.0 -> 20.0
+                                                    else -> 0.0
+                                                }
+                                                selectedItems = selectedItems.mapIndexed { i, itm ->
+                                                    if (i == idx) itm.copy(discountPercentage = nextRemise) else itm
+                                                }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (item.discountPercentage > 0.0) "-${item.discountPercentage.toInt()}%" else "Remise %",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.discountPercentage > 0.0) Color(0xFF007AFF) else TextSecondaryDark
+                                        )
+                                    }
 
                                     Text(
-                                        text = "Total: ${String.format(java.util.Locale.US, "%.2f DH", item.totalTtc)}",
-                                        fontSize = 12.sp,
+                                        text = "Total: ${String.format(java.util.Locale.US, "%.2f DH TTC", item.totalTtc)}",
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Black,
                                         color = BardahlYellow
                                     )
@@ -1838,7 +1933,40 @@ fun OrderCreateScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     // Quantité facturée
-                    Text("Quantité Facturée (Payante) :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                    val prodUpb = if (prod.unitsPerBox > 0) prod.unitsPerBox else 12
+                    val currentFacture = quantityInput.toIntOrNull() ?: 0
+                    val currentCartons = currentFacture / prodUpb
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Quantité Facturée :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Cond: ${prodUpb} un./ctn", fontSize = 10.sp, color = TextSecondaryDark)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            IconButton(
+                                onClick = {
+                                    val cur = quantityInput.toIntOrNull() ?: 0
+                                    quantityInput = if (cur >= prodUpb) (cur - prodUpb).toString() else "0"
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.RemoveCircleOutline, contentDescription = "-1 Ctn", tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                            }
+                            Text("$currentCartons Ctn", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                            IconButton(
+                                onClick = {
+                                    val cur = quantityInput.toIntOrNull() ?: 0
+                                    quantityInput = (cur + prodUpb).toString()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.AddCircleOutline, contentDescription = "+1 Ctn", tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2097,6 +2225,91 @@ fun OrderCreateScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Annuler", color = TextSecondaryDark, fontSize = 13.sp)
+                }
+            }
+        )
+    }
+
+    // Saisie directe de Cartons & Unités par clavier (Web-like)
+    if (itemToEditIndex != null && itemToEditIndex!! in selectedItems.indices) {
+        val itm = selectedItems[itemToEditIndex!!]
+        val upb = if (itm.unitsPerBox > 0) itm.unitsPerBox else 12
+
+        AlertDialog(
+            onDismissRequest = { itemToEditIndex = null },
+            containerColor = DarkSurface,
+            title = {
+                Text(
+                    text = "Saisie Quantité (Carton / Unité)",
+                    color = BardahlYellow,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(itm.productName, fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    Text("Conditionnement: $upb unités par carton", fontSize = 11.sp, color = TextSecondaryDark)
+
+                    OutlinedTextField(
+                        value = editCartonsInput,
+                        onValueChange = { valNum ->
+                            val clean = valNum.filter { it.isDigit() }
+                            editCartonsInput = clean
+                            val c = clean.toIntOrNull() ?: 0
+                            editUnitsInput = (c * upb).toString()
+                        },
+                        label = { Text("Nombre de Cartons") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BardahlYellow,
+                            unfocusedBorderColor = BardahlCardBorder,
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = editUnitsInput,
+                        onValueChange = { valNum ->
+                            val clean = valNum.filter { it.isDigit() }
+                            editUnitsInput = clean
+                            val u = clean.toIntOrNull() ?: 0
+                            editCartonsInput = (u / upb).toString()
+                        },
+                        label = { Text("Nombre Total d'Unités") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BardahlYellow,
+                            unfocusedBorderColor = BardahlCardBorder,
+                            focusedTextColor = TextPrimaryDark,
+                            unfocusedTextColor = TextPrimaryDark
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newUnits = editUnitsInput.toIntOrNull() ?: ((editCartonsInput.toIntOrNull() ?: 0) * upb)
+                        selectedItems = selectedItems.mapIndexed { i, item ->
+                            if (i == itemToEditIndex) {
+                                val minAllowed = if (item.freeQuantity > 0) 0 else 1
+                                item.copy(quantity = newUnits.coerceAtLeast(minAllowed))
+                            } else item
+                        }
+                        itemToEditIndex = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow, contentColor = BardahlBlack)
+                ) {
+                    Text("Valider", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToEditIndex = null }) {
+                    Text("Annuler", color = TextSecondaryDark)
                 }
             }
         )

@@ -48,11 +48,11 @@ object PromotionEngine {
         if (raw.isNullOrBlank()) return "AUTRES"
         val u = raw.uppercase().trim()
         return when {
-            u.contains("A0000000-0000-0000-0000-000000000002") || u.contains("GRAISSE") || u.contains("IND_GRAISSE") || (u.contains("IND") && !u.contains("AEROSOL")) -> "IND_GRAISSES"
-            u.contains("1FC40C43-AB74-41BC-919E-2268B742CB9A") || u.contains("ADDITIF") || u.contains("TRAITEMENT") || u.contains("SUMOLUB") -> "ADDITIFS"
-            u.contains("A0000000-0000-0000-0000-000000000001") || u.contains("LUB_AUTO") || u.contains("HUILE") || u.contains("AUTO") -> "LUB_AUTO"
-            u.contains("A0000000-0000-0000-0000-000000000003") || u.contains("IND_AEROSOL") || u.contains("AEROSOL") || u.contains("NETTOYANT") -> "IND_AEROSOLS"
-            u.contains("A0000000-0000-0000-0000-000000000005") || u.contains("A0000000-0000-0000-0000-000000000006") || u.contains("FLUIDE") || u.contains("LR") -> "FLUIDES_LR"
+            u.contains("FA0012") || u.contains("A0000000-0000-0000-0000-000000000002") || u.contains("GRAISSE") || u.contains("IND_GRAISSE") || (u.contains("IND") && !u.contains("AEROSOL")) -> "IND_GRAISSES"
+            u.contains("FA0014") || u.contains("FA0015") || u.contains("FA0016") || u.contains("1FC40C43-AB74-41BC-919E-2268B742CB9A") || u.contains("ADDITIF") || u.contains("TRAITEMENT") || u.contains("SUMOLUB") -> "ADDITIFS"
+            u.contains("FA0027") || u.contains("FA0028") || u.contains("FA0029") || u.contains("A0000000-0000-0000-0000-000000000001") || u.contains("LUB_AUTO") || u.contains("HUILE") || u.contains("AUTO") || u.contains("LUBRIFIANT") -> "LUB_AUTO"
+            u.contains("FA0020") || u.contains("A0000000-0000-0000-0000-000000000003") || u.contains("IND_AEROSOL") || u.contains("AEROSOL") || u.contains("NETTOYANT") || u.contains("DEGRIPPANT") -> "IND_AEROSOLS"
+            u.contains("FA0021") || u.contains("A0000000-0000-0000-0000-000000000005") || u.contains("A0000000-0000-0000-0000-000000000006") || u.contains("FLUIDE") || u.contains("LR") || u.contains("REFROIDISSEMENT") -> "FLUIDES_LR"
             u.contains("98A08F5A-C31B-496D-AD6B-44FD676B38AE") || u.contains("MOTO") -> "LUBRIFIANTS_MOTO"
             u.contains("397C5A02-FA1A-49F8-A05A-757AFAA00D01") || u.contains("LAVE") -> "LAVE_GLACE"
             else -> u
