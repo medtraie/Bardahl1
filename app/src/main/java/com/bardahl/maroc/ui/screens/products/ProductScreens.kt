@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import com.bardahl.maroc.domain.model.Product
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
+import com.bardahl.maroc.domain.model.UserRole
+import com.bardahl.maroc.ui.viewmodels.AuthState
+import com.bardahl.maroc.ui.viewmodels.AuthViewModel
 import com.bardahl.maroc.ui.viewmodels.ProductViewModel
 
 data class CategoryFilterItem(val code: String, val label: String)
@@ -35,11 +38,16 @@ data class CategoryFilterItem(val code: String, val label: String)
 @Composable
 fun ProductCatalogScreen(
     productViewModel: ProductViewModel,
+    authViewModel: AuthViewModel? = null,
     onSettingsClick: () -> Unit
 ) {
     val context = LocalContext.current
     val productsList by productViewModel.products.collectAsState()
     val searchQuery by productViewModel.searchQuery.collectAsState()
+
+    val authState = authViewModel?.authState?.collectAsState()?.value
+    val currentUser = (authState as? AuthState.Success)?.user
+    val isAdmin = currentUser?.role == UserRole.ADMIN || currentUser?.email.equals("bardahl@gmail.com", ignoreCase = true)
 
     var isTableView by remember { mutableStateOf(false) }
     var selectedCategoryCode by remember { mutableStateOf("ALL") }
@@ -99,13 +107,15 @@ fun ProductCatalogScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = BardahlYellow,
-                contentColor = BardahlBlack,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Ajouter Produit")
+            if (isAdmin) {
+                FloatingActionButton(
+                    onClick = { showAddDialog = true },
+                    containerColor = BardahlYellow,
+                    contentColor = BardahlBlack,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Ajouter Produit")
+                }
             }
         },
         containerColor = DarkBackground
@@ -170,6 +180,7 @@ fun ProductCatalogScreen(
             if (isTableView) {
                 ProductsTableView(
                     products = filteredProducts,
+                    isAdmin = isAdmin,
                     onEdit = { editingProduct = it },
                     onDelete = { deletingProduct = it }
                 )
@@ -181,6 +192,7 @@ fun ProductCatalogScreen(
                     items(filteredProducts) { product ->
                         ProductCardStructured(
                             product = product,
+                            isAdmin = isAdmin,
                             onEdit = { editingProduct = product },
                             onDelete = { deletingProduct = product }
                         )
@@ -248,6 +260,7 @@ fun ProductCatalogScreen(
 @Composable
 fun ProductCardStructured(
     product: Product,
+    isAdmin: Boolean = false,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -343,42 +356,44 @@ fun ProductCardStructured(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            if (isAdmin) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons Row (Modifier & Supprimer)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onEdit,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BardahlYellow.copy(alpha = 0.15f),
-                        contentColor = BardahlYellow
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                // Action Buttons Row (Modifier & Supprimer)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Modifier", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
-                }
+                    Button(
+                        onClick = onEdit,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BardahlYellow.copy(alpha = 0.15f),
+                            contentColor = BardahlYellow
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Modifier", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                    }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
-                Button(
-                    onClick = onDelete,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = StatusCancelled.copy(alpha = 0.15f),
-                        contentColor = StatusCancelled
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = StatusCancelled, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Supprimer", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = StatusCancelled)
+                    Button(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StatusCancelled.copy(alpha = 0.15f),
+                            contentColor = StatusCancelled
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = StatusCancelled, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Supprimer", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = StatusCancelled)
+                    }
                 }
             }
         }
@@ -388,6 +403,7 @@ fun ProductCardStructured(
 @Composable
 fun ProductsTableView(
     products: List<Product>,
+    isAdmin: Boolean = false,
     onEdit: (Product) -> Unit,
     onDelete: (Product) -> Unit
 ) {
@@ -411,7 +427,7 @@ fun ProductsTableView(
                 TableCell("Viscosité", width = 90.dp, header = true)
                 TableCell("Conditionnement", width = 140.dp, header = true)
                 TableCell("Prix TTC", width = 110.dp, header = true)
-                TableCell("Actions", width = 100.dp, header = true)
+                if (isAdmin) TableCell("Actions", width = 100.dp, header = true)
             }
 
             HorizontalDivider(color = BardahlCardBorder)
@@ -428,12 +444,14 @@ fun ProductsTableView(
                         TableCell(product.viscosity ?: "N/A", width = 90.dp, highlight = !product.viscosity.isNullOrBlank())
                         TableCell(product.packaging, width = 140.dp)
                         TableCell("${String.format("%.2f", product.unitPriceTtc)} DH", width = 110.dp, gold = true)
-                        Row(modifier = Modifier.width(100.dp)) {
-                            IconButton(onClick = { onEdit(product) }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = BardahlYellow, modifier = Modifier.size(16.dp))
-                            }
-                            IconButton(onClick = { onDelete(product) }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = StatusCancelled, modifier = Modifier.size(16.dp))
+                        if (isAdmin) {
+                            Row(modifier = Modifier.width(100.dp)) {
+                                IconButton(onClick = { onEdit(product) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                                }
+                                IconButton(onClick = { onDelete(product) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = StatusCancelled, modifier = Modifier.size(16.dp))
+                                }
                             }
                         }
                     }

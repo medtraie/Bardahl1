@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 
 export default function Login() {
   const { login } = useApp()
-  const [email, setEmail] = useState('bardahl@gmail.com')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -85,12 +85,32 @@ export default function Login() {
           marginBottom: '20px',
           fontSize: '12px',
           fontWeight: '800',
-          background: isEmailAdmin ? 'rgba(255, 208, 0, 0.15)' : 'rgba(0, 122, 255, 0.15)',
-          color: isEmailAdmin ? 'var(--bardahl-yellow)' : '#007AFF',
-          border: isEmailAdmin ? '1px solid var(--bardahl-yellow)' : '1px solid rgba(0, 122, 255, 0.3)'
+          background: !email.trim()
+            ? 'rgba(255, 208, 0, 0.1)'
+            : (isEmailAdmin ? 'rgba(255, 208, 0, 0.15)' : 'rgba(0, 122, 255, 0.15)'),
+          color: !email.trim()
+            ? 'var(--bardahl-yellow)'
+            : (isEmailAdmin ? 'var(--bardahl-yellow)' : '#007AFF'),
+          border: !email.trim()
+            ? '1px solid rgba(255, 208, 0, 0.3)'
+            : (isEmailAdmin ? '1px solid var(--bardahl-yellow)' : '1px solid rgba(0, 122, 255, 0.3)')
         }}>
-          {isEmailAdmin ? <Shield style={{ width: '16px', height: '16px' }} /> : <UserCheck style={{ width: '16px', height: '16px' }} />}
-          {isEmailAdmin ? "Compte Administrateur Global (bardahl@gmail.com)" : "Compte Agent Commercial Supabase"}
+          {!email.trim() ? (
+            <>
+              <ShieldCheck style={{ width: '16px', height: '16px' }} />
+              <span>Portail d'Authentification Sécurisé</span>
+            </>
+          ) : isEmailAdmin ? (
+            <>
+              <Shield style={{ width: '16px', height: '16px' }} />
+              <span>Compte Administrateur Global (bardahl@gmail.com)</span>
+            </>
+          ) : (
+            <>
+              <UserCheck style={{ width: '16px', height: '16px' }} />
+              <span>Compte Agent Commercial Supabase</span>
+            </>
+          )}
         </div>
 
         {/* Form Inputs */}

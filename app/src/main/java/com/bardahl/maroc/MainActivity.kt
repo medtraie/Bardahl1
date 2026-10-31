@@ -252,6 +252,7 @@ fun MainAppNavHost(
                 composable(Screen.Products.route) {
                     ProductCatalogScreen(
                         productViewModel = productViewModel,
+                        authViewModel = authViewModel,
                         onSettingsClick = navigateToSettings
                     )
                 }

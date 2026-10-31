@@ -40,7 +40,7 @@ fun LoginScreen(
 ) {
     val authState by authViewModel.authState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    var email by remember { mutableStateOf("bardahl@gmail.com") }
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
     val isEmailAdmin = email.trim().lowercase() == "bardahl@gmail.com"
@@ -177,7 +177,8 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isEmailAdmin) "Compte Administrateur Global (bardahl@gmail.com)"
+                            text = if (email.trim().isBlank()) "Portail d'Authentification Sécurisé"
+                                   else if (isEmailAdmin) "Compte Administrateur Global (bardahl@gmail.com)"
                                    else "Compte Agent Commercial Supabase",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,

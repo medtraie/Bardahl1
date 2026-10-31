@@ -110,7 +110,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           alt="Official Bardahl Logo"
           style={{ width: '130px', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(255, 208, 0, 0.45))' }}
         />
-        <span style={{ color: 'var(--bardahl-yellow)', fontSize: '11px', fontWeight: '800', letterSpacing: '1px' }}>MAGHREB S.A</span>
+        <span style={{ color: 'var(--bardahl-yellow)', fontSize: '11px', fontWeight: '800', letterSpacing: '1px' }}>MAGHREB</span>
       </div>
 
       {/* Navigation Area with Smart Mouse Slider (شريط سحب ذكي للتنقل السلس بالماوس بين الأقسام) */}
