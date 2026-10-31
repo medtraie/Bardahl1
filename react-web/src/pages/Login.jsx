@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 export default function Login() {
   const { login } = useApp()
   const [email, setEmail] = useState('bardahl@gmail.com')
-  const [password, setPassword] = useState('123456')
+  const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
   const isEmailAdmin = email.trim().toLowerCase() === 'bardahl@gmail.com'

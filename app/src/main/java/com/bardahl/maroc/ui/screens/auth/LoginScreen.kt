@@ -41,7 +41,7 @@ fun LoginScreen(
     val authState by authViewModel.authState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     var email by remember { mutableStateOf("bardahl@gmail.com") }
-    var password by remember { mutableStateOf("123456") }
+    var password by remember { mutableStateOf("") }
 
     val isEmailAdmin = email.trim().lowercase() == "bardahl@gmail.com"
 
