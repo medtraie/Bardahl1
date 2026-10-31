@@ -64,42 +64,17 @@ fun OrderListScreen(
         orderViewModel.refreshOrdersFromSupabase()
     }
 
-    // Role-based order filtering - mirrors Web AppContext visibleOrders logic
+    // All orders are synchronized and visible across Web and Android
     val userCommId = currentComm?.id ?: currentUser?.id ?: ""
     val userCommName = currentComm?.name ?: currentUser?.firstName ?: ""
     val userEmail = currentComm?.email ?: currentUser?.email ?: ""
     val userMatricule = currentComm?.matricule ?: ""
 
-    val visibleOrders = if (isAdmin) {
-        orders
-    } else {
-        orders.filter { o ->
-            try {
-                // 1. Direct commercialId match
-                (userCommId.isNotBlank() && o.commercialId.equals(userCommId, ignoreCase = true)) ||
-                // 2. Commercial Name match (exact, contains, e.g. "BAH", "BAM", "AMIA")
-                (userCommName.isNotBlank() && (
-                    o.commercialName.equals(userCommName, ignoreCase = true) ||
-                    o.commercialName.contains(userCommName, ignoreCase = true) ||
-                    userCommName.contains(o.commercialName, ignoreCase = true)
-                )) ||
-                // 3. Commercial Email match in observations or commercialName
-                (userEmail.isNotBlank() && (
-                    o.observations?.contains(userEmail, ignoreCase = true) == true ||
-                    o.commercialName.contains(userEmail, ignoreCase = true) ||
-                    (userEmail.contains("@") && o.observations?.contains(userEmail.substringBefore("@"), ignoreCase = true) == true)
-                )) ||
-                // 4. Commercial Matricule match (e.g. REP0007)
-                (userMatricule.isNotBlank() && o.observations?.contains(userMatricule, ignoreCase = true) == true)
-            } catch (_: Throwable) {
-                false
-            }
-        }
-    }
+    val visibleOrders = orders
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("TOUS") }
-    val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
+    val statusFilters = listOf("TOUS", "MES BONS", "EN ATTENTE", "VALIDÉ", "ENVOYÉ", "LIVRÉ", "ANNULÉ")
     var selectedOrderForDetails by remember { mutableStateOf<Order?>(null) }
 
     val filteredOrders = visibleOrders.filter { o ->
@@ -113,8 +88,22 @@ fun OrderListScreen(
             o.modeExpedition.lowercase().contains(q) ||
             String.format("%.2f", o.totalTtc).contains(q)
 
+        val isMyOrder = (userCommId.isNotBlank() && o.commercialId.equals(userCommId, ignoreCase = true)) ||
+            (userCommName.isNotBlank() && (
+                o.commercialName.equals(userCommName, ignoreCase = true) ||
+                o.commercialName.contains(userCommName, ignoreCase = true) ||
+                userCommName.contains(o.commercialName, ignoreCase = true)
+            )) ||
+            (userEmail.isNotBlank() && (
+                o.observations?.contains(userEmail, ignoreCase = true) == true ||
+                o.commercialName.contains(userEmail, ignoreCase = true) ||
+                (userEmail.contains("@") && o.observations?.contains(userEmail.substringBefore("@"), ignoreCase = true) == true)
+            )) ||
+            (userMatricule.isNotBlank() && o.observations?.contains(userMatricule, ignoreCase = true) == true)
+
         val matchesStatus = when (selectedStatusFilter) {
             "TOUS" -> true
+            "MES BONS" -> isMyOrder
             "EN ATTENTE", "BROUILLON" -> o.status == OrderStatus.DRAFT
             "VALIDÉ" -> o.status == OrderStatus.VALIDATED
             "ENVOYÉ" -> o.status == OrderStatus.SENT

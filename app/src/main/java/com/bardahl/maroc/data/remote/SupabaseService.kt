@@ -558,7 +558,11 @@ class SupabaseService(
                 itemsJsonArr.put(itemObj)
             }
 
-            val finalCommName = if (isAdmin) "Créé par Administrateur" else order.commercialName
+            val commsList = getCachedCommercials()
+            val matchedComm = commsList.find { it.id == commId || it.name.equals(order.commercialName, ignoreCase = true) }
+            val finalCommName = if (isAdmin) "Créé par Administrateur" else (matchedComm?.name ?: order.commercialName)
+            val finalCommEmail = if (isAdmin) "bardahl@gmail.com" else (matchedComm?.email ?: "")
+
             val obsJson = JSONObject().apply {
                 put("items", itemsJsonArr)
                 put("paymentMethod", order.paymentMethod)
@@ -569,9 +573,7 @@ class SupabaseService(
                 put("remiseMontant", order.remiseMontant)
                 put("voucherDiscount", order.voucherDiscount)
                 put("commercialName", finalCommName)
-                if (isAdmin) {
-                    put("commercialEmail", "bardahl@gmail.com")
-                }
+                put("commercialEmail", finalCommEmail)
                 put("clientName", order.clientName)
                 put("hasAnormalPrice", order.hasAnormalPrice)
             }
