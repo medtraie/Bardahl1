@@ -12,8 +12,8 @@ android {
         applicationId = "com.bardahl.maroc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0 (Design 2026)"
+        versionCode = 2
+        versionName = "1.0.1 (Design 2026)"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

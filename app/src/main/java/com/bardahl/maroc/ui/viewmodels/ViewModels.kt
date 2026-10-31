@@ -31,7 +31,7 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _commercials = supabaseService.fetchCommercials()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -75,7 +75,7 @@ class AuthViewModel : ViewModel() {
             // Always fetch the freshest commercials to ensure any recently changed password in Équipe Commerciale is applied!
             try {
                 _commercials = supabaseService.fetchCommercials()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 if (_commercials.isEmpty()) {
                     _authState.value = AuthState.Error("Impossible de vérifier les identifiants. Vérifiez votre connexion Internet.")
                     return@launch
@@ -200,7 +200,7 @@ class DashboardViewModel(
             try {
                 val clients = clientRepository.fetchRemoteClientsDirectly()
                 _stats.value = _stats.value.copy(activeClientsCount = clients.size)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -231,7 +231,7 @@ class ClientViewModel(private val clientRepository: ClientRepository) : ViewMode
                 if (remote.isNotEmpty()) {
                     _clientsList.value = remote
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -286,7 +286,7 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
                 } else {
                     _products.value = BardahlCatalogData.allProducts
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
                 _products.value = BardahlCatalogData.allProducts
             }
@@ -319,7 +319,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
                 if (remote.isNotEmpty()) {
                     _devis.value = remote
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -332,7 +332,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
                 if (remote.isNotEmpty()) {
                     _promotions.value = remote
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -351,7 +351,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
                 _orders.value = if (merged.isNotEmpty()) merged else remote
                 refreshPromotions()
                 refreshDevisFromSupabase()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             } finally {
                 _isRefreshing.value = false
@@ -377,7 +377,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
                 val merged = (listOf(order) + remote).distinctBy { it.orderNumber }
                 _orders.value = merged
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -392,7 +392,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
                 val remote = orderRepository.fetchRemoteOrdersDirectly()
                 val merged = (listOf(order) + remote).distinctBy { it.orderNumber }
                 _orders.value = merged
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -409,7 +409,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             _devis.value = listOf(finalizedDevis) + _devis.value.filter { it.id != finalizedDevis.id && it.devisNumber != finalizedDevis.devisNumber }
             try {
                 supabaseService.postDevis(d)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -420,7 +420,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             _devis.value = _devis.value.map { if (it.id == d.id || it.devisNumber == d.devisNumber) d else it }
             try {
                 supabaseService.updateDevis(d)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }
@@ -431,7 +431,7 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             _devis.value = _devis.value.filter { it.id != id }
             try {
                 supabaseService.deleteDevis(id)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
         }

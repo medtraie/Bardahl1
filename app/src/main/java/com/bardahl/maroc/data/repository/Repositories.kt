@@ -101,7 +101,13 @@ class ClientRepository(
                     isSynced = true
                 )
             }
-            clientDao.insertClients(entities)
+            try {
+                entities.chunked(100).forEach { batch ->
+                    clientDao.insertClients(batch)
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
         }
         return remote
     }
@@ -151,7 +157,13 @@ class ProductRepository(
                     imageUrl = p.imageUrl
                 )
             }
-            productDao.insertProducts(entities)
+            try {
+                entities.chunked(50).forEach { batch ->
+                    productDao.insertProducts(batch)
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
         }
         return remote
     }
@@ -211,7 +223,13 @@ class OrderRepository(
                     isSynced = true
                 )
             }
-            orderDao.insertOrders(entities)
+            try {
+                entities.chunked(50).forEach { batch ->
+                    orderDao.insertOrders(batch)
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
         }
         return remote
     }

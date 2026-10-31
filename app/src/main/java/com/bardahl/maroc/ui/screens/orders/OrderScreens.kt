@@ -74,22 +74,26 @@ fun OrderListScreen(
         orders
     } else {
         orders.filter { o ->
-            // 1. Direct commercialId match
-            (userCommId.isNotBlank() && o.commercialId.equals(userCommId, ignoreCase = true)) ||
-            // 2. Commercial Name match (exact, contains, e.g. "BAH", "BAM", "AMIA")
-            (userCommName.isNotBlank() && (
-                o.commercialName.equals(userCommName, ignoreCase = true) ||
-                o.commercialName.contains(userCommName, ignoreCase = true) ||
-                userCommName.contains(o.commercialName, ignoreCase = true)
-            )) ||
-            // 3. Commercial Email match in observations or commercialName
-            (userEmail.isNotBlank() && (
-                o.observations?.contains(userEmail, ignoreCase = true) == true ||
-                o.commercialName.contains(userEmail, ignoreCase = true) ||
-                (userEmail.contains("@") && o.observations?.contains(userEmail.substringBefore("@"), ignoreCase = true) == true)
-            )) ||
-            // 4. Commercial Matricule match (e.g. REP0007)
-            (userMatricule.isNotBlank() && o.observations?.contains(userMatricule, ignoreCase = true) == true)
+            try {
+                // 1. Direct commercialId match
+                (userCommId.isNotBlank() && o.commercialId.equals(userCommId, ignoreCase = true)) ||
+                // 2. Commercial Name match (exact, contains, e.g. "BAH", "BAM", "AMIA")
+                (userCommName.isNotBlank() && (
+                    o.commercialName.equals(userCommName, ignoreCase = true) ||
+                    o.commercialName.contains(userCommName, ignoreCase = true) ||
+                    userCommName.contains(o.commercialName, ignoreCase = true)
+                )) ||
+                // 3. Commercial Email match in observations or commercialName
+                (userEmail.isNotBlank() && (
+                    o.observations?.contains(userEmail, ignoreCase = true) == true ||
+                    o.commercialName.contains(userEmail, ignoreCase = true) ||
+                    (userEmail.contains("@") && o.observations?.contains(userEmail.substringBefore("@"), ignoreCase = true) == true)
+                )) ||
+                // 4. Commercial Matricule match (e.g. REP0007)
+                (userMatricule.isNotBlank() && o.observations?.contains(userMatricule, ignoreCase = true) == true)
+            } catch (_: Throwable) {
+                false
+            }
         }
     }
 
