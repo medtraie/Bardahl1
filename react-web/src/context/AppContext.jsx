@@ -1468,9 +1468,7 @@ export function AppProvider({ children }) {
     await dbAddMacSecurityLog(log)
   }, [commercials])
 
-  // ── Role-based visibility & Cross-Platform Synchronization ─────────────────
-  // All orders and devis are synchronized and visible across Web and Android,
-  // while the UI dropdown allows filtering by representative (commercial) or seeing all.
+  // ── Role-based visibility ────────────────────────────────────────────────────
   const isAdmin = currentUser?.role === 'ADMIN'
 
   const visibleClients = isAdmin
@@ -1480,9 +1478,22 @@ export function AppProvider({ children }) {
         return comm && (comm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase()
       })
 
-  const visibleOrders = Array.isArray(orders) ? orders : []
+  const visibleOrders = isAdmin
+    ? (Array.isArray(orders) ? orders : [])
+    : (Array.isArray(orders) ? orders : []).filter(o => {
+        const comm = (Array.isArray(commercials) ? commercials : []).find(cm => cm.dbId === o.commercialDbId)
+        return comm && (comm.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase()
+      })
 
-  const visibleDevis = Array.isArray(devis) ? devis : []
+  const visibleDevis = isAdmin
+    ? (Array.isArray(devis) ? devis : [])
+    : (Array.isArray(devis) ? devis : []).filter(d => {
+        const comm = (Array.isArray(commercials) ? commercials : []).find(cm => cm.dbId === d.commercialDbId)
+        const commEmail = (comm?.email || d.commercialEmail || '').toLowerCase()
+        const userEmail = (currentUser?.email || '').toLowerCase()
+        return (d.commercialDbId && d.commercialDbId === currentUser?.commercialDbId) ||
+               (commEmail && commEmail === userEmail)
+      })
 
   return (
     <AppContext.Provider value={{

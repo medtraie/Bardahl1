@@ -57,11 +57,19 @@ fun DevisScreen(
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val context = LocalContext.current
 
-    // All devis are synchronized and visible across Web and Android
+    // Scoped visibility: Commercial sees only their own quotes, Admin sees all
     val userCommId = currentUser?.id ?: ""
     val userCommName = currentUser?.firstName ?: ""
     val userEmail = currentUser?.email ?: ""
-    val visibleDevis = devisList
+    val visibleDevis = if (isAdmin) {
+        devisList
+    } else {
+        devisList.filter { d ->
+            d.commercialId == userCommId ||
+            (userCommName.isNotBlank() && d.commercialName.contains(userCommName, ignoreCase = true)) ||
+            (userEmail.isNotBlank() && d.commercialEmail.equals(userEmail, ignoreCase = true))
+        }
+    }
 
     LaunchedEffect(Unit) {
         orderViewModel.refreshDevisFromSupabase()
@@ -69,7 +77,7 @@ fun DevisScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("TOUS") }
-    val statusFilters = listOf("TOUS", "MES DEVIS", "EN ATTENTE", "VALIDÉ", "CONVERTI", "EXPIRÉ")
+    val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "CONVERTI", "EXPIRÉ")
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedDevisForDetails by remember { mutableStateOf<Devis?>(null) }
@@ -80,18 +88,11 @@ fun DevisScreen(
                 d.devisNumber.lowercase().contains(q) ||
                 d.clientName.lowercase().contains(q) ||
                 d.commercialName.lowercase().contains(q) ||
-                d.date.lowercase().contains(q) ||
                 d.clientCity.lowercase().contains(q) ||
-                d.clientIce.lowercase().contains(q) ||
-                String.format("%.2f", d.totalTtc).contains(q)
-
-        val isMyDevis = (userCommId.isNotBlank() && d.commercialId.equals(userCommId, ignoreCase = true)) ||
-                (userCommName.isNotBlank() && d.commercialName.contains(userCommName, ignoreCase = true)) ||
-                (userEmail.isNotBlank() && d.commercialEmail.equals(userEmail, ignoreCase = true))
+                d.clientIce.lowercase().contains(q)
 
         val matchesStatus = when (selectedStatusFilter) {
             "TOUS" -> true
-            "MES DEVIS" -> isMyDevis
             "EN ATTENTE" -> d.status == DevisStatus.EN_ATTENTE
             "VALIDÉ" -> d.status == DevisStatus.VALIDE
             "CONVERTI" -> d.status == DevisStatus.CONVERTI
