@@ -1087,20 +1087,46 @@ export async function dbDeleteDevis(id) {
 
 // ─── REALTIME ────────────────────────────────────────────────────────────────
 
-
 export function subscribeToTable(table, callback) {
   try {
-    const channelId = `realtime-${table}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-    const channel = supabase
-      .channel(channelId)
-      .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
-        try {
-          callback(payload)
-        } catch (err) {
-          console.warn('Realtime callback error:', err)
-        }
-      })
-      .subscribe()
+    const rand = Math.random().toString(36).substring(2, 9)
+    const channelId = `realtime-${table}-${Date.now()}-${rand}`
+
+    // Remove any previous channel with identical name if any
+    try {
+      const existing = supabase.getChannels().find(c => c.topic === `realtime:${channelId}`)
+      if (existing) {
+        supabase.removeChannel(existing)
+      }
+    } catch (_) {}
+
+    const channel = supabase.channel(channelId)
+
+    // Strictly protect against 'cannot add postgres_changes callbacks after subscribe()'
+    try {
+      if (channel && typeof channel.on === 'function') {
+        channel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+          try {
+            if (typeof callback === 'function') {
+              callback(payload)
+            }
+          } catch (err) {
+            console.warn('Realtime callback execution error:', err)
+          }
+        })
+
+        channel.subscribe((status, err) => {
+          if (err) {
+            console.warn(`Realtime subscription error on ${table}:`, err)
+          }
+        })
+      }
+    } catch (onErr) {
+      console.warn('Could not register postgres_changes listener:', onErr)
+      try { supabase.removeChannel(channel) } catch (_) {}
+      return null
+    }
+
     return channel
   } catch (e) {
     console.warn('Realtime subscribe error:', e)

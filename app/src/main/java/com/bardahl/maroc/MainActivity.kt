@@ -53,26 +53,53 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val db = AppDatabase.getInstance(this)
-        val supabaseService = SupabaseService()
-        val clientRepository = ClientRepository(db.clientDao(), supabaseService)
-        val productRepository = ProductRepository(db.productDao(), supabaseService)
-        val orderRepository = OrderRepository(db.orderDao(), db.syncQueueDao(), supabaseService)
+        try {
+            val db = AppDatabase.getInstance(this)
+            val supabaseService = SupabaseService()
+            val clientRepository = ClientRepository(db.clientDao(), supabaseService)
+            val productRepository = ProductRepository(db.productDao(), supabaseService)
+            val orderRepository = OrderRepository(db.orderDao(), db.syncQueueDao(), supabaseService)
 
-        val dashboardViewModel = DashboardViewModel(orderRepository, clientRepository, productRepository)
-        val clientViewModel = ClientViewModel(clientRepository)
-        val productViewModel = ProductViewModel(productRepository)
-        val orderViewModel = OrderViewModel(orderRepository)
+            val dashboardViewModel = DashboardViewModel(orderRepository, clientRepository, productRepository)
+            val clientViewModel = ClientViewModel(clientRepository)
+            val productViewModel = ProductViewModel(productRepository)
+            val orderViewModel = OrderViewModel(orderRepository)
 
-        setContent {
-            BardahlTheme {
-                MainAppNavHost(
-                    authViewModel = authViewModel,
-                    dashboardViewModel = dashboardViewModel,
-                    clientViewModel = clientViewModel,
-                    productViewModel = productViewModel,
-                    orderViewModel = orderViewModel
-                )
+            setContent {
+                BardahlTheme {
+                    MainAppNavHost(
+                        authViewModel = authViewModel,
+                        dashboardViewModel = dashboardViewModel,
+                        clientViewModel = clientViewModel,
+                        productViewModel = productViewModel,
+                        orderViewModel = orderViewModel
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "Fatal initialization error in onCreate", t)
+            setContent {
+                BardahlTheme {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(BardahlBlack).padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Une erreur est survenue lors du démarrage",
+                                color = BardahlYellow,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                t.localizedMessage ?: "Erreur inattendue",
+                                color = TextSecondaryDark,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     }

@@ -35,7 +35,6 @@ class SupabaseService(
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("Prefer", "return=representation")
         conn.useCaches = false
-        conn.defaultUseCaches = false
         conn.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
         conn.setRequestProperty("Pragma", "no-cache")
         conn.connectTimeout = 10000
@@ -472,7 +471,12 @@ class SupabaseService(
                     }
 
                     val totalFreeUnits = parsedItems.sumOf { it.freeQuantity }
-                    val hasAnormal = obs.trim().startsWith("{") && obs.trim().endsWith("}") && JSONObject(obs.trim()).optBoolean("hasAnormalPrice", false)
+                    var hasAnormal = false
+                    try {
+                        if (obs.trim().startsWith("{") && obs.trim().endsWith("}")) {
+                            hasAnormal = JSONObject(obs.trim()).optBoolean("hasAnormalPrice", false)
+                        }
+                    } catch (_: Exception) {}
 
                     list.add(
                         Order(
