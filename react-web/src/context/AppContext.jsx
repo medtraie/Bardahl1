@@ -504,10 +504,7 @@ export function AppProvider({ children }) {
     const chCli  = subscribeToTable('clients',     refreshAll)
     const chOrd  = subscribeToTable('orders',      refreshAll)
     const chFam  = subscribeToTable('product_families', refreshAll)
-    const chLogs = subscribeToTable('logs', () => {
-      refreshAll()
-      refreshMacData()
-    })
+    const chLogs = subscribeToTable('logs', refreshAll)
     return () => {
       unsubscribeChannel(chComm)
       unsubscribeChannel(chCli)
@@ -515,7 +512,7 @@ export function AppProvider({ children }) {
       unsubscribeChannel(chFam)
       unsubscribeChannel(chLogs)
     }
-  }, [refreshAll, refreshMacData])
+  }, [refreshAll])
 
   // ── AUTH ─────────────────────────────────────────────────────────────────────
   const login = useCallback((inputEmail, inputPassword) => {
@@ -1333,6 +1330,10 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     refreshMacData()
+    const chLogs = subscribeToTable('logs', refreshMacData)
+    return () => {
+      unsubscribeChannel(chLogs)
+    }
   }, [refreshMacData])
 
   // Toggle Global MAC filtering
