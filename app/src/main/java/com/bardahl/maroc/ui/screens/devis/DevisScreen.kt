@@ -517,6 +517,7 @@ fun DevisScreen(
         CreateDevisDialog(
             clientViewModel = clientViewModel,
             productViewModel = productViewModel,
+            orderViewModel = orderViewModel,
             authViewModel = authViewModel,
             existingDevis = devisList,
             onDismiss = { showCreateDialog = false },
@@ -723,6 +724,7 @@ fun DevisCard(
 fun CreateDevisDialog(
     clientViewModel: ClientViewModel,
     productViewModel: ProductViewModel,
+    orderViewModel: OrderViewModel,
     authViewModel: AuthViewModel,
     existingDevis: List<Devis> = emptyList(),
     onDismiss: () -> Unit,
@@ -732,6 +734,9 @@ fun CreateDevisDialog(
     val products by productViewModel.products.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     val currentUser = (authState as? AuthState.Success)?.user
+
+    val promotions by orderViewModel.promotions.collectAsState()
+    var selectedPromoId by remember { mutableStateOf("AUTO") }
 
     val suggestedDevisNumber = remember(existingDevis) {
         com.bardahl.maroc.util.NumberGenerator.getNextDevisNumber(existingDevis)
@@ -757,10 +762,13 @@ fun CreateDevisDialog(
     var itemToEditIndex by remember { mutableStateOf<Int?>(null) }
     var editCartonsInput by remember { mutableStateOf("") }
     var editUnitsInput by remember { mutableStateOf("") }
-    val filteredProducts = products.filter {
+    val filteredProducts = products.distinctBy {
+        it.reference.trim().uppercase().ifEmpty { it.code.trim().uppercase() }.ifEmpty { it.id }
+    }.filter {
         productSearch.isBlank() ||
                 it.name.contains(productSearch, ignoreCase = true) ||
-                it.reference.contains(productSearch, ignoreCase = true)
+                it.reference.contains(productSearch, ignoreCase = true) ||
+                it.code.contains(productSearch, ignoreCase = true)
     }
 
     val filteredClients = clients.filter {
@@ -770,7 +778,29 @@ fun CreateDevisDialog(
                 it.ice.contains(clientSearch, ignoreCase = true)
     }
 
-    val totalTtc = selectedProductsList.sumOf { it.totalTtc }
+    val promoAnalysis = remember(selectedProductsList, products, promotions, selectedPromoId) {
+        if (selectedPromoId == "NONE") {
+            com.bardahl.maroc.util.PromotionResult()
+        } else {
+            com.bardahl.maroc.util.PromotionEngine.evaluatePromotions(
+                items = selectedProductsList,
+                allProducts = products,
+                promotions = promotions,
+                selectedChoices = emptyMap(),
+                selectedPromoId = selectedPromoId
+            )
+        }
+    }
+
+    val totalLineDiscountAmount = selectedProductsList.mapIndexed { idx, itm ->
+        val promoDiscount = promoAnalysis.lineDiscounts[idx] ?: 0.0
+        val finalPct = if (itm.discountPercentage > 0.0) itm.discountPercentage else promoDiscount
+        (itm.unitPriceTtc * itm.quantity) * (finalPct / 100.0)
+    }.sum()
+
+    val voucherDiscount = promoAnalysis.voucherDiscount
+    val grossTotalTtc = selectedProductsList.sumOf { it.unitPriceTtc * it.quantity }
+    val totalTtc = (grossTotalTtc - totalLineDiscountAmount - voucherDiscount).coerceAtLeast(0.0)
     val totalHt = totalTtc / 1.20
     val totalTva = totalTtc - totalHt
 
@@ -1419,6 +1449,140 @@ fun CreateDevisDialog(
                                             fontWeight = FontWeight.Black,
                                             color = BardahlYellow
                                         )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Step: Promotions & Offres Commerciales
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Promotions & Offres Commerciales",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BardahlYellow
+                            )
+                            if (selectedPromoId == "AUTO") {
+                                Text(
+                                    "Mode Auto",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StatusDelivered
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Sélectionnez une offre Bardahl ou laissez l'application automatique :",
+                            fontSize = 11.sp,
+                            color = TextSecondaryDark
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        var promoMenuExpanded by remember { mutableStateOf(false) }
+                        val selectedPromoObj = promotions.find { it.id == selectedPromoId }
+                        val selectedLabel = when (selectedPromoId) {
+                            "AUTO" -> "✨ Application Automatique (Recommandé — selon articles commandés)"
+                            "NONE" -> "🚫 Aucune Promotion (Appliquer le tarif standard sans offre)"
+                            else -> selectedPromoObj?.name ?: "Offre sélectionnée"
+                        }
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { promoMenuExpanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = DarkSurface,
+                                    contentColor = TextPrimaryDark
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = selectedLabel,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = BardahlYellow)
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = promoMenuExpanded,
+                                onDismissRequest = { promoMenuExpanded = false },
+                                modifier = Modifier.background(DarkSurface)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("✨ Application Automatique (Recommandé — selon articles commandés)", fontSize = 12.sp, color = BardahlYellow, fontWeight = FontWeight.Bold) },
+                                    onClick = {
+                                        selectedPromoId = "AUTO"
+                                        promoMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("🚫 Aucune Promotion (Appliquer le tarif standard sans offre)", fontSize = 12.sp, color = TextSecondaryDark) },
+                                    onClick = {
+                                        selectedPromoId = "NONE"
+                                        promoMenuExpanded = false
+                                    }
+                                )
+                                if (promotions.isNotEmpty()) {
+                                    HorizontalDivider(color = BardahlCardBorder)
+                                    promotions.filter { it.isActive }.forEach { promo ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(promo.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                                    Text(promo.description, fontSize = 10.sp, color = TextSecondaryDark)
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedPromoId = promo.id
+                                                promoMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (promoAnalysis.appliedPromotions.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            promoAnalysis.appliedPromotions.forEach { ap ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(DarkSurface, RoundedCornerShape(6.dp))
+                                        .border(1.dp, StatusDelivered.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(ap.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
+                                        Text("${ap.targetDisplay} • Atteint: ${ap.conditionReached}", fontSize = 10.sp, color = TextSecondaryDark)
+                                    }
+                                    if (ap.discountPercent > 0) {
+                                        Text("-${ap.discountPercent}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF007AFF))
+                                    }
+                                    if (!ap.giftSummary.isNullOrBlank()) {
+                                        Text("🎁 ${ap.giftSummary}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = StatusDelivered)
                                     }
                                 }
                             }

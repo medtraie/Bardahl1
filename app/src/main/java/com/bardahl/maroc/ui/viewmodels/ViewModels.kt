@@ -267,7 +267,11 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _products = MutableStateFlow<List<Product>>(BardahlCatalogData.allProducts)
+    private val _products = MutableStateFlow<List<Product>>(
+        BardahlCatalogData.allProducts.distinctBy {
+            it.reference.trim().uppercase().ifEmpty { it.code.trim().uppercase() }.ifEmpty { it.id }
+        }
+    )
     val products: StateFlow<List<Product>> = _products.asStateFlow()
 
     init {
@@ -280,15 +284,27 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
                 val remote = productRepository.fetchRemoteProductsDirectly()
                 if (remote.isNotEmpty()) {
                     val map = mutableMapOf<String, Product>()
-                    BardahlCatalogData.allProducts.forEach { map[it.id] = it }
-                    remote.forEach { map[it.id] = it }
-                    _products.value = map.values.toList()
+                    BardahlCatalogData.allProducts.forEach { p ->
+                        val key = p.reference.trim().uppercase().ifEmpty { p.code.trim().uppercase() }.ifEmpty { p.id }
+                        map[key] = p
+                    }
+                    remote.forEach { p ->
+                        val key = p.reference.trim().uppercase().ifEmpty { p.code.trim().uppercase() }.ifEmpty { p.id }
+                        map[key] = p
+                    }
+                    _products.value = map.values.toList().distinctBy {
+                        it.reference.trim().uppercase().ifEmpty { it.code.trim().uppercase() }.ifEmpty { it.id }
+                    }
                 } else {
-                    _products.value = BardahlCatalogData.allProducts
+                    _products.value = BardahlCatalogData.allProducts.distinctBy {
+                        it.reference.trim().uppercase().ifEmpty { it.code.trim().uppercase() }.ifEmpty { it.id }
+                    }
                 }
             } catch (e: Throwable) {
                 e.printStackTrace()
-                _products.value = BardahlCatalogData.allProducts
+                _products.value = BardahlCatalogData.allProducts.distinctBy {
+                    it.reference.trim().uppercase().ifEmpty { it.code.trim().uppercase() }.ifEmpty { it.id }
+                }
             }
         }
     }

@@ -4,8 +4,9 @@ import {
   Filter, Truck, MessageSquare, Package, X, ShoppingBag,
   Calculator, ArrowRight, Clock, AlertTriangle, RefreshCw,
   Coins, ChevronDown, User, FileSpreadsheet, Send, CheckSquare,
-  ArrowUpRight, Building2, MapPin, Eye, Phone, Calendar
+  ArrowUpRight, Building2, MapPin, Eye, Phone, Calendar, Sparkles
 } from 'lucide-react'
+import { evaluatePromotions } from '../utils/promotionEngine'
 import { useApp } from '../context/AppContext'
 import { generateDevisPdf } from '../utils/pdfGenerator'
 import { exportDevisToExcel } from '../utils/excelExporter'
@@ -21,6 +22,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
     clients = [],
     products = [],
     commercials = [],
+    promotions = [],
     addDevis,
     updateDevis,
     deleteDevis,
@@ -56,6 +58,8 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
   const [remisePercent, setRemisePercent] = useState(0)
   const [remiseMontant, setRemiseMontant] = useState(0)
   const [selectedProducts, setSelectedProducts] = useState([])
+  const [selectedPromoId, setSelectedPromoId] = useState('AUTO')
+  const [commercialPromoChoices, setCommercialPromoChoices] = useState({})
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [selectedProductCategoryFilter, setSelectedProductCategoryFilter] = useState('ALL')
 
@@ -197,38 +201,48 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
     setSelectedProducts(prev => prev.filter((_, idx) => idx !== index))
   }
 
+  // Real-time Promotions Evaluation
+  const promoAnalysis = useMemo(() => {
+    return evaluatePromotions(selectedProducts, products, promotions, commercialPromoChoices, selectedPromoId)
+  }, [selectedProducts, products, promotions, commercialPromoChoices, selectedPromoId])
+
   // Financial calculations for devis wizard
   const wizardCalculations = useMemo(() => {
     let brutTtc = 0
     let linesDiscount = 0
 
-    selectedProducts.forEach(it => {
+    selectedProducts.forEach((it, idx) => {
       const lineBrut = (it.qty || 0) * (it.priceTtc || 0)
-      const lineRemiseDh = lineBrut * ((it.remise || 0) / 100)
+      const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+      const parsedRemise = parseFloat(it.remise) || 0
+      const finalPct = parsedRemise > 0 ? parsedRemise : promoDiscount
+      const lineRemiseDh = lineBrut * (finalPct / 100)
       brutTtc += lineBrut
       linesDiscount += lineRemiseDh
     })
 
     const afterLinesDiscount = Math.max(0, brutTtc - linesDiscount)
+    const voucherDiscount = promoAnalysis.voucherDiscount || 0
     const globalRemiseDh = remiseMontant > 0 
       ? remiseMontant 
       : (remisePercent > 0 ? (afterLinesDiscount * (remisePercent / 100)) : 0)
 
-    const finalTtc = Math.max(0, afterLinesDiscount - globalRemiseDh)
+    const finalTtc = Math.max(0, afterLinesDiscount - globalRemiseDh - voucherDiscount)
     const totalHt = Math.round((finalTtc / 1.20) * 100) / 100
     const totalTva = Math.round((finalTtc - totalHt) * 100) / 100
-    const totalDiscount = Math.round((linesDiscount + globalRemiseDh) * 100) / 100
+    const totalDiscount = Math.round((linesDiscount + globalRemiseDh + voucherDiscount) * 100) / 100
 
     return {
       brutTtc,
       linesDiscount,
+      voucherDiscount,
       globalRemiseDh,
       totalDiscount,
       totalHt,
       totalTva,
       totalTtc: Math.round(finalTtc * 100) / 100
     }
-  }, [selectedProducts, remisePercent, remiseMontant])
+  }, [selectedProducts, remisePercent, remiseMontant, promoAnalysis])
 
   // Save Devis Handler
   const handleSaveDevis = async (andConvertNow = false) => {
@@ -267,6 +281,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       remarque,
       remisePercent,
       remiseMontant,
+      selectedPromoId,
       items: selectedProducts,
       totalHt: wizardCalculations.totalHt,
       totalDiscount: wizardCalculations.totalDiscount,
@@ -1301,6 +1316,96 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+
+                            {/* Section 3: Promotions & Offres Commerciales */}
+              <div style={{ background: '#14171F', padding: '16px', borderRadius: '14px', border: '1px solid var(--border-card)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '800', color: 'var(--bardahl-yellow)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={16} /> Promotions & Offres Commerciales
+                  </label>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Sélectionnez une offre Bardahl ou laissez l'application automatique
+                  </span>
+                </div>
+
+                {/* Promotion Selector Dropdown */}
+                <div>
+                  <select
+                    value={selectedPromoId}
+                    onChange={e => setSelectedPromoId(e.target.value)}
+                    className="input-field"
+                    style={{ width: '100%', fontWeight: '700', fontSize: '13px', padding: '12px 14px' }}
+                  >
+                    <option value="AUTO">✨ Application Automatique (Recommandé — selon articles commandés)</option>
+                    <option value="NONE">🚫 Aucune Promotion (Appliquer le tarif standard sans offre)</option>
+                    {promotions && promotions.filter(p => p.isActive !== false).length > 0 && (
+                      <optgroup label="── Offres Commerciales Actives Définies ──">
+                        {promotions.filter(p => p.isActive !== false).map(p => {
+                          const typeLabel = p.type === 'TYPE_1' ? 'Type 1 Remise' : p.type === 'TYPE_2' ? 'Type 2 Gratuit' : p.type === 'TYPE_3' ? "Type 3 Bon d'achat" : 'Type 4 CA Famille'
+                          const targetInfo = p.targetType === 'FAMILY' ? `Famille ${p.targetFamily}` : (p.targetProductName || p.targetProductRef)
+                          const thresholdInfo = p.type === 'TYPE_4' ? `Dès ${p.threshold} DH` : `Dès ${p.threshold} cartons`
+                          return (
+                            <option key={p.id} value={p.id}>
+                              [{typeLabel}] {p.name} — {targetInfo} ({thresholdInfo})
+                            </option>
+                          )
+                        })}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                {/* Status Feedback Display for Chosen Mode */}
+                {selectedPromoId === 'NONE' ? (
+                  <div style={{ padding: '10px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border-card)', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🚫 Mode sans promotion activé. Aucune remise ni gratuité promotionnelle ne sera calculée sur ce devis.</span>
+                  </div>
+                ) : selectedPromoId === 'AUTO' ? (
+                  promoAnalysis.appliedPromotions && promoAnalysis.appliedPromotions.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#34C759', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 size={14} /> {promoAnalysis.appliedPromotions.length} offre(s) commerciale(s) activée(s) automatiquement :
+                      </div>
+                      {promoAnalysis.appliedPromotions.map((ap, i) => (
+                        <div key={i} style={{ background: '#0D0F12', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(52, 199, 89, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '12px' }}>
+                          <div>
+                            <strong style={{ color: '#FFFFFF', display: 'block' }}>{ap.name}</strong>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '11px', marginTop: '2px' }}>
+                              Cible : <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>{ap.targetDisplay}</span> • Condition atteinte : {ap.conditionReached}
+                              {ap.appliedTierInfo && <span style={{ color: '#34C759', marginLeft: '6px' }}>({ap.appliedTierInfo})</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {ap.discountPercent > 0 && (
+                              <span style={{ background: 'rgba(0, 122, 255, 0.15)', color: '#007AFF', border: '1px solid rgba(0, 122, 255, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                Remise : {ap.discountPercent}%
+                              </span>
+                            )}
+                            {ap.giftSummary && (
+                              <span style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759', border: '1px solid rgba(52, 199, 89, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                🎁 {ap.giftSummary}
+                              </span>
+                            )}
+                            {ap.voucherAmount > 0 && (
+                              <span style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#FF9500', border: '1px solid rgba(255, 149, 0, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                                Bon : -{(parseFloat(ap.voucherAmount) || 0).toFixed(2)} DH
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '10px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border-card)', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>✨ L'application détecte automatiquement les meilleures remises et gratuités selon les quantités et seuils atteints.</span>
+                    </div>
+                  )
+                ) : (
+                  <div style={{ padding: '10px 14px', background: 'rgba(255, 208, 0, 0.05)', borderRadius: '8px', border: '1px solid rgba(255, 208, 0, 0.3)', fontSize: '12px', color: 'var(--bardahl-yellow)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Offre sélectionnée manuellement : {promotions.find(p => p.id === selectedPromoId)?.name}</span>
                   </div>
                 )}
               </div>
