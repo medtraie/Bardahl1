@@ -804,6 +804,130 @@ fun CreateDevisDialog(
     val totalHt = totalTtc / 1.20
     val totalTva = totalTtc - totalHt
 
+    val applyPromotionToDevis: (Promotion) -> Unit = { promo ->
+        // 1. Locate the target product in catalog (multi-refs, normalized family & keywords)
+        val targetProduct = (if (promo.targetType == PromoTargetType.PRODUCT) {
+            products.find { p ->
+                p.id == promo.targetProductId ||
+                p.reference == promo.targetProductRef ||
+                (promo.targetProductRefs.isNotEmpty() && promo.targetProductRefs.any { r -> r.equals(p.reference, ignoreCase = true) || r.equals(p.code, ignoreCase = true) || r.equals(p.id, ignoreCase = true) }) ||
+                (promo.targetProductRef != null && p.code.equals(promo.targetProductRef, ignoreCase = true)) ||
+                (promo.targetProductName != null && p.name.contains(promo.targetProductName!!, ignoreCase = true)) ||
+                (promo.targetProductRef != null && p.name.contains(promo.targetProductRef!!, ignoreCase = true))
+            }
+        } else {
+            val targetFam = com.bardahl.maroc.util.PromotionEngine.normalizeFamily(promo.targetFamily)
+            val existingItem = selectedProductsList.find { item ->
+                val meta = products.find { it.id == item.productId || it.reference == item.productReference }
+                com.bardahl.maroc.util.PromotionEngine.normalizeFamily(meta?.categoryId) == targetFam
+            }
+            if (existingItem != null) {
+                products.find { it.id == existingItem.productId || it.reference == existingItem.productReference }
+            } else {
+                products.find { p ->
+                    com.bardahl.maroc.util.PromotionEngine.normalizeFamily(p.categoryId) == targetFam ||
+                    p.name.contains(targetFam, ignoreCase = true) ||
+                    (p.categoryId != null && p.categoryId.contains(targetFam, ignoreCase = true))
+                }
+            }
+        }) ?: products.find { p ->
+            (promo.targetProductRefs.isNotEmpty() && promo.targetProductRefs.any { r -> r.equals(p.reference, ignoreCase = true) || r.equals(p.code, ignoreCase = true) }) ||
+            promo.name.contains(p.name, ignoreCase = true) ||
+            (p.reference.isNotBlank() && promo.name.contains(p.reference, ignoreCase = true)) ||
+            (promo.name.contains("ADDITIF", ignoreCase = true) && (p.name.contains("ADDITIF", ignoreCase = true) || p.name.contains("TRAITEMENT", ignoreCase = true) || com.bardahl.maroc.util.PromotionEngine.normalizeFamily(p.categoryId) == "ADDITIFS")) ||
+            (promo.name.contains("HUILE", ignoreCase = true) && (p.name.contains("HUILE", ignoreCase = true) || com.bardahl.maroc.util.PromotionEngine.normalizeFamily(p.categoryId) == "LUB_AUTO")) ||
+            (promo.name.contains("GRAISSE", ignoreCase = true) && (p.name.contains("GRAISSE", ignoreCase = true) || com.bardahl.maroc.util.PromotionEngine.normalizeFamily(p.categoryId) == "IND_GRAISSES"))
+        } ?: products.firstOrNull()
+
+        if (targetProduct != null) {
+            val upb = if (targetProduct.unitsPerBox > 0) targetProduct.unitsPerBox else 12
+
+            val targetThreshold: Double = if (promo.tiers.isNotEmpty()) {
+                val valid = promo.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 }
+                if (valid.isNotEmpty()) {
+                    if (valid.first().min > 0.0) valid.first().min else valid.first().threshold.toDouble()
+                } else {
+                    if (promo.tiers.first().min > 0.0) promo.tiers.first().min else promo.tiers.first().threshold.toDouble()
+                }
+            } else {
+                promo.threshold
+            }
+
+            val requiredUnits = if (promo.type == PromotionType.TYPE_4) {
+                val price = targetProduct.unitPriceTtc
+                val targetFam = com.bardahl.maroc.util.PromotionEngine.normalizeFamily(promo.targetFamily)
+                val currentFamAmt = selectedProductsList.sumOf { item ->
+                    val meta = products.find { it.id == item.productId || it.reference == item.productReference }
+                    if (com.bardahl.maroc.util.PromotionEngine.normalizeFamily(meta?.categoryId) == targetFam) {
+                        item.unitPriceTtc * item.quantity
+                    } else 0.0
+                }
+                val missing = maxOf(0.0, targetThreshold - currentFamAmt)
+                val needed = if (missing > 0.0) missing else targetThreshold
+                kotlin.math.ceil(needed / if (price > 0) price else 100.0).toInt().coerceAtLeast(1)
+            } else {
+                val reqCartons = targetThreshold.toInt().coerceAtLeast(1)
+                reqCartons * upb
+            }
+
+            val freeCartons = if (promo.type == PromotionType.TYPE_2) {
+                if (promo.tiers.isNotEmpty()) promo.tiers.first().freeQuantity else promo.freeQuantity.coerceAtLeast(1)
+            } else 0
+            val freeUnits = freeCartons * upb
+
+            val discountPct = if (promo.tiers.isNotEmpty()) {
+                promo.tiers.first().discountPercent
+            } else {
+                promo.discountPercent
+            }
+
+            val existingIdx = selectedProductsList.indexOfFirst { it.productId == targetProduct.id || it.productReference == targetProduct.reference }
+            if (existingIdx >= 0) {
+                selectedProductsList = selectedProductsList.mapIndexed { idx, itm ->
+                    if (idx == existingIdx) {
+                        val newQty = if (promo.type == PromotionType.TYPE_4) itm.quantity + requiredUnits else maxOf(itm.quantity, requiredUnits)
+                        val newFree = if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.SAME_PRODUCT) maxOf(itm.freeQuantity, freeUnits) else itm.freeQuantity
+                        val newDisc = if (discountPct > 0.0) discountPct else itm.discountPercentage
+                        itm.copy(quantity = newQty, freeQuantity = newFree, discountPercentage = newDisc, unitsPerBox = upb, promoTag = promo.name)
+                    } else itm
+                }
+            } else {
+                val newItem = OrderItem(
+                    productId = targetProduct.id,
+                    productName = targetProduct.name,
+                    productReference = targetProduct.reference,
+                    quantity = requiredUnits,
+                    freeQuantity = if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.SAME_PRODUCT) freeUnits else 0,
+                    discountPercentage = discountPct,
+                    unitPriceTtc = targetProduct.unitPriceTtc,
+                    unitsPerBox = upb,
+                    promoTag = promo.name
+                )
+                val updatedList = selectedProductsList.toMutableList()
+                updatedList.add(newItem)
+
+                if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.DIFFERENT_PRODUCT && freeUnits > 0) {
+                    val freeProd = products.find { it.id == promo.freeProductId || it.reference == promo.freeProductRef }
+                    if (freeProd != null) {
+                        updatedList.add(
+                            OrderItem(
+                                productId = freeProd.id,
+                                productName = freeProd.name,
+                                productReference = freeProd.reference,
+                                quantity = 0,
+                                freeQuantity = freeUnits,
+                                unitPriceTtc = 0.0,
+                                unitsPerBox = freeProd.unitsPerBox,
+                                promoTag = "Cadeau: ${promo.name}"
+                            )
+                        )
+                    }
+                }
+                selectedProductsList = updatedList
+            }
+        }
+    }
+
     // Saisie directe de Cartons & Unités par clavier
     if (itemToEditIndex != null && itemToEditIndex!! in selectedProductsList.indices) {
         val itm = selectedProductsList[itemToEditIndex!!]
@@ -1540,6 +1664,7 @@ fun CreateDevisDialog(
                                     onClick = {
                                         selectedPromoId = "NONE"
                                         promoMenuExpanded = false
+                                        selectedProductsList = selectedProductsList.map { it.copy(discountPercentage = 0.0, promoTag = "") }
                                     }
                                 )
                                 if (promotions.isNotEmpty()) {
@@ -1555,6 +1680,7 @@ fun CreateDevisDialog(
                                             onClick = {
                                                 selectedPromoId = promo.id
                                                 promoMenuExpanded = false
+                                                applyPromotionToDevis(promo)
                                             }
                                         )
                                     }

@@ -92,12 +92,16 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       setRemarque(dev.remarque || '')
       setRemisePercent(dev.remisePercent || 0)
       setRemiseMontant(dev.remiseMontant || 0)
+      setSelectedPromoId(dev.selectedPromoId || 'AUTO')
+      setCommercialPromoChoices({})
       setSelectedProducts(dev.items ? dev.items.map(it => ({ ...it })) : [])
     } else {
       setEditingDevis(null)
       setCustomDevisNumber(suggestedDevisNumber)
       setSelectedClient('')
       setClientSearchQuery('')
+      setSelectedPromoId('AUTO')
+      setCommercialPromoChoices({})
       setPaymentMethod('Chèque')
       setModeExpedition('Transport Bardahl')
       setRemarque('')
@@ -199,6 +203,141 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
 
   const handleRemoveProductLine = (index) => {
     setSelectedProducts(prev => prev.filter((_, idx) => idx !== index))
+  }
+
+  // Handle promotion selection: auto-populates products & applies discounts identical to Orders / Bon de Commande
+  const handleSelectPromotion = (promoId) => {
+    setSelectedPromoId(promoId)
+    setCommercialPromoChoices({})
+
+    if (promoId === 'NONE') {
+      setSelectedProducts(prev => prev.map(p => ({ ...p, remise: 0 })))
+      setRemiseMontant(0)
+      return
+    }
+
+    if (promoId === 'AUTO') {
+      return
+    }
+
+    const promo = promotions.find(p => p.id === promoId)
+    if (!promo) return
+
+    // 1. Locate the target product in catalog
+    let targetProduct = null
+    if (promo.targetType === 'PRODUCT') {
+      const targetRefs = (promo.targetProductRefs && Array.isArray(promo.targetProductRefs) && promo.targetProductRefs.length > 0)
+        ? promo.targetProductRefs
+        : (promo.targetProductRef ? [promo.targetProductRef] : (promo.targetProductId ? [promo.targetProductId] : []))
+
+      targetProduct = products.find(p =>
+        targetRefs.some(ref => ref === p.id || ref === p.reference || ref === p.code) ||
+        (promo.targetProductName && p.name && p.name.toLowerCase() === promo.targetProductName.toLowerCase()) ||
+        (promo.targetProductRef && p.name && p.name.toLowerCase().includes(promo.targetProductRef.toLowerCase())) ||
+        (promo.targetProductName && p.name && p.name.toLowerCase().includes(promo.targetProductName.toLowerCase()))
+      )
+    } else if (promo.targetType === 'FAMILY') {
+      const targetFamInfo = getFamilyInfo(promo.targetFamily, activeFamilies)
+      // Check if user already has an item from this family in the cart
+      const existingFamilyItem = selectedProducts.find(item => {
+        const itemFam = getFamilyInfo(item.category, activeFamilies)
+        return itemFam.code === targetFamInfo.code
+      })
+      if (existingFamilyItem) {
+        targetProduct = products.find(p => p.id === existingFamilyItem.productId || p.reference === existingFamilyItem.reference)
+      }
+      if (!targetProduct) {
+        targetProduct = products.find(p => {
+          const pFam = getFamilyInfo(p.category || p.categoryId || '', activeFamilies)
+          return pFam.code === targetFamInfo.code
+        })
+      }
+    }
+
+    // Fallback: search in promo name or description
+    if (!targetProduct) {
+      targetProduct = products.find(p =>
+        (promo.name && p.name && promo.name.toLowerCase().includes(p.name.toLowerCase())) ||
+        (promo.name && p.reference && promo.name.toLowerCase().includes(p.reference.toLowerCase())) ||
+        (promo.description && p.name && promo.description.toLowerCase().includes(p.name.toLowerCase()))
+      )
+    }
+
+    if (!targetProduct && products.length > 0) {
+      targetProduct = products[0]
+    }
+
+    // 2. Required quantity in UNITS
+    let requiredUnits = 1
+    let targetThreshold = promo.threshold || 1
+
+    if (promo.tiers && Array.isArray(promo.tiers) && promo.tiers.length > 0) {
+      const validTiers = promo.tiers.filter(t => (parseFloat(t.discountPercent || 0) > 0 || parseInt(t.freeQuantity || 0, 10) > 0 || parseFloat(t.voucherAmount || 0) > 0))
+      const targetTier = validTiers.length > 0 ? validTiers[0] : promo.tiers[0]
+      targetThreshold = targetTier.min !== undefined && targetTier.min !== null ? parseFloat(targetTier.min) : (targetTier.threshold || 1)
+    }
+
+    if (targetProduct) {
+      const upb = parseInt(targetProduct.unitsPerBox || getProductUnitsPerCarton(targetProduct) || 1, 10) || 1
+      const price = parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 100)
+
+      if (promo.type === 'TYPE_4') {
+        const targetFamInfo = getFamilyInfo(promo.targetFamily, activeFamilies)
+        const currentFamilyAmount = selectedProducts.reduce((sum, item) => {
+          const itemFam = getFamilyInfo(item.category, activeFamilies)
+          if (itemFam.code === targetFamInfo.code) {
+            return sum + (parseFloat(item.priceTtc || 0) * (parseInt(item.qty || 0, 10)))
+          }
+          return sum
+        }, 0)
+
+        const missingDh = Math.max(0, targetThreshold - currentFamilyAmount)
+        const unitsNeeded = Math.max(1, Math.ceil((missingDh > 0 ? missingDh : targetThreshold) / (price || 1)))
+        requiredUnits = unitsNeeded
+      } else {
+        requiredUnits = Math.max(1, Math.round(targetThreshold * upb))
+      }
+
+      const discountPct = (promo.tiers && promo.tiers.length > 0 && promo.tiers[0].discountPercent)
+        ? parseFloat(promo.tiers[0].discountPercent)
+        : (parseFloat(promo.discountPercent) || 0)
+
+      setSelectedProducts(prev => {
+        const existingIdx = prev.findIndex(item => item.productId === targetProduct.id || item.reference === targetProduct.reference)
+        if (existingIdx >= 0) {
+          return prev.map((item, idx) => {
+            if (idx === existingIdx) {
+              const newQty = (promo.type === 'TYPE_4') ? (item.qty || 0) + requiredUnits : Math.max(item.qty || 0, requiredUnits)
+              return {
+                ...item,
+                qty: newQty,
+                cartons: Math.ceil(newQty / upb),
+                unitsPerCarton: upb,
+                remise: discountPct > 0 ? discountPct : item.remise,
+                promoTag: promo.name
+              }
+            }
+            return item
+          })
+        } else {
+          return [...prev, {
+            productId: targetProduct.id,
+            reference: targetProduct.reference || targetProduct.code || 'REF',
+            code: targetProduct.code || targetProduct.reference,
+            productName: targetProduct.name,
+            category: targetProduct.category || targetProduct.categoryId || 'FA0015',
+            packaging: targetProduct.packaging || '',
+            unitsPerCarton: upb,
+            cartons: Math.ceil(requiredUnits / upb),
+            priceTtc: parseFloat(targetProduct.unitPriceTtc || targetProduct.priceTtc || 0),
+            qty: requiredUnits,
+            qtyGratuit: 0,
+            remise: discountPct,
+            promoTag: promo.name
+          }]
+        }
+      })
+    }
   }
 
   // Real-time Promotions Evaluation
@@ -1335,7 +1474,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                 <div>
                   <select
                     value={selectedPromoId}
-                    onChange={e => setSelectedPromoId(e.target.value)}
+                    onChange={e => handleSelectPromotion(e.target.value)}
                     className="input-field"
                     style={{ width: '100%', fontWeight: '700', fontSize: '13px', padding: '12px 14px' }}
                   >
