@@ -3206,8 +3206,10 @@ export default function Orders({ openWizardTrigger }) {
                     {promotions && promotions.filter(p => p.isActive !== false).length > 0 && (
                       <optgroup label="── Offres Commerciales Actives Définies ──">
                         {promotions.filter(p => p.isActive !== false).map(p => {
-                          const typeLabel = p.type === 'TYPE_1' ? 'Type 1 Remise' : p.type === 'TYPE_2' ? 'Type 2 Gratuit' : p.type === 'TYPE_3' ? 'Type 3 Bon d\'achat' : 'Type 4 CA Famille'
-                          const targetInfo = p.targetType === 'FAMILY' ? `Famille ${p.targetFamily}` : (p.targetProductName || p.targetProductRef)
+                          const typeLabel = p.type === 'TYPE_1' ? 'Type 1 Remise' : p.type === 'TYPE_2' ? 'Type 2 Gratuit' : p.type === 'TYPE_3' ? 'Type 3 Bon d\'achat' : p.type === 'TYPE_5' ? 'Type 5 Prix Vente' : 'Type 4 CA Famille'
+                          const targetInfo = p.targetType === 'FAMILY' 
+                            ? (p.targetFamilies && p.targetFamilies.length > 1 ? `Familles ${p.targetFamilies.join(', ')}` : `Famille ${p.targetFamily}`)
+                            : (p.targetProductName || p.targetProductRef)
                           const thresholdInfo = p.type === 'TYPE_4' ? `Dès ${p.threshold} DH` : `Dès ${p.threshold} cartons`
                           return (
                             <option key={p.id} value={p.id}>
@@ -3376,18 +3378,19 @@ export default function Orders({ openWizardTrigger }) {
                         const chosenPromo = promoAnalysis.selectedPromoStatus.promo
                         let targetProds = []
                         if (chosenPromo.targetType === 'FAMILY') {
+                          const famList = (chosenPromo.targetFamilies && chosenPromo.targetFamilies.length > 0)
+                            ? chosenPromo.targetFamilies.map(f => f.toLowerCase().trim())
+                            : (chosenPromo.targetFamily ? chosenPromo.targetFamily.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [])
                           const famProdsInCart = selectedProducts.filter(sp => {
                             const famInfo = getFamilyInfo(sp.category, activeFamilies)
-                            return (famInfo.label || '').toLowerCase() === (chosenPromo.targetFamily || '').toLowerCase() ||
-                                   (famInfo.code || '').toLowerCase() === (chosenPromo.targetFamily || '').toLowerCase()
+                            return famList.some(f => (famInfo.label || '').toLowerCase() === f || (famInfo.code || '').toLowerCase() === f)
                           })
                           if (famProdsInCart.length > 0) {
                             targetProds = famProdsInCart.map(sp => products.find(p => p.id === sp.productId || p.reference === sp.reference) || sp)
                           } else {
                             targetProds = products.filter(p => {
                               const famInfo = getFamilyInfo(p.category, activeFamilies)
-                              return (famInfo.label || '').toLowerCase() === (chosenPromo.targetFamily || '').toLowerCase() ||
-                                     (famInfo.code || '').toLowerCase() === (chosenPromo.targetFamily || '').toLowerCase()
+                              return famList.some(f => (famInfo.label || '').toLowerCase() === f || (famInfo.code || '').toLowerCase() === f)
                             }).slice(0, 3)
                           }
                         } else {
@@ -3595,6 +3598,11 @@ export default function Orders({ openWizardTrigger }) {
                           {promoAnalysis.appliedPromotions[0].discountPercent > 0 && (
                             <span style={{ background: 'rgba(0, 122, 255, 0.2)', color: '#007AFF', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
                               Remise : {promoAnalysis.appliedPromotions[0].discountPercent}%
+                            </span>
+                          )}
+                          {promoAnalysis.appliedPromotions[0].type === 'TYPE_5' && (promoAnalysis.appliedPromotions[0].unitPrice > 0) && (
+                            <span style={{ background: 'rgba(255, 208, 0, 0.2)', color: 'var(--bardahl-yellow)', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', fontSize: '11px' }}>
+                              🏷️ Prix Vente Dégressif : {promoAnalysis.appliedPromotions[0].unitPrice.toFixed(2)} DH TTC / un.
                             </span>
                           )}
                           {promoAnalysis.appliedPromotions[0].giftSummary && (

@@ -637,7 +637,7 @@ fun OrderCreateScreen(
 
         // Required quantity in UNITS
         val targetThreshold: Double = if (promo.tiers.isNotEmpty()) {
-            val valid = promo.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 }
+            val valid = promo.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 || (promo.type == PromotionType.TYPE_5 && (it.unitPrice ?: 0.0) > 0.0) }
             if (valid.isNotEmpty()) {
                 if (valid.first().min > 0.0) valid.first().min else valid.first().threshold.toDouble()
             } else {
@@ -705,20 +705,25 @@ fun OrderCreateScreen(
 
                 // If DIFFERENT_PRODUCT for free item
                 if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.DIFFERENT_PRODUCT && freeUnits > 0) {
-                    val freeProd = products.find { it.id == promo.freeProductId || it.reference == promo.freeProductRef }
-                    if (freeProd != null) {
-                        updatedList.add(
-                            OrderItem(
-                                productId = freeProd.id,
-                                productName = freeProd.name,
-                                productReference = freeProd.reference,
-                                quantity = 0,
-                                freeQuantity = freeUnits,
-                                unitPriceTtc = 0.0,
-                                unitsPerBox = freeProd.unitsPerBox,
-                                promoTag = "Cadeau: ${promo.name}"
+                    val giftRefs = if (promo.freeProductRefs.isNotEmpty()) promo.freeProductRefs else listOfNotNull(promo.freeProductRef ?: promo.freeProductId)
+                    giftRefs.forEach { fRef ->
+                        val freeProd = products.find { it.id == fRef || it.reference.equals(fRef, ignoreCase = true) }
+                        if (freeProd != null) {
+                            val fUpb = if (freeProd.unitsPerBox > 0) freeProd.unitsPerBox else 12
+                            val fUnits = freeCartons * fUpb
+                            updatedList.add(
+                                OrderItem(
+                                    productId = freeProd.id,
+                                    productName = freeProd.name,
+                                    productReference = freeProd.reference,
+                                    quantity = 0,
+                                    freeQuantity = fUnits,
+                                    unitPriceTtc = 0.0,
+                                    unitsPerBox = fUpb,
+                                    promoTag = "Cadeau: ${promo.name}"
+                                )
                             )
-                        )
+                        }
                     }
                 }
                 selectedItems = updatedList
@@ -1447,7 +1452,10 @@ fun OrderCreateScreen(
                         if (promotions.isNotEmpty()) {
                             HorizontalDivider(color = BardahlCardBorder, modifier = Modifier.padding(vertical = 4.dp))
                             promotions.filter { it.isActive }.forEach { promo ->
-                                val targetStr = if (promo.targetType == PromoTargetType.FAMILY) "Famille ${promo.targetFamily}" else (promo.targetProductName ?: promo.targetProductRef ?: "")
+                                val famList = if (promo.targetType == PromoTargetType.FAMILY) com.bardahl.maroc.util.PromotionEngine.getTargetFamilyList(promo) else emptyList()
+                                val targetStr = if (promo.targetType == PromoTargetType.FAMILY) {
+                                    if (famList.size > 1) "Familles ${famList.joinToString(", ")}" else "Famille ${famList.firstOrNull() ?: promo.targetFamily ?: ""}"
+                                } else (promo.targetProductName ?: promo.targetProductRef ?: "")
                                 DropdownMenuItem(
                                     text = {
                                         Column {

@@ -159,7 +159,8 @@ enum class PromotionType(val label: String) {
     TYPE_1("Type 1: Cartons → Remise %"),
     TYPE_2("Type 2: Cartons → Remise % + Gratuit"),
     TYPE_3("Type 3: Cartons → Remise % + Bon d'Achat"),
-    TYPE_4("Type 4: Montant Famille → Remise %")
+    TYPE_4("Type 4: Montant Famille → Remise %"),
+    TYPE_5("Type 5: Cartons → Prix Vente")
 }
 
 enum class PromoTargetType {
@@ -176,7 +177,8 @@ data class PromotionTier(
     val max: Double? = null,
     val discountPercent: Double = 0.0,
     val freeQuantity: Int = 0,
-    val voucherAmount: Double = 0.0
+    val voucherAmount: Double = 0.0,
+    val unitPrice: Double? = null
 )
 
 data class Promotion(
@@ -186,6 +188,7 @@ data class Promotion(
     val type: PromotionType = PromotionType.TYPE_1,
     val targetType: PromoTargetType = PromoTargetType.FAMILY,
     val targetFamily: String? = null,
+    val targetFamilies: List<String> = emptyList(),
     val targetProductId: String? = null,
     val targetProductRef: String? = null,
     val targetProductRefs: List<String> = emptyList(),
@@ -196,10 +199,12 @@ data class Promotion(
     val freeItemType: FreeItemType = FreeItemType.SAME_PRODUCT,
     val freeProductId: String? = null,
     val freeProductRef: String? = null,
+    val freeProductRefs: List<String> = emptyList(),
     val freeProductName: String? = null,
     val freeQuantity: Int = 0,
     val tiers: List<PromotionTier> = emptyList(),
     val voucherAmount: Double = 0.0,
+    val unitPrice: Double? = null,
     val isActive: Boolean = true,
     val startDate: String = "2026-01-01",
     val endDate: String = "2026-12-31"
@@ -214,7 +219,8 @@ data class AppliedPromotionInfo(
     val discountPercent: Double = 0.0,
     val giftSummary: String? = null,
     val freeQuantity: Int = 0,
-    val voucherAmount: Double = 0.0
+    val voucherAmount: Double = 0.0,
+    val unitPrice: Double? = null
 )
 
 data class DashboardStats(

@@ -12,6 +12,7 @@ data class CandidatePromo(
     val discountPercent: Double,
     val freeQuantity: Int,
     val voucherAmount: Double,
+    val unitPrice: Double? = null,
     val applicableIndices: List<Int>
 )
 
@@ -36,6 +37,7 @@ data class PromotionResult(
     val candidatePromos: List<CandidatePromo> = emptyList(),
     val conflicts: List<PromotionConflict> = emptyList(),
     val lineDiscounts: Map<Int, Double> = emptyMap(),
+    val appliedUnitPrices: Map<Int, Double> = emptyMap(),
     val totalDiscountFromPromos: Double = 0.0,
     val freeItems: List<OrderItem> = emptyList(),
     val voucherDiscount: Double = 0.0,
@@ -43,6 +45,12 @@ data class PromotionResult(
 )
 
 object PromotionEngine {
+
+    fun getTargetFamilyList(promo: Promotion): List<String> {
+        if (promo.targetFamilies.isNotEmpty()) return promo.targetFamilies
+        val raw = promo.targetFamily ?: return emptyList()
+        return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    }
 
     fun normalizeFamily(raw: String?): String {
         if (raw.isNullOrBlank()) return "AUTRES"
@@ -132,6 +140,22 @@ object PromotionEngine {
             targetFamily = "ADDITIFS",
             threshold = 5000.0,
             discountPercent = 5.0
+        ),
+        Promotion(
+            id = "promo_5",
+            name = "Tarif Dégressif Cartons (Prix Vente Spécial)",
+            description = "1-10 ctns: 260 DH | 11-20 ctns: 200 DH | 21+ ctns: 160 DH",
+            type = PromotionType.TYPE_5,
+            targetType = PromoTargetType.PRODUCT,
+            targetProductRef = "34131",
+            targetProductName = "Bardahl XTRA 10W40 1L",
+            threshold = 1.0,
+            hasTiers = true,
+            tiers = listOf(
+                PromotionTier(threshold = 1, min = 1.0, max = 10.0, unitPrice = 260.0),
+                PromotionTier(threshold = 11, min = 11.0, max = 20.0, unitPrice = 200.0),
+                PromotionTier(threshold = 21, min = 21.0, max = null, unitPrice = 160.0)
+            )
         )
     )
 
@@ -193,11 +217,20 @@ object PromotionEngine {
         if (!selectedPromoId.isNullOrBlank() && selectedPromoId != "AUTO") {
             val chosen = promotions.find { it.id == selectedPromoId }
             if (chosen != null) {
+                val famList = getTargetFamilyList(chosen)
                 val currentVal = if (chosen.targetType == PromoTargetType.FAMILY) {
-                    val fam = (chosen.targetFamily ?: "").uppercase()
-                    val normFam = normalizeFamily(fam)
-                    val st = familyStats[normFam] ?: familyStats[fam]
-                    if (chosen.type == PromotionType.TYPE_4) st?.totalAmountTtc ?: 0.0 else (st?.totalCartons ?: 0).toDouble()
+                    var sumCartons = 0
+                    var sumAmount = 0.0
+                    famList.forEach { rawFam ->
+                        val fam = rawFam.uppercase()
+                        val normFam = normalizeFamily(fam)
+                        val st = familyStats[normFam] ?: familyStats[fam]
+                        if (st != null) {
+                            sumCartons += st.totalCartons
+                            sumAmount += st.totalAmountTtc
+                        }
+                    }
+                    if (chosen.type == PromotionType.TYPE_4) sumAmount else sumCartons.toDouble()
                 } else {
                     val pKey = chosen.targetProductId ?: chosen.targetProductRef ?: ""
                     val st = productStats[pKey] ?: if (!chosen.targetProductRef.isNullOrBlank()) productStats[chosen.targetProductRef] else null
@@ -205,7 +238,7 @@ object PromotionEngine {
                 }
 
                 val minThreshold = if (chosen.tiers.isNotEmpty()) {
-                    val validTiers = chosen.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 }
+                    val validTiers = chosen.tiers.filter { it.discountPercent > 0 || it.freeQuantity > 0 || it.voucherAmount > 0 || (chosen.type == PromotionType.TYPE_5 && (it.unitPrice ?: 0.0) > 0.0) }
                     if (validTiers.isNotEmpty()) validTiers.minOf { it.threshold }.toDouble() else chosen.tiers.minOf { it.threshold }.toDouble()
                 } else {
                     chosen.threshold
@@ -214,7 +247,9 @@ object PromotionEngine {
                 val isReached = currentVal >= minThreshold
                 val missingVal = maxOf(0.0, minThreshold - currentVal)
                 val unitLabel = if (chosen.type == PromotionType.TYPE_4) "DH TTC" else "carton(s)"
-                val targetLabel = if (chosen.targetType == PromoTargetType.FAMILY) "la gamme ${chosen.targetFamily}" else (chosen.targetProductName ?: chosen.targetProductRef ?: "ce produit")
+                val targetLabel = if (chosen.targetType == PromoTargetType.FAMILY) {
+                    if (famList.size > 1) "les gammes ${famList.joinToString(", ")}" else "la gamme ${famList.firstOrNull() ?: chosen.targetFamily ?: ""}"
+                } else (chosen.targetProductName ?: chosen.targetProductRef ?: "ce produit")
 
                 selectedPromoStatus = SelectedPromoStatus(
                     promo = chosen,
@@ -244,37 +279,49 @@ object PromotionEngine {
             var appliedTier: PromotionTier? = null
 
             if (promo.targetType == PromoTargetType.FAMILY) {
-                val targetFam = (promo.targetFamily ?: "").uppercase()
-                val normTargetFam = normalizeFamily(targetFam)
-                val stat = familyStats[normTargetFam] ?: familyStats[targetFam]
-                if (stat != null) {
+                val famList = getTargetFamilyList(promo)
+                var aggCartons = 0
+                var aggAmount = 0.0
+                val aggIndices = mutableListOf<Int>()
+                famList.forEach { rawFam ->
+                    val targetFam = rawFam.uppercase()
+                    val normTargetFam = normalizeFamily(targetFam)
+                    val stat = familyStats[normTargetFam] ?: familyStats[targetFam]
+                    if (stat != null) {
+                        aggCartons += stat.totalCartons
+                        aggAmount += stat.totalAmountTtc
+                        aggIndices.addAll(stat.indices)
+                    }
+                }
+                val distinctIndices = aggIndices.distinct()
+                if (distinctIndices.isNotEmpty()) {
                     if (promo.type == PromotionType.TYPE_4) {
-                        currentVal = stat.totalAmountTtc
+                        currentVal = aggAmount
                         if (promo.tiers.isNotEmpty()) {
                             val sortedTiers = promo.tiers.sortedByDescending { it.threshold }
                             val matched = sortedTiers.firstOrNull { currentVal >= it.threshold }
                             if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0)) {
                                 isEligible = true
                                 appliedTier = matched
-                                applicableIndices = stat.indices
+                                applicableIndices = distinctIndices
                             }
                         } else if (currentVal >= promo.threshold) {
                             isEligible = true
-                            applicableIndices = stat.indices
+                            applicableIndices = distinctIndices
                         }
                     } else {
-                        currentVal = stat.totalCartons.toDouble()
+                        currentVal = aggCartons.toDouble()
                         if (promo.tiers.isNotEmpty()) {
                             val sortedTiers = promo.tiers.sortedByDescending { it.threshold }
                             val matched = sortedTiers.firstOrNull { currentVal >= it.threshold }
-                            if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0)) {
+                            if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0 || (promo.type == PromotionType.TYPE_5 && (matched.unitPrice ?: 0.0) > 0.0))) {
                                 isEligible = true
                                 appliedTier = matched
-                                applicableIndices = stat.indices
+                                applicableIndices = distinctIndices
                             }
-                        } else if (currentVal >= promo.threshold) {
+                        } else if (currentVal >= promo.threshold && (promo.type != PromotionType.TYPE_5 || (promo.unitPrice ?: 0.0) > 0.0)) {
                             isEligible = true
-                            applicableIndices = stat.indices
+                            applicableIndices = distinctIndices
                         }
                     }
                 }
@@ -286,12 +333,12 @@ object PromotionEngine {
                     if (promo.tiers.isNotEmpty()) {
                         val sortedTiers = promo.tiers.sortedByDescending { it.threshold }
                         val matched = sortedTiers.firstOrNull { currentVal >= it.threshold }
-                        if (matched != null) {
+                        if (matched != null && (matched.discountPercent > 0 || matched.freeQuantity > 0 || matched.voucherAmount > 0 || (promo.type == PromotionType.TYPE_5 && (matched.unitPrice ?: 0.0) > 0.0))) {
                             isEligible = true
                             appliedTier = matched
                             applicableIndices = stat.indices
                         }
-                    } else if (currentVal >= promo.threshold) {
+                    } else if (currentVal >= promo.threshold && (promo.type != PromotionType.TYPE_5 || (promo.unitPrice ?: 0.0) > 0.0)) {
                         isEligible = true
                         applicableIndices = stat.indices
                     }
@@ -299,10 +346,15 @@ object PromotionEngine {
             }
 
             if (isEligible) {
-                val effDiscount = appliedTier?.discountPercent ?: promo.discountPercent
-                val effFreeQty = appliedTier?.freeQuantity ?: promo.freeQuantity
-                val targetKey = if (promo.targetType == PromoTargetType.FAMILY) "FAM_${(promo.targetFamily ?: "").uppercase()}" else "PROD_${promo.targetProductRef ?: promo.targetProductId}"
-                val targetDisplay = if (promo.targetType == PromoTargetType.FAMILY) "Famille ${promo.targetFamily}" else (promo.targetProductName ?: promo.targetProductRef ?: "Produit")
+                val effDiscount = if (promo.type == PromotionType.TYPE_5) 0.0 else (appliedTier?.discountPercent ?: promo.discountPercent)
+                val effFreeQty = if (promo.type == PromotionType.TYPE_5) 0 else (appliedTier?.freeQuantity ?: promo.freeQuantity)
+                val effVoucher = if (promo.type == PromotionType.TYPE_5) 0.0 else promo.voucherAmount
+                val effUnitPrice = if (promo.type == PromotionType.TYPE_5) (appliedTier?.unitPrice ?: promo.unitPrice) else null
+                val famList = if (promo.targetType == PromoTargetType.FAMILY) getTargetFamilyList(promo) else emptyList()
+                val targetKey = if (promo.targetType == PromoTargetType.FAMILY) "FAM_${famList.sorted().joinToString("_") { it.uppercase() }}" else "PROD_${promo.targetProductRef ?: promo.targetProductId}"
+                val targetDisplay = if (promo.targetType == PromoTargetType.FAMILY) {
+                    if (famList.size > 1) "Familles ${famList.joinToString(", ")}" else "Famille ${famList.firstOrNull() ?: promo.targetFamily ?: ""}"
+                } else (promo.targetProductName ?: promo.targetProductRef ?: "Produit")
 
                 candidates.add(
                     CandidatePromo(
@@ -314,7 +366,8 @@ object PromotionEngine {
                         appliedTier = appliedTier,
                         discountPercent = effDiscount,
                         freeQuantity = effFreeQty,
-                        voucherAmount = promo.voucherAmount,
+                        voucherAmount = effVoucher,
+                        unitPrice = effUnitPrice,
                         applicableIndices = applicableIndices
                     )
                 )
@@ -346,6 +399,7 @@ object PromotionEngine {
 
         // Calculate Advantages
         val lineDiscounts = mutableMapOf<Int, Double>()
+        val appliedUnitPrices = mutableMapOf<Int, Double>()
         var totalDiscountFromPromos = 0.0
         val freeItems = mutableListOf<OrderItem>()
         var voucherDiscount = 0.0
@@ -385,30 +439,59 @@ object PromotionEngine {
                         giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de ${srcItem.productName} ($freeUnits un.)"
                     }
                 } else {
-                    val giftMeta = productMap[cp.promo.freeProductId] ?: productMap[cp.promo.freeProductRef]
-                    val giftRef = cp.promo.freeProductRef ?: giftMeta?.reference ?: "PROMO-GIFT"
-                    val giftName = cp.promo.freeProductName ?: giftMeta?.name ?: "Produit Cadeau Offert"
-                    val upb = giftMeta?.unitsPerBox ?: 12
-                    val freeUnits = cp.freeQuantity * upb
-                    freeItems.add(
-                        OrderItem(
-                            productId = cp.promo.freeProductId ?: giftMeta?.id ?: "gift",
-                            productName = giftName,
-                            productReference = giftRef,
-                            quantity = 0,
-                            freeQuantity = freeUnits,
-                            unitPriceTtc = 0.0,
-                            unitsPerBox = upb,
-                            promoTag = "Cadeau: ${cp.promo.name}"
-                        )
-                    )
-                    giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) de $giftName ($freeUnits un.)"
+                    val giftRefs = if (cp.promo.freeProductRefs.isNotEmpty()) {
+                        cp.promo.freeProductRefs
+                    } else {
+                        listOfNotNull(cp.promo.freeProductRef ?: cp.promo.freeProductId)
+                    }
+
+                    if (giftRefs.isNotEmpty()) {
+                        val names = mutableListOf<String>()
+                        giftRefs.forEach { gRef ->
+                            val giftMeta = productMap[gRef] ?: allProducts.find { it.reference.equals(gRef, ignoreCase = true) || it.id == gRef }
+                            val giftRef = giftMeta?.reference ?: gRef
+                            val giftName = giftMeta?.name ?: cp.promo.freeProductName ?: giftRef
+                            val upb = giftMeta?.unitsPerBox ?: 12
+                            val freeUnits = cp.freeQuantity * upb
+                            names.add(giftName)
+                            freeItems.add(
+                                OrderItem(
+                                    productId = giftMeta?.id ?: gRef,
+                                    productName = giftName,
+                                    productReference = giftRef,
+                                    quantity = 0,
+                                    freeQuantity = freeUnits,
+                                    unitPriceTtc = 0.0,
+                                    unitsPerBox = upb,
+                                    promoTag = "Cadeau: ${cp.promo.name}"
+                                )
+                            )
+                        }
+                        giftSummary = "${cp.freeQuantity} carton(s) gratuit(s) (${names.joinToString(" + ")})"
+                    }
                 }
             }
 
             // C. Voucher
             if (cp.voucherAmount > 0.0 && cp.promo.type == PromotionType.TYPE_3) {
                 voucherDiscount += cp.voucherAmount
+            }
+
+            // D. Prix de Vente Dégressif (Type 5)
+            if (cp.promo.type == PromotionType.TYPE_5 && (cp.unitPrice ?: 0.0) > 0.0) {
+                val newPrice = cp.unitPrice!!
+                cp.applicableIndices.forEach { idx ->
+                    appliedUnitPrices[idx] = newPrice
+                    val item = items[idx]
+                    if (item.unitPriceTtc > newPrice) {
+                        val unitDiff = item.unitPriceTtc - newPrice
+                        val discPct = (unitDiff / item.unitPriceTtc) * 100.0
+                        val cur = lineDiscounts[idx] ?: 0.0
+                        lineDiscounts[idx] = maxOf(cur, discPct)
+                        totalDiscountFromPromos += unitDiff * item.quantity
+                    }
+                }
+                giftSummary = "Prix dégressif appliqué : %.2f DH TTC / un.".format(newPrice)
             }
 
             val conditionReachedText = if (cp.promo.type == PromotionType.TYPE_4) {
@@ -427,7 +510,8 @@ object PromotionEngine {
                     discountPercent = cp.discountPercent,
                     giftSummary = giftSummary,
                     freeQuantity = cp.freeQuantity,
-                    voucherAmount = cp.voucherAmount
+                    voucherAmount = cp.voucherAmount,
+                    unitPrice = cp.unitPrice
                 )
             )
         }
@@ -437,6 +521,7 @@ object PromotionEngine {
             candidatePromos = candidates,
             conflicts = conflicts,
             lineDiscounts = lineDiscounts,
+            appliedUnitPrices = appliedUnitPrices,
             totalDiscountFromPromos = totalDiscountFromPromos,
             freeItems = freeItems,
             voucherDiscount = voucherDiscount,

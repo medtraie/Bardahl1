@@ -39,6 +39,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const [formType, setFormType] = useState('TYPE_1')
   const [formTargetType, setFormTargetType] = useState('PRODUCT')
   const [formTargetFamily, setFormTargetFamily] = useState(DEFAULT_BARDAHL_FAMILIES[0].label)
+  const [formTargetFamilies, setFormTargetFamilies] = useState([DEFAULT_BARDAHL_FAMILIES[0].label])
   
   // Évolution n°2 : Multi-références produit
   const [formTargetProductRefs, setFormTargetProductRefs] = useState([])
@@ -51,11 +52,13 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const [formDiscountPercent, setFormDiscountPercent] = useState(5)
   const [formFreeItemType, setFormFreeItemType] = useState('SAME_PRODUCT')
   const [formFreeProductRef, setFormFreeProductRef] = useState('')
+  const [formFreeProductRefs, setFormFreeProductRefs] = useState([])
   const [freeProductSearchQuery, setFreeProductSearchQuery] = useState('')
   const [showFreeDropdown, setShowFreeDropdown] = useState(false)
 
   const [formFreeQuantity, setFormFreeQuantity] = useState(1)
   const [formVoucherAmount, setFormVoucherAmount] = useState(0)
+  const [formUnitPrice, setFormUnitPrice] = useState('')
   const [formIsActive, setFormIsActive] = useState(true)
   const [formStartDate, setFormStartDate] = useState('2026-01-01')
   const [formEndDate, setFormEndDate] = useState('2026-12-31')
@@ -88,9 +91,16 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
         return { isValid: false, error: `Palier ${i + 1} : la valeur de fin (${maxVal}) doit être supérieure ou égale au début (${minVal}).` }
       }
 
-      const disc = parseFloat(t.discountPercent || 0)
-      if (isNaN(disc) || disc < 0 || disc > 100) {
-        return { isValid: false, error: `Palier ${i + 1} : le taux de remise doit être compris entre 0% et 100%.` }
+      if (formType === 'TYPE_5') {
+        const uPrice = parseFloat(t.unitPrice)
+        if (isNaN(uPrice) || uPrice < 0) {
+          return { isValid: false, error: `Palier ${i + 1} : le prix de vente unitaire (DH TTC) doit être un nombre positif ou nul.` }
+        }
+      } else {
+        const disc = parseFloat(t.discountPercent || 0)
+        if (isNaN(disc) || disc < 0 || disc > 100) {
+          return { isValid: false, error: `Palier ${i + 1} : le taux de remise doit être compris entre 0% et 100%.` }
+        }
       }
 
       // Contrôle anti-chevauchement avec la tranche précédente
@@ -108,7 +118,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     }
 
     return { isValid: true, error: null }
-  }, [hasTiers, tiers])
+  }, [hasTiers, tiers, formType])
 
   // Extract unique categories from products mapped to clean families
   const families = activeFamilies.map(f => f.label)
@@ -121,20 +131,28 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
   const filteredTargetProducts = useMemo(() => {
     return products.filter(p => {
       // 1. Filter by family
-      const activeFamilyFilter = formTargetType === 'FAMILY'
-        ? formTargetFamily
-        : (selectedProductFamilyFilter !== 'ALL' ? selectedProductFamilyFilter : null)
-
-      if (activeFamilyFilter) {
+      if (formTargetType === 'FAMILY') {
+        if (formTargetFamilies && formTargetFamilies.length > 0) {
+          const famInfo = getFamilyInfo(p.category, activeFamilies)
+          const matches = formTargetFamilies.some(tf => {
+            const target = String(tf).toUpperCase().trim()
+            return famInfo.label.toUpperCase() === target ||
+                   famInfo.code.toUpperCase() === target ||
+                   famInfo.id.toUpperCase() === target ||
+                   String(p.category || '').toUpperCase().includes(target)
+          })
+          if (!matches) return false
+        }
+      } else if (selectedProductFamilyFilter !== 'ALL') {
         const famInfo = getFamilyInfo(p.category, activeFamilies)
-        const target = String(activeFamilyFilter).toUpperCase().trim()
-        const matchesFamily = (
+        const target = String(selectedProductFamilyFilter).toUpperCase().trim()
+        const matches = (
           famInfo.label.toUpperCase() === target ||
           famInfo.code.toUpperCase() === target ||
           famInfo.id.toUpperCase() === target ||
           String(p.category || '').toUpperCase().includes(target)
         )
-        if (!matchesFamily) return false
+        if (!matches) return false
       }
 
       // 2. Filter by search query
@@ -144,7 +162,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
              (p.reference || '').toLowerCase().includes(q) ||
              (p.category || '').toLowerCase().includes(q)
     })
-  }, [products, formTargetType, formTargetFamily, selectedProductFamilyFilter, targetSearchQuery, activeFamilies])
+  }, [products, formTargetType, formTargetFamilies, selectedProductFamilyFilter, targetSearchQuery, activeFamilies])
 
   const filteredFreeProducts = products.filter(p => {
     if (!freeProductSearchQuery.trim()) return true
@@ -308,6 +326,31 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormTargetProductRefs([])
   }
 
+  const handleAddFreeProduct = (prod) => {
+    if (!prod || !prod.reference) return
+    if (!formFreeProductRefs.includes(prod.reference)) {
+      setFormFreeProductRefs(prev => [...prev, prod.reference])
+      setFormFreeProductRef(prod.reference)
+    }
+    setFreeProductSearchQuery('')
+    setShowFreeDropdown(false)
+  }
+
+  const handleRemoveFreeProduct = (refToRemove) => {
+    setFormFreeProductRefs(prev => {
+      const updated = prev.filter(r => r !== refToRemove)
+      if (formFreeProductRef === refToRemove) {
+        setFormFreeProductRef(updated[0] || '')
+      }
+      return updated
+    })
+  }
+
+  const handleClearAllFreeProducts = () => {
+    setFormFreeProductRefs([])
+    setFormFreeProductRef('')
+  }
+
   const handleAddTier = () => {
     setTiers(prev => {
       const last = prev[prev.length - 1]
@@ -327,7 +370,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
           max: '',
           discountPercent: Math.min(100, (last ? parseFloat(last.discountPercent || 0) : 0) + 5),
           freeQuantity: (last ? parseInt(last.freeQuantity || 0, 10) : 0) + 1,
-          voucherAmount: (last ? parseFloat(last.voucherAmount || 0) : 0)
+          voucherAmount: (last ? parseFloat(last.voucherAmount || 0) : 0),
+          unitPrice: (last ? Math.max(10, (parseFloat(last.unitPrice || 0) || 200) - 20) : 200)
         }
       ]
     })
@@ -357,6 +401,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormTargetProductRef(initialProduct?.reference || '34131')
     const detectedFam = initialProduct ? getFamilyInfo(initialProduct.category, activeFamilies).label : (activeFamilies[0]?.label || 'Additifs & Traitements')
     setFormTargetFamily(detectedFam)
+    setFormTargetFamilies([detectedFam])
     setSelectedProductFamilyFilter('ALL')
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
@@ -365,11 +410,13 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     setFormDiscountPercent(5)
     setFormFreeItemType('SAME_PRODUCT')
     setFormFreeProductRef(initialProduct?.reference || '34131')
+    setFormFreeProductRefs(initialProduct ? [initialProduct.reference] : ['34131'])
     setFreeProductSearchQuery('')
     setShowFreeDropdown(false)
 
     setFormFreeQuantity(1)
     setFormVoucherAmount(0)
+    setFormUnitPrice('')
     setFormIsActive(true)
     setFormStartDate('2026-01-01')
     setFormEndDate('2026-12-31')
@@ -405,20 +452,30 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
 
     const firstProd = products.find(p => p.reference === refs[0])
     const detectedFam = firstProd ? getFamilyInfo(firstProd.category, activeFamilies).label : (promo.targetFamily || activeFamilies[0]?.label || 'Additifs & Traitements')
-    setFormTargetFamily(promo.targetFamily || detectedFam)
-    setSelectedProductFamilyFilter(promo.targetFamily || detectedFam || 'ALL')
+    
+    const families = (promo.targetFamilies && Array.isArray(promo.targetFamilies) && promo.targetFamilies.length > 0)
+      ? promo.targetFamilies
+      : (promo.targetFamily ? promo.targetFamily.split(',').map(s => s.trim()).filter(Boolean) : [detectedFam])
+    setFormTargetFamilies(families.length > 0 ? families : [detectedFam])
+    setFormTargetFamily(families[0] || detectedFam)
+    setSelectedProductFamilyFilter(families[0] || detectedFam || 'ALL')
     setTargetSearchQuery('')
     setShowTargetDropdown(false)
 
     setFormThreshold(promo.threshold || 10)
     setFormDiscountPercent(promo.discountPercent || 0)
     setFormFreeItemType(promo.freeItemType || 'SAME_PRODUCT')
-    setFormFreeProductRef(promo.freeProductRef || products[0]?.reference || '')
+    const freeRefs = (promo.freeProductRefs && Array.isArray(promo.freeProductRefs) && promo.freeProductRefs.length > 0)
+      ? promo.freeProductRefs
+      : (promo.freeProductRef ? [promo.freeProductRef] : (products[0] ? [products[0].reference] : []))
+    setFormFreeProductRefs(freeRefs)
+    setFormFreeProductRef(freeRefs[0] || promo.freeProductRef || products[0]?.reference || '')
     setFreeProductSearchQuery('')
     setShowFreeDropdown(false)
 
     setFormFreeQuantity(promo.freeQuantity || 0)
     setFormVoucherAmount(promo.voucherAmount || 0)
+    setFormUnitPrice(promo.unitPrice !== undefined && promo.unitPrice !== null ? promo.unitPrice : '')
     setFormIsActive(promo.isActive !== false)
     setFormStartDate(promo.startDate || '2026-01-01')
     setFormEndDate(promo.endDate || '')
@@ -432,7 +489,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
         max: (t.max !== null && t.max !== undefined && t.max !== '') ? t.max : '',
         discountPercent: t.discountPercent !== undefined ? t.discountPercent : 0,
         freeQuantity: t.freeQuantity !== undefined ? t.freeQuantity : 0,
-        voucherAmount: t.voucherAmount !== undefined ? t.voucherAmount : 0
+        voucherAmount: t.voucherAmount !== undefined ? t.voucherAmount : 0,
+        unitPrice: t.unitPrice !== undefined && t.unitPrice !== null ? t.unitPrice : ''
       })))
     } else {
       setHasTiers(false)
@@ -457,6 +515,11 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       return
     }
 
+    if (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT' && formFreeProductRefs.length === 0) {
+      alert("Veuillez sélectionner au moins un article cadeau à offrir.")
+      return
+    }
+
     if (hasTiers && !tierValidation.isValid) {
       alert(tierValidation.error || "Les tranches de paliers configurées sont invalides.")
       return
@@ -472,7 +535,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       max: (t.max !== null && t.max !== '' && t.max !== undefined && !isNaN(t.max)) ? parseFloat(t.max) : null,
       discountPercent: (formType === 'TYPE_1' || formType === 'TYPE_2' || formType === 'TYPE_4') ? (parseFloat(t.discountPercent) || 0) : 0,
       freeQuantity: formType === 'TYPE_2' ? (parseInt(t.freeQuantity, 10) || 0) : 0,
-      voucherAmount: formType === 'TYPE_3' ? (parseFloat(t.voucherAmount) || 0) : 0
+      voucherAmount: formType === 'TYPE_3' ? (parseFloat(t.voucherAmount) || 0) : 0,
+      unitPrice: formType === 'TYPE_5' ? (parseFloat(t.unitPrice) || 0) : undefined
     })) : undefined
 
     // Determine fallback threshold from first non-zero advantage tier or formThreshold
@@ -480,13 +544,15 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
     let fallbackDiscount = parseFloat(formDiscountPercent) || 0
     let fallbackFreeQty = parseInt(formFreeQuantity, 10) || 0
     let fallbackVoucher = parseFloat(formVoucherAmount) || 0
+    let fallbackUnitPrice = parseFloat(formUnitPrice) || 0
 
     if (cleanTiers && cleanTiers.length > 0) {
-      const activeTier = cleanTiers.find(t => t.discountPercent > 0 || t.freeQuantity > 0 || t.voucherAmount > 0) || cleanTiers[0]
+      const activeTier = cleanTiers.find(t => t.discountPercent > 0 || t.freeQuantity > 0 || t.voucherAmount > 0 || (t.unitPrice !== undefined && t.unitPrice > 0)) || cleanTiers[0]
       fallbackThreshold = activeTier.min
       fallbackDiscount = activeTier.discountPercent
       fallbackFreeQty = activeTier.freeQuantity
       fallbackVoucher = activeTier.voucherAmount
+      fallbackUnitPrice = activeTier.unitPrice || 0
     }
 
     const payload = {
@@ -494,7 +560,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       description: formDesc.trim(),
       type: formType,
       targetType: formTargetType,
-      targetFamily: formTargetType === 'FAMILY' ? formTargetFamily : undefined,
+      targetFamily: formTargetType === 'FAMILY' ? formTargetFamilies.join(', ') : undefined,
+      targetFamilies: formTargetType === 'FAMILY' ? formTargetFamilies : undefined,
       targetProductRefs: formTargetType === 'PRODUCT' ? formTargetProductRefs : undefined,
       targetProductRef: formTargetType === 'PRODUCT' ? formTargetProductRefs[0] : undefined,
       targetProductName: formTargetType === 'PRODUCT' 
@@ -506,11 +573,15 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
       hasTiers: hasTiers,
       tiers: cleanTiers,
       freeItemType: formType === 'TYPE_2' ? formFreeItemType : undefined,
-      freeProductRef: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (formFreeProductRef || products[0]?.reference) : undefined,
-      freeProductName: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.name || formFreeProductRef || products[0]?.name) : undefined,
-      freeProductId: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.id || formFreeProductRef || products[0]?.id) : undefined,
+      freeProductRefs: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? formFreeProductRefs : undefined,
+      freeProductRef: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (formFreeProductRefs[0] || formFreeProductRef || products[0]?.reference) : undefined,
+      freeProductName: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') 
+        ? (formFreeProductRefs.length > 1 ? `${formFreeProductRefs.length} articles offerts` : (freeProductObj?.name || formFreeProductRefs[0] || products[0]?.name)) 
+        : undefined,
+      freeProductId: (formType === 'TYPE_2' && formFreeItemType === 'DIFFERENT_PRODUCT') ? (freeProductObj?.id || formFreeProductRefs[0] || products[0]?.id) : undefined,
       freeQuantity: formType === 'TYPE_2' ? fallbackFreeQty : 0,
       voucherAmount: formType === 'TYPE_3' ? fallbackVoucher : 0,
+      unitPrice: formType === 'TYPE_5' ? fallbackUnitPrice : undefined,
       isActive: formIsActive,
       startDate: formStartDate || null,
       endDate: formNoEndDate ? null : (formEndDate || null)
@@ -542,6 +613,8 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
         return <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', background: 'rgba(255, 149, 0, 0.15)', color: '#FF9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>Type 3: Cartons → Remise + Bon d'Achat</span>
       case 'TYPE_4':
         return <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', background: 'rgba(175, 82, 222, 0.15)', color: '#AF52DE', border: '1px solid rgba(175, 82, 222, 0.3)' }}>Type 4: Montant Famille → Remise %</span>
+      case 'TYPE_5':
+        return <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', background: 'rgba(255, 208, 0, 0.15)', color: 'var(--bardahl-yellow)', border: '1px solid rgba(255, 208, 0, 0.3)' }}>Type 5: Cartons → Prix Vente</span>
       default:
         return null
     }
@@ -644,6 +717,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
             <option value="TYPE_2">Type 2 : Cartons → Remise + Gratuit</option>
             <option value="TYPE_3">Type 3 : Cartons → Remise + Bon</option>
             <option value="TYPE_4">Type 4 : Montant Famille → Remise</option>
+            <option value="TYPE_5">Type 5 : Cartons → Prix Vente</option>
           </select>
 
           {isAdmin && (
@@ -796,9 +870,15 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                   Tranche {i + 1} ({minVal} à {maxVal} {unit}) :
                                 </span>
                                 <strong>
-                                  <span style={{ color: '#007AFF' }}>{t.discountPercent}%</span>
-                                  {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', marginLeft: '6px' }}>+{t.freeQuantity} gratuit</span>}
-                                  {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', marginLeft: '6px' }}>-{t.voucherAmount} DH</span>}
+                                  {promo.type === 'TYPE_5' ? (
+                                    <span style={{ color: 'var(--bardahl-yellow)' }}>{t.unitPrice || promo.unitPrice} DH TTC / un.</span>
+                                  ) : (
+                                    <>
+                                      <span style={{ color: '#007AFF' }}>{t.discountPercent}%</span>
+                                      {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', marginLeft: '6px' }}>+{t.freeQuantity} gratuit</span>}
+                                      {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', marginLeft: '6px' }}>-{t.voucherAmount} DH</span>}
+                                    </>
+                                  )}
                                 </strong>
                               </div>
                             )
@@ -814,7 +894,14 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                           </strong>
                         </div>
 
-                        {promo.discountPercent > 0 && (
+                        {promo.type === 'TYPE_5' && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Nouveau Prix Vente :</span>
+                            <strong style={{ color: 'var(--bardahl-yellow)' }}>{promo.unitPrice} DH TTC / un.</strong>
+                          </div>
+                        )}
+
+                        {promo.discountPercent > 0 && promo.type !== 'TYPE_5' && (
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ color: 'var(--text-secondary)' }}>Remise :</span>
                             <strong style={{ color: '#007AFF' }}>{promo.discountPercent}%</strong>
@@ -1010,16 +1097,27 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                               return (
                                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                   <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>[{minVal}-{maxVal} {unit}]:</span>
-                                  <strong style={{ color: '#007AFF' }}>{t.discountPercent}%</strong>
-                                  {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', fontWeight: 'bold' }}>+{t.freeQuantity} gratuit</span>}
-                                  {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', fontWeight: 'bold' }}>-{t.voucherAmount} DH</span>}
+                                  {promo.type === 'TYPE_5' ? (
+                                    <strong style={{ color: 'var(--bardahl-yellow)' }}>{t.unitPrice || promo.unitPrice} DH TTC</strong>
+                                  ) : (
+                                    <>
+                                      <strong style={{ color: '#007AFF' }}>{t.discountPercent}%</strong>
+                                      {promo.type === 'TYPE_2' && t.freeQuantity > 0 && <span style={{ color: '#34C759', fontWeight: 'bold' }}>+{t.freeQuantity} gratuit</span>}
+                                      {promo.type === 'TYPE_3' && t.voucherAmount > 0 && <span style={{ color: '#FF9500', fontWeight: 'bold' }}>-{t.voucherAmount} DH</span>}
+                                    </>
+                                  )}
                                 </div>
                               )
                             })}
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px' }}>
-                            {promo.discountPercent > 0 && (
+                            {promo.type === 'TYPE_5' && (
+                              <span style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}>
+                                Prix : {promo.unitPrice} DH TTC / un.
+                              </span>
+                            )}
+                            {promo.discountPercent > 0 && promo.type !== 'TYPE_5' && (
                               <span style={{ color: '#007AFF', fontWeight: 'bold' }}>
                                 Remise : {promo.discountPercent}%
                               </span>
@@ -1112,6 +1210,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                   <option value="TYPE_2">Type 2 — Quantité de cartons → Remise + Carton(s) Gratuit(s)</option>
                   <option value="TYPE_3">Type 3 — Quantité de cartons → Remise + Bon d'Achat (DH)</option>
                   <option value="TYPE_4">Type 4 — Montant total d'une famille → Remise (%)</option>
+                  <option value="TYPE_5">Type 5 — Quantité de cartons → Prix vente (Tarif dégressif par carton)</option>
                 </select>
               </div>
 
@@ -1203,12 +1302,62 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                 {/* Sub-selector depending on Target Type */}
                 {formTargetType === 'FAMILY' ? (
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
-                      🏷️ FAMILLE DE PRODUITS ENTIÈRE (Sélectionnez la famille Bardahl ciblée)
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                        🏷️ FAMILLE DE PRODUITS ENTIÈRE (Sélectionnez une ou plusieurs familles Bardahl)
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all = activeFamilies.map(f => f.label)
+                            setFormTargetFamilies(all)
+                            setFormTargetFamily(all[0] || '')
+                            setTargetSearchQuery('')
+                          }}
+                          style={{
+                            background: 'rgba(255, 208, 0, 0.1)',
+                            border: '1px solid rgba(255, 208, 0, 0.3)',
+                            color: 'var(--bardahl-yellow)',
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            borderRadius: '5px',
+                            padding: '3px 8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✓ Tout sélectionner ({activeFamilies.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const first = [activeFamilies[0]?.label || 'Additifs & Traitements']
+                            setFormTargetFamilies(first)
+                            setFormTargetFamily(first[0])
+                            setTargetSearchQuery('')
+                          }}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            color: 'var(--text-secondary)',
+                            fontSize: '10px',
+                            fontWeight: '600',
+                            borderRadius: '5px',
+                            padding: '3px 8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Réinitialiser
+                        </button>
+                        <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--bardahl-yellow)', background: 'rgba(255, 208, 0, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
+                          {formTargetFamilies.length} sélectionnée(s)
+                        </span>
+                      </div>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '14px' }}>
                       {activeFamilies.map(fam => {
-                        const isSelected = formTargetFamily === fam.label
+                        const isSelected = formTargetFamilies.includes(fam.label)
                         const familyCount = products.filter(p => {
                           const info = getFamilyInfo(p.category, activeFamilies)
                           return info.code === fam.code || info.label === fam.label || info.id === fam.id
@@ -1217,14 +1366,26 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                           <div
                             key={fam.id}
                             onClick={() => {
-                              setFormTargetFamily(fam.label)
+                              let updated
+                              if (isSelected) {
+                                if (formTargetFamilies.length > 1) {
+                                  updated = formTargetFamilies.filter(f => f !== fam.label)
+                                } else {
+                                  updated = formTargetFamilies
+                                }
+                              } else {
+                                updated = [...formTargetFamilies, fam.label]
+                              }
+                              setFormTargetFamilies(updated)
+                              setFormTargetFamily(updated[0] || fam.label)
                               setTargetSearchQuery('')
                             }}
                             style={{
                               padding: '10px 12px',
                               borderRadius: '8px',
-                              border: isSelected ? `2px solid ${fam.color}` : '1px solid var(--border-card)',
-                              background: isSelected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.02)',
+                              border: isSelected ? `2px solid ${fam.color || 'var(--bardahl-yellow)'}` : '1px solid var(--border-card)',
+                              background: isSelected ? 'rgba(255, 208, 0, 0.12)' : 'rgba(255,255,255,0.02)',
+                              boxShadow: isSelected ? '0 0 10px rgba(255, 208, 0, 0.15)' : 'none',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1234,14 +1395,18 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                           >
                             <span style={{ fontSize: '20px' }}>{fam.icon}</span>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '12px', fontWeight: isSelected ? '800' : '600', color: isSelected ? fam.color : '#FFFFFF' }}>
+                              <div style={{ fontSize: '12px', fontWeight: isSelected ? '800' : '600', color: isSelected ? (fam.color || '#FFFFFF') : '#FFFFFF' }}>
                                 {fam.label}
                               </div>
                               <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                 {familyCount} articles éligibles
                               </div>
                             </div>
-                            {isSelected && <CheckCircle2 size={16} style={{ color: fam.color }} />}
+                            {isSelected ? (
+                              <CheckCircle2 size={16} style={{ color: fam.color || 'var(--bardahl-yellow)' }} />
+                            ) : (
+                              <div style={{ width: '14px', height: '14px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)' }} />
+                            )}
                           </div>
                         )
                       })}
@@ -1305,7 +1470,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                     <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
                       {formTargetType === 'FAMILY' ? (
                         <span>
-                          ARTICLES CIBLÉS DANS LA FAMILLE « {formTargetFamily} » ({formTargetProductRefs.length > 0 ? `${formTargetProductRefs.length} sélectionné(s)` : `Tous les ${filteredTargetProducts.length} articles inclus`})
+                          ARTICLES CIBLÉS DANS {formTargetFamilies.length > 1 ? `LES ${formTargetFamilies.length} FAMILLES (« ${formTargetFamilies.join(', ')} »)` : `LA FAMILLE « ${formTargetFamilies[0] || formTargetFamily} »`} ({formTargetProductRefs.length > 0 ? `${formTargetProductRefs.length} sélectionné(s)` : `Tous les ${filteredTargetProducts.length} articles inclus`})
                         </span>
                       ) : (
                         <span>
@@ -1349,11 +1514,11 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       <CheckCircle2 size={14} color="var(--bardahl-yellow)" />
                       {formTargetProductRefs.length === 0 ? (
                         <span>
-                          Cette promotion s'applique par défaut à <strong>tous les {filteredTargetProducts.length} articles</strong> de la famille <strong>{formTargetFamily}</strong>. Vous pouvez aussi rechercher ci-dessous pour ajouter des références spécifiques de cette famille.
+                          Cette promotion s'applique par défaut à <strong>tous les {filteredTargetProducts.length} articles</strong> {formTargetFamilies.length > 1 ? `des ${formTargetFamilies.length} familles : ` : 'de la famille '}<strong>{formTargetFamilies.join(', ')}</strong>. Vous pouvez aussi rechercher ci-dessous pour cibler des références précises.
                         </span>
                       ) : (
                         <span>
-                          <strong>{formTargetProductRefs.length} référence(s) spécifique(s)</strong> sélectionnée(s) pour la famille <strong>{formTargetFamily}</strong>.
+                          <strong>{formTargetProductRefs.length} référence(s) spécifique(s)</strong> sélectionnée(s) pour {formTargetFamilies.length > 1 ? `les familles ` : 'la famille '}<strong>{formTargetFamilies.join(', ')}</strong>.
                         </span>
                       )}
                     </div>
@@ -1375,7 +1540,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       <span style={{ fontSize: '12px', color: formTargetType === 'FAMILY' ? 'var(--text-secondary)' : '#FF9500', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <AlertCircle size={14} />
                         {formTargetType === 'FAMILY'
-                          ? `Aucune référence isolée : tous les articles de ${formTargetFamily} sont inclus dans la promotion.`
+                          ? `Aucune référence isolée : tous les articles des familles (${formTargetFamilies.join(', ')}) sont inclus dans la promotion.`
                           : `Aucune référence sélectionnée. Recherchez et ajoutez un ou plusieurs articles ci-dessous.`
                         }
                       </span>
@@ -1437,7 +1602,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       className="input-field"
                       placeholder={
                         formTargetType === 'FAMILY'
-                          ? `🔎 Taper une référence ou un nom pour ajouter un article de ${formTargetFamily}...`
+                          ? `🔎 Taper une référence ou un nom pour ajouter un article ciblé...`
                           : (selectedProductFamilyFilter !== 'ALL'
                               ? `🔎 Taper une référence ou un nom pour ajouter un article de ${selectedProductFamilyFilter}...`
                               : `🔎 Taper une référence ou un nom pour ajouter un produit...`)
@@ -1493,7 +1658,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       <div style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
                         <span>
                           {formTargetType === 'FAMILY'
-                            ? `Articles de la famille « ${formTargetFamily} » :`
+                            ? `Articles éligibles (${formTargetFamilies.join(', ')}) :`
                             : (selectedProductFamilyFilter !== 'ALL' ? `Articles de la famille « ${selectedProductFamilyFilter} » :` : 'Tous les articles Bardahl :')
                           }
                         </span>
@@ -1505,7 +1670,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       {filteredTargetProducts.length === 0 ? (
                         <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
                           {formTargetType === 'FAMILY'
-                            ? `Aucun article de la famille "${formTargetFamily}" ne correspond à "${targetSearchQuery}"`
+                            ? `Aucun article des familles sélectionnées ne correspond à "${targetSearchQuery}"`
                             : (selectedProductFamilyFilter !== 'ALL'
                                 ? `Aucun article de la famille "${selectedProductFamilyFilter}" ne correspond à "${targetSearchQuery}"`
                                 : `Aucun produit trouvé pour "${targetSearchQuery}"`)
@@ -1617,9 +1782,15 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                             <th style={{ padding: '8px 10px', minWidth: '110px' }}>
                               Fin ({formType === 'TYPE_4' ? 'DH' : 'Ctns'})
                             </th>
-                            <th style={{ padding: '8px 10px', minWidth: '95px' }}>
-                              Remise (%)
-                            </th>
+                            {formType === 'TYPE_5' ? (
+                              <th style={{ padding: '8px 10px', minWidth: '120px' }}>
+                                🏷️ Prix Vente (DH TTC) *
+                              </th>
+                            ) : (
+                              <th style={{ padding: '8px 10px', minWidth: '95px' }}>
+                                Remise (%)
+                              </th>
+                            )}
                             {formType === 'TYPE_2' && (
                               <th style={{ padding: '8px 10px', minWidth: '100px' }}>
                                 🎁 Cartons offerts
@@ -1663,21 +1834,40 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                   style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
                                 />
                               </td>
-                              <td style={{ padding: '6px 10px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="0.5"
-                                    value={tier.discountPercent}
-                                    onChange={e => handleUpdateTier(idx, 'discountPercent', e.target.value)}
-                                    className="input-field"
-                                    style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
-                                  />
-                                  <span style={{ color: 'var(--text-secondary)' }}>%</span>
-                                </div>
-                              </td>
+                              {formType === 'TYPE_5' ? (
+                                <td style={{ padding: '6px 10px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      placeholder="Ex: 260"
+                                      value={tier.unitPrice !== undefined && tier.unitPrice !== null ? tier.unitPrice : ''}
+                                      onChange={e => handleUpdateTier(idx, 'unitPrice', e.target.value)}
+                                      className="input-field"
+                                      style={{ width: '100%', fontSize: '12px', padding: '6px 8px', color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}
+                                      required
+                                    />
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>DH</span>
+                                  </div>
+                                </td>
+                              ) : (
+                                <td style={{ padding: '6px 10px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="0.5"
+                                      value={tier.discountPercent}
+                                      onChange={e => handleUpdateTier(idx, 'discountPercent', e.target.value)}
+                                      className="input-field"
+                                      style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+                                    />
+                                    <span style={{ color: 'var(--text-secondary)' }}>%</span>
+                                  </div>
+                                </td>
+                              )}
                               {formType === 'TYPE_2' && (
                                 <td style={{ padding: '6px 10px' }}>
                                   <input
@@ -1769,20 +1959,39 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                       />
                     </div>
 
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        TAUX DE REMISE COMMERCIALE (%)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.5"
-                        className="input-field"
-                        value={formDiscountPercent}
-                        onChange={e => setFormDiscountPercent(e.target.value)}
-                      />
-                    </div>
+                    {formType === 'TYPE_5' ? (
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          NOUVEAU PRIX VENTE UNITAIRE (DH TTC) *
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="Ex: 260"
+                          className="input-field"
+                          value={formUnitPrice}
+                          onChange={e => setFormUnitPrice(e.target.value)}
+                          required
+                          style={{ color: 'var(--bardahl-yellow)', fontWeight: 'bold' }}
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          TAUX DE REMISE COMMERCIALE (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          className="input-field"
+                          value={formDiscountPercent}
+                          onChange={e => setFormDiscountPercent(e.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1824,47 +2033,113 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
 
                   {formFreeItemType === 'DIFFERENT_PRODUCT' && (
                     <div className="free-product-picker-container" style={{ position: 'relative' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                          SÉLECTIONNER LE PRODUIT CADEAU (RECHERCHE AUTOCOMPLETE)
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                          SÉLECTIONNER LE(S) PRODUIT(S) CADEAU(X) (RECHERCHE MULTI-RÉFÉRENCES)
                         </label>
-                        {selectedFreeProduct && (
-                          <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
-                            Réf : {selectedFreeProduct.reference}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold', background: 'rgba(52, 199, 89, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
+                            {formFreeProductRefs.length} référence(s) cadeau(x)
                           </span>
-                        )}
+                          {formFreeProductRefs.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleClearAllFreeProducts}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#FF453A',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                padding: '2px 4px'
+                              }}
+                            >
+                              Tout effacer
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {selectedFreeProduct && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 12px',
-                          background: 'rgba(52, 199, 89, 0.1)',
-                          border: '1px solid rgba(52, 199, 89, 0.3)',
-                          borderRadius: '8px',
-                          marginBottom: '8px'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ background: '#34C759', color: '#000', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
-                              {selectedFreeProduct.reference}
-                            </span>
-                            <span style={{ fontWeight: '700', color: '#FFF', fontSize: '12px' }}>
-                              {selectedFreeProduct.name}
-                            </span>
+                      {/* Selected Gift References Chips */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        marginBottom: '10px'
+                      }}>
+                        {formFreeProductRefs.length === 0 ? (
+                          <div style={{
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            background: 'rgba(255, 69, 58, 0.08)',
+                            border: '1px solid rgba(255, 69, 58, 0.25)',
+                            color: '#FF453A',
+                            fontSize: '11px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            <AlertCircle size={14} />
+                            <span>Veuillez rechercher et sélectionner un ou plusieurs articles cadeaux ci-dessous.</span>
                           </div>
-                          <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>
-                            🎁 Offert à 0.00 DH TTC
-                          </span>
-                        </div>
-                      )}
+                        ) : (
+                          formFreeProductRefs.map(ref => {
+                            const p = products.find(prod => prod.reference === ref) || { reference: ref, name: ref }
+                            return (
+                              <div
+                                key={ref}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  background: 'rgba(52, 199, 89, 0.08)',
+                                  border: '1px solid rgba(52, 199, 89, 0.3)',
+                                  borderRadius: '8px',
+                                  gap: '8px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                  <span style={{ background: '#34C759', color: '#000', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                                    {ref}
+                                  </span>
+                                  <span style={{ fontWeight: '700', color: '#FFF', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {p.name}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                    🎁 Offert à 0.00 DH TTC
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFreeProduct(ref)}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#FF453A',
+                                      fontWeight: '900',
+                                      fontSize: '16px',
+                                      cursor: 'pointer',
+                                      lineHeight: 1
+                                    }}
+                                    title="Retirer ce cadeau"
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
 
                       <div style={{ position: 'relative' }}>
                         <input
                           type="text"
                           className="input-field"
-                          placeholder="🔎 Rechercher le produit offert par réf ou nom..."
+                          placeholder="🔎 Taper une référence ou un nom pour ajouter un article cadeau..."
                           value={freeProductSearchQuery}
                           onChange={e => {
                             setFreeProductSearchQuery(e.target.value)
@@ -1908,7 +2183,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                           border: '1px solid var(--border-card)',
                           borderRadius: '8px',
                           boxShadow: '0 12px 35px rgba(0,0,0,0.85)',
-                          maxHeight: '180px',
+                          maxHeight: '200px',
                           overflowY: 'auto',
                           zIndex: 2500
                         }}>
@@ -1918,20 +2193,22 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                             </div>
                           ) : (
                             filteredFreeProducts.slice(0, 100).map(p => {
-                              const isSelected = p.reference === formFreeProductRef
+                              const isSelected = formFreeProductRefs.includes(p.reference)
                               return (
                                 <div
                                   key={p.id}
                                   onClick={() => {
-                                    setFormFreeProductRef(p.reference)
-                                    setFreeProductSearchQuery('')
-                                    setShowFreeDropdown(false)
+                                    if (isSelected) {
+                                      handleRemoveFreeProduct(p.reference)
+                                    } else {
+                                      handleAddFreeProduct(p)
+                                    }
                                   }}
                                   style={{
                                     padding: '8px 12px',
                                     cursor: 'pointer',
                                     borderBottom: '1px solid rgba(255,255,255,0.06)',
-                                    background: isSelected ? 'rgba(52, 199, 89, 0.2)' : 'transparent',
+                                    background: isSelected ? 'rgba(52, 199, 89, 0.18)' : 'transparent',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
@@ -1940,7 +2217,7 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                   onMouseEnter={e => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
                                   onMouseLeave={e => !isSelected && (e.currentTarget.style.background = 'transparent')}
                                 >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <span style={{
                                       background: isSelected ? '#34C759' : 'rgba(255,255,255,0.1)',
                                       color: isSelected ? '#000' : '#FFF',
@@ -1955,9 +2232,16 @@ export default function Promotions({ openNewPromoTrigger } = {}) {
                                       {p.name}
                                     </span>
                                   </div>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                    {p.category}
-                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                      {p.category}
+                                    </span>
+                                    {isSelected ? (
+                                      <CheckCircle2 size={16} color="#34C759" />
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: '#34C759', fontWeight: 'bold' }}>+ Ajouter</span>
+                                    )}
+                                  </div>
                                 </div>
                               )
                             })

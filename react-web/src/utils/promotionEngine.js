@@ -139,13 +139,24 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     if (chosenPromo) {
       let currentVal = 0
       if (chosenPromo.targetType === 'FAMILY') {
-        const rawTargetFam = String(chosenPromo.targetFamily || '').trim()
-        const targetFamInfo = getFamilyInfo(rawTargetFam)
-        const st = familyStats[targetFamInfo.code.toUpperCase()] ||
-                   familyStats[targetFamInfo.label.toUpperCase()] ||
-                   familyStats[(targetFamInfo.id || '').toUpperCase()] ||
-                   familyStats[rawTargetFam.toUpperCase()]
-        currentVal = chosenPromo.type === 'TYPE_4' ? (st?.totalAmountTtc || 0) : (st?.totalCartons || 0)
+        const famList = (chosenPromo.targetFamilies && Array.isArray(chosenPromo.targetFamilies) && chosenPromo.targetFamilies.length > 0)
+          ? chosenPromo.targetFamilies
+          : (chosenPromo.targetFamily ? chosenPromo.targetFamily.split(',').map(s => s.trim()).filter(Boolean) : [])
+
+        let sumCartons = 0
+        let sumAmount = 0
+        famList.forEach(rawFam => {
+          const targetFamInfo = getFamilyInfo(rawFam)
+          const st = familyStats[targetFamInfo.code.toUpperCase()] ||
+                     familyStats[targetFamInfo.label.toUpperCase()] ||
+                     familyStats[(targetFamInfo.id || '').toUpperCase()] ||
+                     familyStats[rawFam.toUpperCase()]
+          if (st) {
+            sumCartons += st.totalCartons
+            sumAmount += st.totalAmountTtc
+          }
+        })
+        currentVal = chosenPromo.type === 'TYPE_4' ? sumAmount : sumCartons
       } else {
         // Multi-références ou mono-référence
         const targetRefs = (chosenPromo.targetProductRefs && Array.isArray(chosenPromo.targetProductRefs) && chosenPromo.targetProductRefs.length > 0)
@@ -173,8 +184,13 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       // Seuil minimal pour débloquer le 1er palier avec avantage
       let minThreshold = chosenPromo.threshold || 10
       if (chosenPromo.tiers && Array.isArray(chosenPromo.tiers) && chosenPromo.tiers.length > 0) {
-        // Trouver le premier palier qui apporte un avantage (> 0% remise ou > 0 gratuit ou > 0 bon)
-        const avantageTiers = chosenPromo.tiers.filter(t => (t.discountPercent > 0 || (t.freeQuantity || 0) > 0 || (t.voucherAmount || 0) > 0))
+        // Trouver le premier palier qui apporte un avantage (> 0% remise ou > 0 gratuit ou > 0 bon ou prix dégressif > 0)
+        const avantageTiers = chosenPromo.tiers.filter(t => (
+          t.discountPercent > 0 || 
+          (t.freeQuantity || 0) > 0 || 
+          (t.voucherAmount || 0) > 0 || 
+          (chosenPromo.type === 'TYPE_5' && (t.unitPrice || 0) > 0)
+        ))
         if (avantageTiers.length > 0) {
           minThreshold = Math.min(...avantageTiers.map(t => t.min !== undefined && t.min !== null ? parseFloat(t.min) : (t.threshold || 0)))
         } else {
@@ -185,8 +201,11 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       const isReached = currentVal >= minThreshold
       const missingValue = Math.max(0, minThreshold - currentVal)
       const unitLabel = chosenPromo.type === 'TYPE_4' ? 'DH TTC' : 'carton(s)'
+      const chosenFamList = (chosenPromo.targetFamilies && Array.isArray(chosenPromo.targetFamilies) && chosenPromo.targetFamilies.length > 0)
+        ? chosenPromo.targetFamilies
+        : (chosenPromo.targetFamily ? chosenPromo.targetFamily.split(',').map(s => s.trim()).filter(Boolean) : [])
       const targetLabel = chosenPromo.targetType === 'FAMILY' 
-        ? `la famille ${chosenPromo.targetFamily}` 
+        ? (chosenFamList.length > 1 ? `les familles ${chosenFamList.join(', ')}` : `la famille ${chosenFamList[0] || chosenPromo.targetFamily}`)
         : (chosenPromo.targetProductRefs && chosenPromo.targetProductRefs.length > 1
             ? `${chosenPromo.targetProductRefs.length} réf. Bardahl`
             : (chosenPromo.targetProductName || chosenPromo.targetProductRef || 'ce produit'))
@@ -225,18 +244,34 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     let targetDisplay = ''
 
     if (promo.targetType === 'FAMILY') {
-      const rawTargetFam = String(promo.targetFamily || '').trim()
-      const targetFamInfo = getFamilyInfo(rawTargetFam)
-      targetKey = `FAM_${targetFamInfo.code}`
-      targetDisplay = `Famille « ${targetFamInfo.label} »`
+      const famList = (promo.targetFamilies && Array.isArray(promo.targetFamilies) && promo.targetFamilies.length > 0)
+        ? promo.targetFamilies
+        : (promo.targetFamily ? promo.targetFamily.split(',').map(s => s.trim()).filter(Boolean) : [])
+      
+      targetKey = `FAM_${famList.slice().sort().join('_')}`
+      targetDisplay = famList.length > 1
+        ? `Familles « ${famList.join(', ')} »`
+        : `Famille « ${famList[0] || promo.targetFamily} »`
 
-      const stats = familyStats[targetFamInfo.code.toUpperCase()] ||
-                    familyStats[targetFamInfo.label.toUpperCase()] ||
-                    familyStats[(targetFamInfo.id || '').toUpperCase()] ||
-                    familyStats[rawTargetFam.toUpperCase()]
-      if (stats && stats.items.length > 0) {
-        currentConditionValue = promo.type === 'TYPE_4' ? stats.totalAmountTtc : stats.totalCartons
-        applicableItems = stats.items
+      let aggCartons = 0
+      let aggAmount = 0
+      const aggItems = []
+      famList.forEach(rawFam => {
+        const targetFamInfo = getFamilyInfo(rawFam)
+        const stats = familyStats[targetFamInfo.code.toUpperCase()] ||
+                      familyStats[targetFamInfo.label.toUpperCase()] ||
+                      familyStats[(targetFamInfo.id || '').toUpperCase()] ||
+                      familyStats[rawFam.toUpperCase()]
+        if (stats && stats.items.length > 0) {
+          aggCartons += stats.totalCartons
+          aggAmount += stats.totalAmountTtc
+          aggItems.push(...stats.items)
+        }
+      })
+
+      if (aggItems.length > 0) {
+        currentConditionValue = promo.type === 'TYPE_4' ? aggAmount : aggCartons
+        applicableItems = aggItems
       }
     } else {
       // Cible = Produit spécifique (Mono ou Multi-références)
@@ -287,13 +322,17 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
           const maxVal = (t.max !== undefined && t.max !== null && t.max !== '' && !isNaN(t.max))
             ? parseFloat(t.max)
             : null
+          const unitPriceVal = (t.unitPrice !== undefined && t.unitPrice !== null && t.unitPrice !== '' && !isNaN(t.unitPrice))
+            ? parseFloat(t.unitPrice)
+            : null
           return {
             ...t,
             minVal,
             maxVal,
             discountPercent: parseFloat(t.discountPercent || 0),
             freeQuantity: parseInt(t.freeQuantity || 0, 10),
-            voucherAmount: parseFloat(t.voucherAmount || 0)
+            voucherAmount: parseFloat(t.voucherAmount || 0),
+            unitPrice: unitPriceVal
           }
         }).sort((a, b) => a.minVal - b.minVal)
 
@@ -310,15 +349,26 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
 
         appliedTier = matched || fallbackTier
 
-        // La promotion est applicable si elle accorde un avantage concret (remise > 0% ou gratuité > 0 ou bon > 0)
-        if (appliedTier && (appliedTier.discountPercent > 0 || appliedTier.freeQuantity > 0 || appliedTier.voucherAmount > 0)) {
+        // La promotion est applicable si elle accorde un avantage concret (remise > 0% ou gratuité > 0 ou bon > 0 ou prix vente > 0)
+        if (appliedTier && (
+          appliedTier.discountPercent > 0 || 
+          appliedTier.freeQuantity > 0 || 
+          appliedTier.voucherAmount > 0 ||
+          (promo.type === 'TYPE_5' && appliedTier.unitPrice !== null && appliedTier.unitPrice > 0)
+        )) {
           isEligible = true
         }
       } else {
         // Seuil unique classique de repli
         const th = parseFloat(promo.threshold || 0)
         if (currentConditionValue >= th) {
-          isEligible = true
+          if (promo.type === 'TYPE_5') {
+            if (promo.unitPrice !== undefined && promo.unitPrice !== null && parseFloat(promo.unitPrice) > 0) {
+              isEligible = true
+            }
+          } else {
+            isEligible = true
+          }
         }
       }
     }
@@ -333,19 +383,30 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       let effectiveVoucher = appliedTier && appliedTier.voucherAmount !== undefined 
         ? appliedTier.voucherAmount 
         : parseFloat(promo.voucherAmount || 0)
+      let effectiveUnitPrice = appliedTier && appliedTier.unitPrice !== null && appliedTier.unitPrice !== undefined
+        ? appliedTier.unitPrice
+        : (promo.unitPrice !== undefined && promo.unitPrice !== null ? parseFloat(promo.unitPrice) : null)
 
       // Strict enforcement of Types (§ 12, § 13, § 14, § 18.8)
       if (promo.type === 'TYPE_1') {
         effectiveFreeQty = 0
         effectiveVoucher = 0
+        effectiveUnitPrice = null
       } else if (promo.type === 'TYPE_3') {
         effectiveFreeQty = 0
         effectiveDiscount = 0
+        effectiveUnitPrice = null
       } else if (promo.type === 'TYPE_4') {
         effectiveFreeQty = 0
         effectiveVoucher = 0
+        effectiveUnitPrice = null
       } else if (promo.type === 'TYPE_2') {
         effectiveVoucher = 0
+        effectiveUnitPrice = null
+      } else if (promo.type === 'TYPE_5') {
+        effectiveFreeQty = 0
+        effectiveVoucher = 0
+        effectiveDiscount = 0
       }
 
       candidatePromos.push({
@@ -358,6 +419,7 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
         discountPercent: effectiveDiscount,
         freeQuantity: effectiveFreeQty,
         voucherAmount: effectiveVoucher,
+        unitPrice: effectiveUnitPrice,
         applicableItems
       })
     }
@@ -406,13 +468,14 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
 
   // 6. Calcul des avantages concrets et application
   const lineDiscounts = {}
+  const appliedUnitPrices = {}
   let totalDiscountFromPromos = 0
   const freeItems = []
   let voucherDiscount = 0
   const appliedPromotions = []
 
   retainedPromos.forEach(cp => {
-    const { promo, discountPercent, freeQuantity, voucherAmount, applicableItems, currentConditionValue, threshold, targetDisplay, appliedTier } = cp
+    const { promo, discountPercent, freeQuantity, voucherAmount, unitPrice, applicableItems, currentConditionValue, threshold, targetDisplay, appliedTier } = cp
 
     // A. Remise en % sur les articles de la cible
     let promoItemsSubtotal = 0
@@ -443,22 +506,28 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
           giftSummary = `${freeQuantity} carton(s) offert(s) de ${sourceItem.productName} (Même réf. ${sourceItem.reference})`
         }
       } else {
-        const giftMeta = productMetaMap[promo.freeProductId] || productMetaMap[promo.freeProductRef] || {}
-        const giftRef = promo.freeProductRef || giftMeta.reference
-        const giftName = promo.freeProductName || giftMeta.name
+        const giftRefs = (promo.freeProductRefs && Array.isArray(promo.freeProductRefs) && promo.freeProductRefs.length > 0)
+          ? promo.freeProductRefs
+          : (promo.freeProductRef ? [promo.freeProductRef] : (promo.freeProductId ? [promo.freeProductId] : []))
 
-        // Règle § 10 & 18.6 : Aucun cadeau fictif ne doit être injecté si aucun produit cadeau n'est configuré
-        if (giftRef || giftName) {
-          freeItems.push({
-            productId: promo.freeProductId || giftMeta.id || 'promo_gift',
-            reference: giftRef || 'CADEAU',
-            productName: giftName || 'Cadeau Promotionnel',
-            qtyGratuit: freeQuantity,
-            priceTtc: 0,
-            promoId: promo.id,
-            promoName: promo.name
+        if (giftRefs.length > 0) {
+          const names = []
+          giftRefs.forEach(gRef => {
+            const giftMeta = productMetaMap[gRef] || allProducts.find(p => p.reference === gRef || p.id === gRef) || {}
+            const r = giftMeta.reference || gRef
+            const n = giftMeta.name || r
+            names.push(n)
+            freeItems.push({
+              productId: giftMeta.id || gRef,
+              reference: r,
+              productName: n,
+              qtyGratuit: freeQuantity,
+              priceTtc: 0,
+              promoId: promo.id,
+              promoName: promo.name
+            })
           })
-          giftSummary = `${freeQuantity} carton(s) offert(s) de ${giftName || giftRef}`
+          giftSummary = `${freeQuantity} carton(s) offert(s) (${names.join(' + ')})`
         }
       }
     }
@@ -466,6 +535,24 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     // C. Bon d'achat fixe immédiat (Type 3 uniquement, déduit globalement sur le bon de commande)
     if (promo.type === 'TYPE_3' && voucherAmount > 0) {
       voucherDiscount += voucherAmount
+    }
+
+    // D. Prix de vente dégressif par carton (Type 5)
+    if (promo.type === 'TYPE_5' && unitPrice > 0 && applicableItems.length > 0) {
+      applicableItems.forEach(({ item, idx }) => {
+        appliedUnitPrices[idx] = unitPrice
+        const originalPrice = parseFloat(item.priceTtc || 0)
+        const qtyUnits = parseInt(item.qty || 1, 10)
+        const itemTotal = originalPrice * qtyUnits
+        promoItemsSubtotal += itemTotal
+        if (originalPrice > unitPrice) {
+          const unitDiff = originalPrice - unitPrice
+          const discPct = (unitDiff / originalPrice) * 100
+          lineDiscounts[idx] = Math.max(lineDiscounts[idx] || 0, discPct)
+          totalDiscountFromPromos += unitDiff * qtyUnits
+        }
+      })
+      giftSummary = `Prix de vente dégressif appliqué : ${unitPrice.toFixed(2)} DH TTC / un.`
     }
 
     // Description lisible du palier appliqué
@@ -478,6 +565,7 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       if (discountPercent > 0) perks.push(`${discountPercent}% remise`)
       if (freeQuantity > 0) perks.push(`${freeQuantity} carton(s) gratuit(s)`)
       if (voucherAmount > 0) perks.push(`Bon -${voucherAmount} DH`)
+      if (unitPrice > 0 && promo.type === 'TYPE_5') perks.push(`Prix: ${unitPrice} DH TTC/un.`)
       appliedTierInfo = `Palier : ${minTxt}${maxTxt} ${unitLabel} → ${perks.join(' + ')}`
     }
 
@@ -494,6 +582,7 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
       giftSummary,
       freeQuantity,
       voucherAmount,
+      unitPrice,
       promoItemsSubtotal
     })
   })
@@ -503,6 +592,7 @@ export function evaluatePromotions(selectedProducts = [], allProducts = [], prom
     candidatePromos,
     conflicts,
     lineDiscounts,
+    appliedUnitPrices,
     totalDiscountFromPromos,
     freeItems,
     voucherDiscount,

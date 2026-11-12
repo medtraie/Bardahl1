@@ -94,5 +94,24 @@ export const defaultPromotions = [
     isActive: true,
     startDate: "2026-01-01",
     endDate: "2026-12-31"
+  },
+  {
+    id: "promo_5",
+    name: "Tarif Dégressif Cartons — Prix Vente Spécial Volume",
+    description: "Prix de vente unitaire dégressif selon le nombre de cartons : 1-10 cartons: 260 DH, 10-20 cartons: 200 DH, dès 20 cartons: 160 DH.",
+    type: "TYPE_5",
+    targetType: "FAMILY",
+    targetFamily: "ADDITIFS DIESEL",
+    hasTiers: true,
+    tiers: [
+      { id: "t5_1", min: 1, max: 10, unitPrice: 260, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
+      { id: "t5_2", min: 11, max: 20, unitPrice: 200, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 },
+      { id: "t5_3", min: 21, max: null, unitPrice: 160, discountPercent: 0, freeQuantity: 0, voucherAmount: 0 }
+    ],
+    threshold: 1,
+    unitPrice: 260,
+    isActive: true,
+    startDate: "2026-01-01",
+    endDate: "2026-12-31"
   }
 ]

@@ -689,6 +689,7 @@ class SupabaseService(
                         "TYPE_2" -> PromotionType.TYPE_2
                         "TYPE_3" -> PromotionType.TYPE_3
                         "TYPE_4" -> PromotionType.TYPE_4
+                        "TYPE_5" -> PromotionType.TYPE_5
                         else -> PromotionType.TYPE_1
                     }
 
@@ -706,8 +707,12 @@ class SupabaseService(
                             tiersList.add(
                                 PromotionTier(
                                     threshold = tObj.optInt("threshold", 10),
-                                    discountPercent = tObj.optDouble("discountPercent", tObj.optDouble("discount_percent", 5.0)),
-                                    freeQuantity = tObj.optInt("freeQuantity", tObj.optInt("free_quantity", 1))
+                                    min = tObj.optDouble("min", tObj.optDouble("threshold", 10.0)),
+                                    max = if (tObj.has("max") && !tObj.isNull("max")) tObj.optDouble("max") else null,
+                                    discountPercent = tObj.optDouble("discountPercent", tObj.optDouble("discount_percent", 0.0)),
+                                    freeQuantity = tObj.optInt("freeQuantity", tObj.optInt("free_quantity", 0)),
+                                    voucherAmount = tObj.optDouble("voucherAmount", tObj.optDouble("voucher_amount", 0.0)),
+                                    unitPrice = if (tObj.has("unitPrice") && !tObj.isNull("unitPrice")) tObj.optDouble("unitPrice") else if (tObj.has("unit_price") && !tObj.isNull("unit_price")) tObj.optDouble("unit_price") else null
                                 )
                             )
                         }
@@ -718,6 +723,16 @@ class SupabaseService(
                         rawTargetRefs.split(",").map { it.trim() }.filter { it.isNotBlank() }
                     } else emptyList()
 
+                    val rawTargetFam = obj.optString("target_family", "")
+                    val parsedTargetFams = if (rawTargetFam.isNotBlank()) {
+                        rawTargetFam.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    } else emptyList()
+
+                    val rawFreeRefs = obj.optString("free_product_ref", "")
+                    val parsedFreeRefs = if (rawFreeRefs.isNotBlank()) {
+                        rawFreeRefs.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    } else emptyList()
+
                     list.add(
                         Promotion(
                             id = obj.getString("id"),
@@ -726,6 +741,7 @@ class SupabaseService(
                             type = pType,
                             targetType = tTargetType,
                             targetFamily = obj.optString("target_family", null),
+                            targetFamilies = parsedTargetFams,
                             targetProductId = obj.optString("target_product_id", null),
                             targetProductRef = if (parsedTargetRefs.isNotEmpty()) parsedTargetRefs.first() else obj.optString("target_product_ref", null),
                             targetProductRefs = parsedTargetRefs,
@@ -734,11 +750,13 @@ class SupabaseService(
                             discountPercent = obj.optDouble("discount_percent", 0.0),
                             freeItemType = fFreeItemType,
                             freeProductId = obj.optString("free_product_id", null),
-                            freeProductRef = obj.optString("free_product_ref", null),
+                            freeProductRef = if (parsedFreeRefs.isNotEmpty()) parsedFreeRefs.first() else obj.optString("free_product_ref", null),
+                            freeProductRefs = parsedFreeRefs,
                             freeProductName = obj.optString("free_product_name", null),
                             freeQuantity = obj.optInt("free_quantity", 0),
                             tiers = tiersList,
                             voucherAmount = obj.optDouble("voucher_amount", 0.0),
+                            unitPrice = if (obj.has("unit_price") && !obj.isNull("unit_price")) obj.optDouble("unit_price") else if (obj.has("unitPrice") && !obj.isNull("unitPrice")) obj.optDouble("unitPrice") else null,
                             isActive = obj.optBoolean("is_active", true),
                             startDate = obj.optString("start_date", "2026-01-01"),
                             endDate = obj.optString("end_date", "2026-12-31")
