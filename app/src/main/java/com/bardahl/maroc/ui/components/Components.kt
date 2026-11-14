@@ -202,8 +202,8 @@ fun BardahlTextField(
             unfocusedBorderColor = BardahlCardBorder,
             focusedLabelColor = BardahlYellow,
             unfocusedLabelColor = TextSecondaryDark,
-            focusedTextColor = TextPrimaryDark,
-            unfocusedTextColor = TextPrimaryDark,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
             cursorColor = BardahlYellow,
             focusedContainerColor = BardahlCardDark,
             unfocusedContainerColor = BardahlCardDark

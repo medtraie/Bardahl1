@@ -138,12 +138,12 @@ fun ClientListScreen(
                 FilterChip(
                     selected = selectedRegionFilter == "ALL",
                     onClick = { selectedRegionFilter = "ALL" },
-                    label = { Text("Toutes Régions", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    label = { Text("Toutes Régions", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (selectedRegionFilter == "ALL") BardahlBlack else Color.White) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = BardahlYellow,
                         selectedLabelColor = BardahlBlack,
                         containerColor = DarkSurface,
-                        labelColor = TextPrimaryDark
+                        labelColor = Color.White
                     )
                 )
 
@@ -152,12 +152,12 @@ fun ClientListScreen(
                     FilterChip(
                         selected = isSel,
                         onClick = { selectedRegionFilter = if (isSel) "ALL" else reg.name },
-                        label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) BardahlBlack else Color.White) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = reg.color,
                             selectedLabelColor = BardahlBlack,
                             containerColor = DarkSurface,
-                            labelColor = TextPrimaryDark
+                            labelColor = Color.White
                         )
                     )
                 }
@@ -784,12 +784,12 @@ fun ClientFormDialog(
                                     city = reg.cities.firstOrNull() ?: city
                                 }
                             },
-                            label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(reg.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSelected) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = reg.color,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkBackground,
-                                labelColor = TextPrimaryDark
+                                labelColor = Color.White
                             )
                         )
                     }
@@ -822,12 +822,12 @@ fun ClientFormDialog(
                         FilterChip(
                             selected = isSelected,
                             onClick = { selectedType = t },
-                            label = { Text(t.label, fontSize = 11.sp) },
+                            label = { Text(t.label, fontSize = 11.sp, color = if (isSelected) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BardahlYellow,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkBackground,
-                                labelColor = TextPrimaryDark
+                                labelColor = Color.White
                             )
                         )
                     }

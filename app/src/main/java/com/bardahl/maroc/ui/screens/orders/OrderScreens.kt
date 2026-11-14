@@ -928,12 +928,12 @@ fun OrderCreateScreen(
                         FilterChip(
                             selected = isSelected,
                             onClick = { selectedPaymentMethod = method },
-                            label = { Text(method, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(method, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isSelected) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BardahlYellow,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkSurface,
-                                labelColor = TextPrimaryDark
+                                labelColor = Color.White
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
@@ -971,12 +971,12 @@ fun OrderCreateScreen(
                         FilterChip(
                             selected = isSelected,
                             onClick = { selectedModeExpedition = exp },
-                            label = { Text(exp, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(exp, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSelected) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BardahlYellow,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkSurface,
-                                labelColor = TextPrimaryDark
+                                labelColor = Color.White
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
@@ -1408,7 +1408,7 @@ fun OrderCreateScreen(
                         ) {
                             Text(
                                 text = selectedLabel,
-                                color = if (selectedPromoId == "AUTO") BardahlYellow else TextPrimaryDark,
+                                color = if (selectedPromoId == "AUTO") BardahlYellow else Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1565,13 +1565,13 @@ fun OrderCreateScreen(
                                         val extra = if (opt.discountPercent > 0) " (${opt.discountPercent.toInt()}%)" else ""
                                         val gift = if (opt.freeQuantity > 0) " +${opt.freeQuantity} gratuit" else ""
                                         val bon = if (opt.voucherAmount > 0) " +${opt.voucherAmount.toInt()} DH bon" else ""
-                                        Text("${opt.promo.name}$extra$gift$bon", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("${opt.promo.name}$extra$gift$bon", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isChosen) BardahlBlack else Color.White)
                                     },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = BardahlYellow,
                                         selectedLabelColor = BardahlBlack,
                                         containerColor = DarkSurface,
-                                        labelColor = TextPrimaryDark
+                                        labelColor = Color.White
                                     )
                                 )
                             }
@@ -1644,12 +1644,12 @@ fun OrderCreateScreen(
                                 globalRemisePercentStr = pct
                                 globalRemiseMontantStr = ""
                             },
-                            label = { Text("$pct%", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text("$pct%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isSelected) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BardahlYellow,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = DarkSurface,
-                                labelColor = TextPrimaryDark
+                                labelColor = Color.White
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
@@ -2094,7 +2094,7 @@ fun OrderCreateScreen(
                                 value = quantityInput,
                                 onValueChange = { quantityInput = it.filter { char -> char.isDigit() } },
                                 textStyle = TextStyle(
-                                    color = TextPrimaryDark,
+                                    color = Color.White,
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Black,
                                     textAlign = TextAlign.Center

@@ -139,12 +139,12 @@ fun AnalyticsScreen(
                         FilterChip(
                             selected = selectedPeriod == period,
                             onClick = { selectedPeriod = period },
-                            label = { Text(period, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(period, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (selectedPeriod == period) BardahlBlack else Color.White) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BardahlYellow,
                                 selectedLabelColor = BardahlBlack,
                                 containerColor = BardahlCardDark,
-                                labelColor = TextSecondaryDark
+                                labelColor = Color.White
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,

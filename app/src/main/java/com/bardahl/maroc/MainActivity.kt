@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -168,7 +169,7 @@ fun MainAppNavHost(
                         bottomNavItems.forEach { screen ->
                             val isSelected = currentRoute == screen.route
                             val bgColor = if (isSelected) BardahlYellow else DarkSurface
-                            val contentColor = if (isSelected) BardahlBlack else TextSecondaryDark
+                            val contentColor = if (isSelected) BardahlBlack else Color.White
 
                             Row(
                                 modifier = Modifier

@@ -30,8 +30,16 @@ private val LightColorScheme = lightColorScheme(
     primary = BardahlYellow,
     onPrimary = BardahlBlack,
     primaryContainer = BardahlYellowDark,
+    onPrimaryContainer = BardahlBlack,
+    secondary = BardahlYellowLight,
+    onSecondary = BardahlBlack,
     background = DarkBackground,
-    surface = DarkSurface
+    onBackground = TextPrimaryDark,
+    surface = DarkSurface,
+    onSurface = TextPrimaryDark,
+    surfaceVariant = BardahlCardDark,
+    onSurfaceVariant = TextSecondaryDark,
+    outline = BardahlCardBorder
 )
 
 @Composable

@@ -1120,7 +1120,7 @@ fun CreateDevisDialog(
                                         value = clientSearch,
                                         onValueChange = { clientSearch = it },
                                         singleLine = true,
-                                        textStyle = TextStyle(color = TextPrimaryDark, fontSize = 12.sp),
+                                        textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
                                         cursorBrush = SolidColor(BardahlYellow),
                                         modifier = Modifier.fillMaxWidth(),
                                         decorationBox = { innerTextField ->
@@ -1251,7 +1251,7 @@ fun CreateDevisDialog(
                             value = productSearch,
                             onValueChange = { productSearch = it },
                             singleLine = true,
-                            textStyle = TextStyle(color = TextPrimaryDark, fontSize = 12.sp),
+                            textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
                             cursorBrush = SolidColor(BardahlYellow),
                             modifier = Modifier.fillMaxWidth(),
                             decorationBox = { innerTextField ->
@@ -1354,10 +1354,10 @@ fun CreateDevisDialog(
                                     onClick = {
                                         selectedProductsList = selectedProductsList.map { it.copy(discountPercentage = pct) }
                                     },
-                                    label = { Text("${pct.toInt()}%", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                    label = { Text("${pct.toInt()}%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (pct == 0.0) Color.White else Color(0xFF007AFF)) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         containerColor = DarkSurface,
-                                        labelColor = if (pct == 0.0) TextSecondaryDark else Color(0xFF007AFF)
+                                        labelColor = if (pct == 0.0) Color.White else Color(0xFF007AFF)
                                     ),
                                     border = FilterChipDefaults.filterChipBorder(
                                         enabled = true,
@@ -1793,6 +1793,7 @@ fun CreateDevisDialog(
                                 ) {
                                     Text(
                                         text = selectedLabel,
+                                        color = if (selectedPromoId == "AUTO") BardahlYellow else Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -2032,13 +2033,13 @@ fun CreateDevisDialog(
                                                     val extra = if (opt.discountPercent > 0) " (${opt.discountPercent.toInt()}%)" else ""
                                                     val gift = if (opt.freeQuantity > 0) " +${opt.freeQuantity} gratuit" else ""
                                                     val bon = if (opt.voucherAmount > 0) " +${opt.voucherAmount.toInt()} DH bon" else ""
-                                                    Text("${opt.promo.name}$extra$gift$bon", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    Text("${opt.promo.name}$extra$gift$bon", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isChosen) BardahlBlack else Color.White)
                                                 },
                                                 colors = FilterChipDefaults.filterChipColors(
                                                     selectedContainerColor = BardahlYellow,
                                                     selectedLabelColor = BardahlBlack,
                                                     containerColor = DarkSurface,
-                                                    labelColor = TextPrimaryDark
+                                                    labelColor = Color.White
                                                 )
                                             )
                                         }

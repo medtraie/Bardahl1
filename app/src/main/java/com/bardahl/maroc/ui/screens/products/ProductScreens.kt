@@ -155,14 +155,14 @@ fun ProductCatalogScreen(
                                 text = cat.label,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) BardahlBlack else TextPrimaryDark
+                                color = if (isSelected) BardahlBlack else Color.White
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = BardahlYellow,
                             selectedLabelColor = BardahlBlack,
                             containerColor = DarkSurface,
-                            labelColor = TextPrimaryDark
+                            labelColor = Color.White
                         ),
                         border = FilterChipDefaults.filterChipBorder(
                             enabled = true,
