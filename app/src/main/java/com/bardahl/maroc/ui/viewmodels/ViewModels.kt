@@ -312,6 +312,41 @@ class ProductViewModel(private val productRepository: ProductRepository) : ViewM
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
+
+    fun addProduct(product: Product) {
+        viewModelScope.launch {
+            _products.value = listOf(product) + _products.value
+            try {
+                productRepository.saveProduct(product)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateProduct(product: Product) {
+        viewModelScope.launch {
+            _products.value = _products.value.map {
+                if (it.id == product.id || (it.reference.isNotBlank() && it.reference == product.reference)) product else it
+            }
+            try {
+                productRepository.updateProduct(product)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun deleteProduct(product: Product) {
+        viewModelScope.launch {
+            _products.value = _products.value.filter { it.id != product.id }
+            try {
+                productRepository.deleteProduct(product)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
 }
 
 class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel() {
@@ -468,8 +503,11 @@ class OrderViewModel(private val orderRepository: OrderRepository) : ViewModel()
             paymentMethod = targetDevis.paymentMethod,
             modeExpedition = targetDevis.modeExpedition,
             remarque = if (targetDevis.remarque.isNotBlank()) "[Converti depuis Devis ${targetDevis.devisNumber}] ${targetDevis.remarque}" else "Converti depuis Devis ${targetDevis.devisNumber}",
+            promoNote = targetDevis.promoNote ?: "",
             remisePercent = targetDevis.remisePercent,
             remiseMontant = targetDevis.remiseMontant,
+            voucherDiscount = targetDevis.voucherDiscount,
+            totalFreeItems = if (targetDevis.totalFreeItems > 0) targetDevis.totalFreeItems else targetDevis.items.sumOf { it.freeQuantity },
             totalHt = targetDevis.totalHt,
             totalDiscount = targetDevis.totalDiscount,
             totalTva = targetDevis.totalTva,

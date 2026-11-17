@@ -51,19 +51,43 @@ class SupabaseService(
                 val list = mutableListOf<Product>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
+                    val rawPackaging = if (!obj.isNull("packaging")) obj.optString("packaging", "Carton de 12").ifBlank { "Carton de 12" } else "Carton de 12"
+                    var specsObj: JSONObject? = null
+                    if (!obj.isNull("technical_specs")) {
+                        val rawSpecs = obj.opt("technical_specs")
+                        specsObj = when (rawSpecs) {
+                            is JSONObject -> rawSpecs
+                            is String -> try { JSONObject(rawSpecs) } catch (_: Exception) { null }
+                            else -> null
+                        }
+                    }
+                    val specsUnits = specsObj?.optInt("unitsPerBox", 0)?.takeIf { it > 0 }
+                        ?: (if (!obj.isNull("units_per_box")) obj.optInt("units_per_box", 0).takeIf { it > 0 } else null)
+                    val resolvedUnitsPerBox = parseUnitsPerBox(rawPackaging, specsUnits)
+
+                    val legacyCat = if (!obj.isNull("category_id")) obj.optString("category_id", "").takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } else null
+                    val specsFam = specsObj?.optString("category", "")?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                        ?: specsObj?.optString("family", "")?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                    val finalFamily = specsFam ?: legacyCat ?: "FA0015"
+
+                    val cleanViscosity = if (!obj.isNull("viscosity")) obj.optString("viscosity", "").takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } else null
+                    val cleanVolume = if (!obj.isNull("volume")) obj.optString("volume", "").takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } else null
+
                     list.add(
                         Product(
                             id = obj.getString("id"),
-                            categoryId = obj.optString("category_id", null),
-                            code = obj.optString("code", "P-${i + 1}"),
+                            categoryId = finalFamily,
+                            code = obj.optString("code", obj.optString("reference", "P-${i + 1}")),
                             reference = obj.optString("reference", "REF-${i + 1}"),
                             name = obj.getString("name"),
-                            description = obj.optString("description", ""),
-                            viscosity = obj.optString("viscosity", null),
-                            volume = obj.optString("volume", null),
-                            packaging = obj.optString("packaging", "Unité"),
+                            description = if (!obj.isNull("description")) obj.optString("description", "") else "",
+                            viscosity = cleanViscosity,
+                            volume = cleanVolume,
+                            packaging = rawPackaging,
                             unitPriceTtc = obj.optDouble("unit_price_ttc", 100.0),
-                            stockQuantity = obj.optInt("stock_quantity", 100)
+                            stockQuantity = obj.optInt("stock_quantity", 100),
+                            isActive = obj.optBoolean("is_active", true),
+                            explicitUnitsPerBox = resolvedUnitsPerBox
                         )
                     )
                 }
@@ -73,6 +97,95 @@ class SupabaseService(
             e.printStackTrace()
         }
         return@withContext emptyList()
+    }
+
+    suspend fun postProduct(product: Product): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val conn = getConnection("products", "POST")
+            conn.doOutput = true
+            val unitsPerBox = product.unitsPerBox.coerceAtLeast(1)
+            val familyCode = product.categoryId?.takeIf { it.isNotBlank() } ?: "FA0015"
+            val specs = JSONObject().apply {
+                put("unitsPerBox", unitsPerBox)
+                put("category", familyCode)
+                put("family", familyCode)
+            }
+            val json = JSONObject().apply {
+                put("code", product.code.ifBlank { product.reference })
+                put("reference", product.reference)
+                put("name", product.name)
+                put("description", product.description)
+                put("packaging", product.packaging.ifBlank { "Carton de $unitsPerBox" })
+                put("unit_price_ttc", product.unitPriceTtc)
+                put("tva_rate", 20)
+                put("stock_quantity", product.stockQuantity)
+                put("is_active", product.isActive)
+                put("technical_specs", specs.toString())
+            }
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun updateProduct(product: Product): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val unitsPerBox = product.unitsPerBox.coerceAtLeast(1)
+            val familyCode = product.categoryId?.takeIf { it.isNotBlank() } ?: "FA0015"
+            val specs = JSONObject().apply {
+                put("unitsPerBox", unitsPerBox)
+                put("category", familyCode)
+                put("family", familyCode)
+            }
+            val json = JSONObject().apply {
+                put("code", product.code.ifBlank { product.reference })
+                put("reference", product.reference)
+                put("name", product.name)
+                put("description", product.description)
+                put("packaging", product.packaging.ifBlank { "Carton de $unitsPerBox" })
+                put("unit_price_ttc", product.unitPriceTtc)
+                put("tva_rate", 20)
+                put("stock_quantity", product.stockQuantity)
+                put("is_active", product.isActive)
+                put("technical_specs", specs.toString())
+            }
+            val endpoint = if (product.id.contains("-")) {
+                "products?id=eq.${product.id}"
+            } else {
+                "products?reference=eq.${product.reference}"
+            }
+            val conn = getConnection(endpoint, "PATCH")
+            conn.doOutput = true
+            conn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+            val ok = conn.responseCode in 200..299
+            if (!ok && product.reference.isNotBlank()) {
+                val fallbackConn = getConnection("products?reference=eq.${product.reference}", "PATCH")
+                fallbackConn.doOutput = true
+                fallbackConn.outputStream.bufferedWriter().use { it.write(json.toString()) }
+                return@withContext fallbackConn.responseCode in 200..299
+            }
+            return@withContext ok
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
+    suspend fun deleteProduct(product: Product): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val endpoint = if (product.id.contains("-")) {
+                "products?id=eq.${product.id}"
+            } else {
+                "products?reference=eq.${product.reference}"
+            }
+            val conn = getConnection(endpoint, "DELETE")
+            return@withContext conn.responseCode in 200..299
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
     }
 
     suspend fun fetchClients(commercialId: String? = null): List<Client> = withContext(Dispatchers.IO) {
@@ -902,10 +1015,10 @@ class SupabaseService(
                                     quantity = itObj.optInt("quantity", itObj.optInt("qty", 1)),
                                     freeQuantity = itObj.optInt("freeQuantity", itObj.optInt("qtyGratuit", 0)),
                                     unitPriceTtc = itObj.optDouble("unitPriceTtc", itObj.optDouble("priceTtc", 0.0)),
-                                    discountPercentage = itObj.optDouble("discountPercentage", itObj.optDouble("remise", 0.0)),
+                                    discountPercentage = itObj.optDouble("discountPercentage", itObj.optDouble("remise", itObj.optDouble("remisePercent", 0.0))),
                                     promoTag = itObj.optString("promoTag", ""),
                                     tvaRate = itObj.optDouble("tvaRate", 20.0),
-                                    unitsPerBox = itObj.optInt("unitsPerBox", 12),
+                                    unitsPerBox = itObj.optInt("unitsPerBox", itObj.optInt("unitsPerCarton", 12)),
                                     isPriceModified = itObj.optBoolean("isPriceModified", false)
                                 )
                             )
@@ -940,8 +1053,11 @@ class SupabaseService(
                             paymentMethod = details.optString("paymentMethod", "Chèque"),
                             modeExpedition = details.optString("modeExpedition", "Transport Bardahl"),
                             remarque = details.optString("remarque", ""),
+                            promoNote = details.optString("promoNote", "").takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) },
                             remisePercent = details.optDouble("remisePercent", 0.0),
                             remiseMontant = details.optDouble("remiseMontant", 0.0),
+                            voucherDiscount = details.optDouble("voucherDiscount", 0.0),
+                            totalFreeItems = details.optInt("totalFreeItems", itemsList.sumOf { it.freeQuantity }),
                             totalHt = details.optDouble("totalHt", 0.0),
                             totalDiscount = details.optDouble("totalDiscount", 0.0),
                             totalTva = details.optDouble("totalTva", 0.0),
@@ -959,6 +1075,71 @@ class SupabaseService(
         return@withContext list
     }
 
+    private fun buildDevisDetailsJson(devis: Devis, createdAtIso: String? = null): JSONObject {
+        val itemsArr = JSONArray()
+        devis.items.forEach { itm ->
+            itemsArr.put(
+                JSONObject().apply {
+                    put("id", itm.id)
+                    put("productId", itm.productId)
+                    put("productName", itm.productName)
+                    put("productReference", itm.productReference)
+                    put("reference", itm.productReference)
+                    put("quantity", itm.quantity)
+                    put("qty", itm.quantity)
+                    put("freeQuantity", itm.freeQuantity)
+                    put("qtyGratuit", itm.freeQuantity)
+                    put("unitPriceTtc", itm.unitPriceTtc)
+                    put("priceTtc", itm.unitPriceTtc)
+                    put("discountPercentage", itm.discountPercentage)
+                    put("remise", itm.discountPercentage)
+                    put("remisePercent", if (itm.discountPercentage > 0.0) itm.discountPercentage.toString() else "")
+                    put("promoTag", itm.promoTag)
+                    put("tvaRate", itm.tvaRate)
+                    put("unitsPerBox", itm.unitsPerBox)
+                    put("unitsPerCarton", itm.unitsPerBox)
+                    put("isPriceModified", itm.isPriceModified)
+                }
+            )
+        }
+
+        return JSONObject().apply {
+            put("id", devis.id)
+            put("devisNumber", devis.devisNumber)
+            put("commercialId", devis.commercialId)
+            put("commercialDbId", devis.commercialId)
+            put("commercialName", devis.commercialName)
+            put("commercialEmail", devis.commercialEmail)
+            put("clientId", devis.clientId)
+            put("clientDbId", devis.clientId)
+            put("clientName", devis.clientName)
+            put("clientIce", devis.clientIce)
+            put("clientCity", devis.clientCity)
+            put("clientAddress", devis.clientAddress)
+            put("clientPhone", devis.clientPhone)
+            put("date", devis.date)
+            put("validityDate", devis.validityDate)
+            put("status", devis.status.name)
+            put("items", itemsArr)
+            put("paymentMethod", devis.paymentMethod)
+            put("modeExpedition", devis.modeExpedition)
+            put("remarque", devis.remarque)
+            if (!devis.promoNote.isNullOrBlank()) put("promoNote", devis.promoNote)
+            put("remisePercent", devis.remisePercent)
+            put("remiseMontant", devis.remiseMontant)
+            put("voucherDiscount", devis.voucherDiscount)
+            put("totalFreeItems", devis.totalFreeItems)
+            put("totalHt", devis.totalHt)
+            put("totalDiscount", devis.totalDiscount)
+            put("totalTva", devis.totalTva)
+            put("totalTtc", devis.totalTtc)
+            put("convertedOrderNumber", devis.convertedOrderNumber)
+            put("convertedOrderId", devis.convertedOrderId)
+            put("convertedAt", devis.convertedAt)
+            if (!createdAtIso.isNullOrBlank()) put("createdAt", createdAtIso)
+        }
+    }
+
     suspend fun postDevis(devis: Devis): Boolean = withContext(Dispatchers.IO) {
         try {
             val conn = getConnection("logs", "POST")
@@ -967,66 +1148,13 @@ class SupabaseService(
                 timeZone = java.util.TimeZone.getTimeZone("UTC")
             }.format(java.util.Date())
 
-            val itemsArr = JSONArray()
-            devis.items.forEach { itm ->
-                itemsArr.put(
-                    JSONObject().apply {
-                        put("id", itm.id)
-                        put("productId", itm.productId)
-                        put("productName", itm.productName)
-                        put("productReference", itm.productReference)
-                        put("quantity", itm.quantity)
-                        put("freeQuantity", itm.freeQuantity)
-                        put("unitPriceTtc", itm.unitPriceTtc)
-                        put("discountPercentage", itm.discountPercentage)
-                        put("promoTag", itm.promoTag)
-                        put("tvaRate", itm.tvaRate)
-                        put("unitsPerBox", itm.unitsPerBox)
-                        put("isPriceModified", itm.isPriceModified)
-                    }
-                )
-            }
-
-            val details = JSONObject().apply {
-                put("id", devis.id)
-                put("devisNumber", devis.devisNumber)
-                put("commercialId", devis.commercialId)
-                put("commercialDbId", devis.commercialId)
-                put("commercialName", devis.commercialName)
-                put("commercialEmail", devis.commercialEmail)
-                put("clientId", devis.clientId)
-                put("clientDbId", devis.clientId)
-                put("clientName", devis.clientName)
-                put("clientIce", devis.clientIce)
-                put("clientCity", devis.clientCity)
-                put("clientAddress", devis.clientAddress)
-                put("clientPhone", devis.clientPhone)
-                put("date", devis.date)
-                put("validityDate", devis.validityDate)
-                put("status", devis.status.name)
-                put("items", itemsArr)
-                put("paymentMethod", devis.paymentMethod)
-                put("modeExpedition", devis.modeExpedition)
-                put("remarque", devis.remarque)
-                put("remisePercent", devis.remisePercent)
-                put("remiseMontant", devis.remiseMontant)
-                put("totalHt", devis.totalHt)
-                put("totalDiscount", devis.totalDiscount)
-                put("totalTva", devis.totalTva)
-                put("totalTtc", devis.totalTtc)
-                put("convertedOrderNumber", devis.convertedOrderNumber)
-                put("convertedOrderId", devis.convertedOrderId)
-                put("convertedAt", devis.convertedAt)
-                put("createdAt", nowIso)
-            }
-
             val payload = JSONObject().apply {
                 put("action", "DEVIS_" + devis.status.name)
                 put("entity", "devis")
                 if (devis.commercialId.contains("-")) {
                     put("entity_id", devis.commercialId)
                 }
-                put("details", details)
+                put("details", buildDevisDetailsJson(devis, nowIso))
             }
 
             conn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
@@ -1063,61 +1191,9 @@ class SupabaseService(
                 val patchConn = getConnection("logs?id=eq.$targetRowId", "PATCH")
                 patchConn.doOutput = true
 
-                val itemsArr = JSONArray()
-                devis.items.forEach { itm ->
-                    itemsArr.put(
-                        JSONObject().apply {
-                            put("id", itm.id)
-                            put("productId", itm.productId)
-                            put("productName", itm.productName)
-                            put("productReference", itm.productReference)
-                            put("quantity", itm.quantity)
-                            put("freeQuantity", itm.freeQuantity)
-                            put("unitPriceTtc", itm.unitPriceTtc)
-                            put("discountPercentage", itm.discountPercentage)
-                            put("promoTag", itm.promoTag)
-                            put("tvaRate", itm.tvaRate)
-                            put("unitsPerBox", itm.unitsPerBox)
-                            put("isPriceModified", itm.isPriceModified)
-                        }
-                    )
-                }
-
-                val details = JSONObject().apply {
-                    put("id", devis.id)
-                    put("devisNumber", devis.devisNumber)
-                    put("commercialId", devis.commercialId)
-                    put("commercialDbId", devis.commercialId)
-                    put("commercialName", devis.commercialName)
-                    put("commercialEmail", devis.commercialEmail)
-                    put("clientId", devis.clientId)
-                    put("clientDbId", devis.clientId)
-                    put("clientName", devis.clientName)
-                    put("clientIce", devis.clientIce)
-                    put("clientCity", devis.clientCity)
-                    put("clientAddress", devis.clientAddress)
-                    put("clientPhone", devis.clientPhone)
-                    put("date", devis.date)
-                    put("validityDate", devis.validityDate)
-                    put("status", devis.status.name)
-                    put("items", itemsArr)
-                    put("paymentMethod", devis.paymentMethod)
-                    put("modeExpedition", devis.modeExpedition)
-                    put("remarque", devis.remarque)
-                    put("remisePercent", devis.remisePercent)
-                    put("remiseMontant", devis.remiseMontant)
-                    put("totalHt", devis.totalHt)
-                    put("totalDiscount", devis.totalDiscount)
-                    put("totalTva", devis.totalTva)
-                    put("totalTtc", devis.totalTtc)
-                    put("convertedOrderNumber", devis.convertedOrderNumber)
-                    put("convertedOrderId", devis.convertedOrderId)
-                    put("convertedAt", devis.convertedAt)
-                }
-
                 val payload = JSONObject().apply {
                     put("action", "DEVIS_" + devis.status.name)
-                    put("details", details)
+                    put("details", buildDevisDetailsJson(devis))
                 }
 
                 patchConn.outputStream.bufferedWriter().use { it.write(payload.toString()) }

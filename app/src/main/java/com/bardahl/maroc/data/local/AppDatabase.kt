@@ -13,7 +13,7 @@ import androidx.room.RoomDatabase
         OrderItemEntity::class,
         SyncQueueItem::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

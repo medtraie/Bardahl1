@@ -1020,7 +1020,8 @@ fun OrderCreateScreen(
                         selectedItems.forEachIndexed { idx, item ->
                             val earnedFreeItem = promoAnalysis.freeItems.find { it.productId == item.productId || it.productReference == item.productReference }
                             val hasAutoPromoGift = earnedFreeItem != null && earnedFreeItem.freeQuantity > 0
-                            val upb = if (item.unitsPerBox > 0) item.unitsPerBox else 12
+                            val catalogMeta = products.find { it.id == item.productId || it.reference == item.productReference }
+                            val upb = (catalogMeta?.unitsPerBox ?: (if (item.unitsPerBox > 0) item.unitsPerBox else 12)).coerceAtLeast(1)
                             val cartons = item.quantity / upb
 
                             Column(
@@ -2326,7 +2327,8 @@ fun OrderCreateScreen(
     // Saisie directe de Cartons & Unités par clavier (Web-like)
     if (itemToEditIndex != null && itemToEditIndex!! in selectedItems.indices) {
         val itm = selectedItems[itemToEditIndex!!]
-        val upb = if (itm.unitsPerBox > 0) itm.unitsPerBox else 12
+        val catMeta = products.find { it.id == itm.productId || it.reference == itm.productReference }
+        val upb = (catMeta?.unitsPerBox ?: (if (itm.unitsPerBox > 0) itm.unitsPerBox else 12)).coerceAtLeast(1)
 
         AlertDialog(
             onDismissRequest = { itemToEditIndex = null },

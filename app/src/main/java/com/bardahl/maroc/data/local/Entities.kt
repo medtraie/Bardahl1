@@ -31,6 +31,7 @@ data class ProductEntity(
     val viscosity: String?,
     val volume: String?,
     val packaging: String,
+    val unitsPerBox: Int = 12,
     val unitPriceTtc: Double,
     val stockQuantity: Int,
     val imageUrl: String?

@@ -25,7 +25,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import com.bardahl.maroc.domain.model.BardahlFamilies
 import com.bardahl.maroc.domain.model.Product
+import com.bardahl.maroc.domain.model.parseUnitsPerBox
 import com.bardahl.maroc.ui.components.*
 import com.bardahl.maroc.ui.theme.*
 import com.bardahl.maroc.domain.model.UserRole
@@ -55,38 +59,26 @@ fun ProductCatalogScreen(
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deletingProduct by remember { mutableStateOf<Product?>(null) }
 
-    val categories = listOf(
-        CategoryFilterItem("ALL", "Tous les Produits"),
-        CategoryFilterItem("ADDITIFS", "Additifs & Traitements"),
-        CategoryFilterItem("FLUIDES", "Fluides & LR"),
-        CategoryFilterItem("LUBRIFIANTS", "Lubrifiants Auto"),
-        CategoryFilterItem("AEROSOLS", "Aérosols & Nettoyants"),
-        CategoryFilterItem("INDUSTRIE", "Industrie & Graisses")
-    )
+    val categories = remember {
+        listOf(CategoryFilterItem("ALL", "Toutes les Familles")) +
+            BardahlFamilies.all.map { CategoryFilterItem(it.code, "${it.icon} ${it.label}") }
+    }
 
     // Filter Logic
     val filteredProducts = productsList.filter { product ->
         val q = searchQuery.trim()
+        val fam = BardahlFamilies.resolve(product.categoryId)
         val matchesSearch = q.isBlank() ||
                 product.name.contains(q, ignoreCase = true) ||
                 product.code.contains(q, ignoreCase = true) ||
                 product.reference.contains(q, ignoreCase = true) ||
-                (product.viscosity != null && product.viscosity.contains(q, ignoreCase = true))
+                fam.label.contains(q, ignoreCase = true)
 
         if (!matchesSearch) return@filter false
         if (selectedCategoryCode == "ALL") return@filter true
 
-        val cat = (product.categoryId ?: "").uppercase()
-        val name = product.name.uppercase()
-
-        when (selectedCategoryCode) {
-            "ADDITIFS" -> cat.contains("ADDITIF") || name.contains("ADDITIF") || name.contains("TRAITEMENT") || name.contains("CLEANER") || name.contains("STOP FUITE") || name.contains("INJECTEUR")
-            "FLUIDES" -> cat.contains("FLUIDE") || cat.contains("LR") || name.contains("XCL") || name.contains("REFROIDISSEMENT") || name.contains("DOT") || name.contains("RAD")
-            "LUBRIFIANTS" -> cat.contains("LUB") || cat.contains("HUILE") || name.contains("10W") || name.contains("5W") || name.contains("XTRA") || name.contains("PLASMA") || name.contains("HUILE")
-            "AEROSOLS" -> cat.contains("AEROSOL") || name.contains("SPRAY") || name.contains("AEROSOL") || name.contains("BRAKE") || name.contains("DEGRIPPANT") || name.contains("NETTOYANT")
-            "INDUSTRIE" -> cat.contains("IND") || cat.contains("GRAISSE") || name.contains("GRAISSE") || name.contains("LITHIUM") || name.contains("HYDRAULIQUE") || name.contains("PONT")
-            else -> cat.contains(selectedCategoryCode)
-        }
+        fam.code.equals(selectedCategoryCode, ignoreCase = true) ||
+            (product.categoryId ?: "").contains(selectedCategoryCode, ignoreCase = true)
     }
 
     Scaffold(
@@ -132,7 +124,7 @@ fun ProductCatalogScreen(
             BardahlTextField(
                 value = searchQuery,
                 onValueChange = { productViewModel.setSearchQuery(it) },
-                label = "Rechercher Produit, Réf, Viscosité...",
+                label = "Rechercher Produit, Réf, Famille...",
                 leadingIcon = Icons.Default.Search
             )
 
@@ -206,10 +198,11 @@ fun ProductCatalogScreen(
     // Add Dialog
     if (showAddDialog) {
         AddEditProductDialog(
-            title = "Ajouter Produit au Catalogue",
+            title = "Ajouter un Produit au Catalogue",
             initialProduct = null,
             onDismiss = { showAddDialog = false },
             onSave = { newProd ->
+                productViewModel.addProduct(newProd)
                 showAddDialog = false
                 Toast.makeText(context, "Produit ${newProd.name} ajouté au catalogue !", Toast.LENGTH_SHORT).show()
             }
@@ -219,10 +212,11 @@ fun ProductCatalogScreen(
     // Edit Dialog
     if (editingProduct != null) {
         AddEditProductDialog(
-            title = "Modifier Produit",
+            title = "Modifier Produit Bardahl",
             initialProduct = editingProduct,
             onDismiss = { editingProduct = null },
             onSave = { updatedProd ->
+                productViewModel.updateProduct(updatedProd)
                 editingProduct = null
                 Toast.makeText(context, "Produit ${updatedProd.name} mis à jour !", Toast.LENGTH_SHORT).show()
             }
@@ -239,9 +233,12 @@ fun ProductCatalogScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = deletingProduct?.name
+                        val target = deletingProduct
                         deletingProduct = null
-                        Toast.makeText(context, "Produit $name supprimé.", Toast.LENGTH_SHORT).show()
+                        if (target != null) {
+                            productViewModel.deleteProduct(target)
+                            Toast.makeText(context, "Produit ${target.name} supprimé.", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusCancelled)
                 ) {
@@ -312,22 +309,23 @@ fun ProductCardStructured(
                     }
                 }
 
-                if (!product.viscosity.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(BardahlYellow)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = product.viscosity,
-                            color = BardahlBlack,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            maxLines = 1
-                        )
-                    }
+                val famInfo = BardahlFamilies.resolve(product.categoryId)
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BardahlYellow.copy(alpha = 0.16f))
+                        .border(1.dp, BardahlYellow.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "${famInfo.icon} ${famInfo.label}",
+                        color = BardahlYellow,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
 
@@ -335,14 +333,26 @@ fun ProductCardStructured(
             HorizontalDivider(color = BardahlCardBorder)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Body Row: Packaging & Price (No Stock display)
+            // Body Row: Packaging, Units/Box, Stock & Price
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Cond. : ${product.packaging}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimaryDark)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Cond. : ${product.packaging} (${product.unitsPerBox} un./ctn)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimaryDark
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "Stock disponible : ${product.stockQuantity} un.",
+                        fontSize = 11.sp,
+                        color = if (product.stockQuantity > 0) StatusDelivered else StatusCancelled,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
@@ -415,7 +425,7 @@ fun ProductsTableView(
                 .fillMaxWidth()
                 .horizontalScroll(scrollState)
         ) {
-            // Header Row (No Stock column)
+            // Header Row
             Row(
                 modifier = Modifier
                     .background(DarkSurface)
@@ -424,9 +434,10 @@ fun ProductsTableView(
             ) {
                 TableCell("Réf.", width = 80.dp, header = true)
                 TableCell("Désignation Produit", width = 200.dp, header = true)
-                TableCell("Viscosité", width = 90.dp, header = true)
-                TableCell("Conditionnement", width = 140.dp, header = true)
-                TableCell("Prix TTC", width = 110.dp, header = true)
+                TableCell("Famille", width = 140.dp, header = true)
+                TableCell("Conditionnement", width = 130.dp, header = true)
+                TableCell("Stock", width = 70.dp, header = true)
+                TableCell("Prix TTC", width = 100.dp, header = true)
                 if (isAdmin) TableCell("Actions", width = 100.dp, header = true)
             }
 
@@ -435,15 +446,17 @@ fun ProductsTableView(
             // Rows
             LazyColumn(modifier = Modifier.heightIn(max = 500.dp)) {
                 items(products) { product ->
+                    val famInfo = BardahlFamilies.resolve(product.categoryId)
                     Row(
                         modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TableCell(product.reference, width = 80.dp, bold = true)
                         TableCell(product.name, width = 200.dp)
-                        TableCell(product.viscosity ?: "N/A", width = 90.dp, highlight = !product.viscosity.isNullOrBlank())
-                        TableCell(product.packaging, width = 140.dp)
-                        TableCell("${String.format("%.2f", product.unitPriceTtc)} DH", width = 110.dp, gold = true)
+                        TableCell("${famInfo.icon} ${famInfo.label}", width = 140.dp, highlight = true)
+                        TableCell("${product.unitsPerBox} un. (${product.packaging})", width = 130.dp)
+                        TableCell("${product.stockQuantity}", width = 70.dp)
+                        TableCell("${String.format("%.2f", product.unitPriceTtc)} DH", width = 100.dp, gold = true)
                         if (isAdmin) {
                             Row(modifier = Modifier.width(100.dp)) {
                                 IconButton(onClick = { onEdit(product) }, modifier = Modifier.size(28.dp)) {
@@ -497,25 +510,26 @@ fun AddEditProductDialog(
     var name by remember { mutableStateOf(initialProduct?.name ?: "") }
     var reference by remember { mutableStateOf(initialProduct?.reference ?: "") }
     var code by remember { mutableStateOf(initialProduct?.code ?: "") }
-    var viscosity by remember { mutableStateOf(initialProduct?.viscosity ?: "") }
-    var packaging by remember { mutableStateOf(initialProduct?.packaging ?: "12 X 1l") }
-    var priceTtcStr by remember { mutableStateOf(initialProduct?.unitPriceTtc?.toString() ?: "") }
-    var selectedCategoryId by remember { mutableStateOf(initialProduct?.categoryId ?: "LUB_AUTO") }
-    var categoryExpanded by remember { mutableStateOf(false) }
-
-    val categories = listOf(
-        CategoryFilterItem("LUB_AUTO", "Lubrifiants Auto"),
-        CategoryFilterItem("ADDITIFS", "Additifs"),
-        CategoryFilterItem("FLUIDES_LR", "Fluides & Refroidissement"),
-        CategoryFilterItem("IND_GRAISSES", "Graisses"),
-        CategoryFilterItem("IND_AEROSOLS", "Aérosols"),
-        CategoryFilterItem("IND_ALIM", "Alimentaire")
-    )
+    val resolvedInitialUnits = initialProduct?.unitsPerBox ?: 12
+    var unitsPerBoxStr by remember { mutableStateOf(resolvedInitialUnits.toString()) }
+    var packaging by remember { mutableStateOf(initialProduct?.packaging?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ?: "Carton de $resolvedInitialUnits") }
+    var priceTtcStr by remember {
+        mutableStateOf(
+            if (initialProduct != null) {
+                if (initialProduct.unitPriceTtc % 1.0 == 0.0) initialProduct.unitPriceTtc.toInt().toString() else initialProduct.unitPriceTtc.toString()
+            } else ""
+        )
+    }
+    var stockStr by remember { mutableStateOf((initialProduct?.stockQuantity ?: 100).toString()) }
+    var selectedFamilyCode by remember {
+        mutableStateOf(BardahlFamilies.resolve(initialProduct?.categoryId).code)
+    }
+    var familyExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DarkSurface,
-        title = { Text(title, color = TextPrimaryDark, fontWeight = FontWeight.Bold) },
+        title = { Text(title, color = BardahlYellow, fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier
@@ -523,19 +537,44 @@ fun AddEditProductDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Product Name
+                // Désignation Produit *
                 LabeledInputField("Désignation Produit *") {
-                    BardahlTextField(name, { name = it }, "Nom du produit")
+                    BardahlTextField(name, { name = it }, "Nom complet du produit")
                 }
 
-                // Category Selector Dropdown
-                LabeledInputField("Gamme / Catégorie *") {
+                // Référence * & Code Article
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        LabeledInputField("Référence *") {
+                            BardahlTextField(reference, { reference = it }, "Ex: 4009B")
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        LabeledInputField("Code Article") {
+                            BardahlTextField(code, { code = it }, "Ex: 4009B")
+                        }
+                    }
+                }
+
+                // Prix TTC * & Famille de produits *
+                LabeledInputField("Prix TTC (DH) *") {
+                    BardahlTextField(
+                        value = priceTtcStr,
+                        onValueChange = { priceTtcStr = it.replace(',', '.') },
+                        label = "Prix en DH TTC",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                }
+
+                LabeledInputField("Famille de produits *") {
                     Box(modifier = Modifier.fillMaxWidth()) {
+                        val activeFam = BardahlFamilies.resolve(selectedFamilyCode)
                         OutlinedButton(
-                            onClick = { categoryExpanded = true },
+                            onClick = { familyExpanded = true },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimaryDark),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(BardahlCardBorder))
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = DarkBackground, contentColor = Color.White),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(BardahlCardBorder)),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -543,24 +582,27 @@ fun AddEditProductDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    categories.find { it.code == selectedCategoryId }?.label ?: "Lubrifiants Auto",
-                                    color = TextPrimaryDark,
-                                    fontSize = 13.sp
+                                    "${activeFam.icon} ${activeFam.label}",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = BardahlYellow)
                             }
                         }
                         DropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = { categoryExpanded = false },
-                            modifier = Modifier.background(DarkSurface)
+                            expanded = familyExpanded,
+                            onDismissRequest = { familyExpanded = false },
+                            modifier = Modifier.background(DarkSurface).heightIn(max = 320.dp)
                         ) {
-                            categories.forEach { cat ->
+                            BardahlFamilies.all.forEach { fam ->
                                 DropdownMenuItem(
-                                    text = { Text(cat.label, color = TextPrimaryDark) },
+                                    text = { Text("${fam.icon} ${fam.label}", color = Color.White, fontSize = 13.sp) },
                                     onClick = {
-                                        selectedCategoryId = cat.code
-                                        categoryExpanded = false
+                                        selectedFamilyCode = fam.code
+                                        familyExpanded = false
                                     }
                                 )
                             }
@@ -568,46 +610,69 @@ fun AddEditProductDialog(
                     }
                 }
 
-                // Reference & Code
-                LabeledInputField("Référence") {
-                    BardahlTextField(reference, { reference = it }, "Ex: 34131")
-                }
-                LabeledInputField("Code Produit") {
-                    BardahlTextField(code, { code = it }, "Ex: XTRA-10W40-1L")
+                // Unités par carton * & Conditionnement
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        LabeledInputField("Unités par carton *") {
+                            BardahlTextField(
+                                value = unitsPerBoxStr,
+                                onValueChange = { raw ->
+                                    val digits = raw.filter { it.isDigit() }
+                                    unitsPerBoxStr = digits
+                                    val parsed = digits.toIntOrNull()
+                                    if (parsed != null && parsed > 0 && (packaging.isBlank() || packaging.startsWith("Carton de", ignoreCase = true))) {
+                                        packaging = "Carton de $parsed"
+                                    }
+                                },
+                                label = "Ex: 12 ou 24",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        LabeledInputField("Conditionnement") {
+                            BardahlTextField(packaging, { packaging = it }, "Ex: Carton de 24")
+                        }
+                    }
                 }
 
-                // Viscosity & Packaging
-                LabeledInputField("Viscosité") {
-                    BardahlTextField(viscosity, { viscosity = it }, "Ex: 10W40 ou N/A")
-                }
-                LabeledInputField("Conditionnement") {
-                    BardahlTextField(packaging, { packaging = it }, "Ex: 12 X 1l")
-                }
-
-                // Price TTC
-                LabeledInputField("Prix TTC / Unité (DH) *") {
-                    BardahlTextField(priceTtcStr, { priceTtcStr = it }, "Prix en DH")
+                // Stock Disponible
+                LabeledInputField("Stock Disponible") {
+                    BardahlTextField(
+                        value = stockStr,
+                        onValueChange = { stockStr = it.filter { ch -> ch.isDigit() } },
+                        label = "Ex: 100",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                 }
             }
         },
         confirmButton = {
             BardahlButton(
-                text = "ENREGISTRER",
+                text = if (initialProduct != null) "Enregistrer Modifications" else "ENREGISTRER",
                 onClick = {
                     if (name.isNotBlank()) {
-                        val price = priceTtcStr.toDoubleOrNull() ?: 0.0
+                        val price = priceTtcStr.replace(',', '.').toDoubleOrNull() ?: 0.0
+                        val parsedUnits = unitsPerBoxStr.toIntOrNull()?.takeIf { it > 0 } ?: parseUnitsPerBox(packaging)
+                        val cleanPackaging = packaging.trim().ifBlank { "Carton de $parsedUnits" }
+                        val parsedStock = stockStr.toIntOrNull() ?: 100
+                        val cleanRef = reference.trim().ifBlank { "REF-${(1000..9999).random()}" }
                         onSave(
                             Product(
                                 id = initialProduct?.id ?: "p${System.currentTimeMillis()}",
-                                categoryId = selectedCategoryId,
-                                code = code.ifBlank { name.uppercase().replace(" ", "-") },
-                                reference = reference.ifBlank { "REF-${(1000..9999).random()}" },
-                                name = name,
-                                description = "Gamme officielle Bardahl Maroc",
-                                viscosity = viscosity.ifBlank { null },
-                                packaging = packaging,
+                                categoryId = selectedFamilyCode,
+                                code = code.trim().ifBlank { cleanRef },
+                                reference = cleanRef,
+                                name = name.trim(),
+                                description = initialProduct?.description ?: "Gamme officielle Bardahl Maroc",
+                                viscosity = null,
+                                volume = initialProduct?.volume,
+                                packaging = cleanPackaging,
                                 unitPriceTtc = price,
-                                stockQuantity = 999999
+                                stockQuantity = parsedStock,
+                                imageUrl = initialProduct?.imageUrl,
+                                isActive = initialProduct?.isActive ?: true,
+                                explicitUnitsPerBox = parsedUnits
                             )
                         )
                     }
@@ -616,7 +681,7 @@ fun AddEditProductDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Annuler", color = TextSecondaryDark)
+                Text("Annuler", color = Color.White)
             }
         }
     )

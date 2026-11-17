@@ -80,6 +80,73 @@ data class Category(
     val description: String? = null
 )
 
+data class ProductFamilyInfo(
+    val code: String,
+    val label: String,
+    val icon: String = "📦"
+)
+
+object BardahlFamilies {
+    val all: List<ProductFamilyInfo> = listOf(
+        ProductFamilyInfo("FA0001", "SPECIFIQUES LOCAL", "🛠️"),
+        ProductFamilyInfo("FA0004", "DEGRIPPANTS", "💨"),
+        ProductFamilyInfo("FA0011", "GRAISSES INDUSTRIE LOCAL", "⚙️"),
+        ProductFamilyInfo("FA0012", "GRAISSES INDUSTRIE IMPORT", "🛢️"),
+        ProductFamilyInfo("FA0013", "ADDITIFS LOCAL", "🧪"),
+        ProductFamilyInfo("FA0014", "ADDITIFS HUILES ET B.V", "🔬"),
+        ProductFamilyInfo("FA0015", "ADDITIFS DIESEL", "⛽"),
+        ProductFamilyInfo("FA0016", "ADDITIFS ESSENCE", "⚡"),
+        ProductFamilyInfo("FA0017", "ADDITIFS TRAITEMENT RADIATEUR", "❄️"),
+        ProductFamilyInfo("FA0018", "LIQUIDES DE FREINS", "🛑"),
+        ProductFamilyInfo("FA0020", "SPECIFIQUES IMPORT", "📦"),
+        ProductFamilyInfo("FA0021", "SAVONS", "🧼"),
+        ProductFamilyInfo("FA0022", "ENTRETIEN", "🧽"),
+        ProductFamilyInfo("FA0023", "HUILES BOITES DE VITESSES", "⚙️"),
+        ProductFamilyInfo("FA0024", "HUILES VOITURES", "🚗"),
+        ProductFamilyInfo("FA0025", "LR XCL", "💧"),
+        ProductFamilyInfo("FA0026", "LR LOCAL", "🚰"),
+        ProductFamilyInfo("FA0027", "LAVE GLACE", "🚘"),
+        ProductFamilyInfo("FA0028", "HUILES CAMIONS", "🚛"),
+        ProductFamilyInfo("FA0029", "HUILES MOTO 4 TEMPS", "🏍️"),
+        ProductFamilyInfo("FA0030", "HUILES MOTO 2 TEMPS", "🛵"),
+        ProductFamilyInfo("FA0031", "ENTRETIEN MOTO", "🔧"),
+        ProductFamilyInfo("FA0032", "PLV & EMBALLAGES", "🏷️"),
+        ProductFamilyInfo("FA0033", "COLLES", "🧴"),
+        ProductFamilyInfo("FA0034", "LR LOCAL 20L", "🪣"),
+        ProductFamilyInfo("FA0035", "ADBLUE", "🔵"),
+        ProductFamilyInfo("FA0036", "LR XCL 20L", "🟦"),
+        ProductFamilyInfo("FA0037", "LG250ML", "🧪"),
+        ProductFamilyInfo("FA0038", "GRAISSES INDUSTRIE LOCAL VRAC18180", "🏭")
+    )
+
+    fun resolve(rawCodeOrLabel: String?): ProductFamilyInfo {
+        if (rawCodeOrLabel.isNullOrBlank() || rawCodeOrLabel.equals("null", ignoreCase = true)) {
+            return ProductFamilyInfo("FA0015", "ADDITIFS DIESEL", "⛽")
+        }
+        val clean = rawCodeOrLabel.trim().uppercase()
+        all.find { it.code.equals(clean, ignoreCase = true) || it.label.equals(clean, ignoreCase = true) }?.let { return it }
+        // Legacy fallback mapping
+        return when {
+            clean.contains("LUB_AUTO") || clean.contains("HUILE") -> all.first { it.code == "FA0024" }
+            clean.contains("ADDITIF") -> all.first { it.code == "FA0015" }
+            clean.contains("FLUIDE") || clean.contains("XCL") || clean.contains("LR") -> all.first { it.code == "FA0025" }
+            clean.contains("GRAISSE") -> all.first { it.code == "FA0012" }
+            clean.contains("AEROSOL") || clean.contains("DEGRIPPANT") -> all.first { it.code == "FA0004" }
+            else -> ProductFamilyInfo(clean, clean, "📦")
+        }
+    }
+}
+
+fun parseUnitsPerBox(packaging: String?, explicitUnits: Int? = null): Int {
+    if (explicitUnits != null && explicitUnits > 0) return explicitUnits
+    val p = packaging?.trim() ?: return 12
+    Regex("""^(\d+)\s*[xX]""").find(p)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { if (it > 0) return it }
+    Regex("""(?:carton\s*(?:de)?\s*|de\s+)(\d+)""", RegexOption.IGNORE_CASE).find(p)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { if (it > 0) return it }
+    Regex("""^(\d+)\s*(?:pcs|un|u\b|pièce|flacon|bidon)""", RegexOption.IGNORE_CASE).find(p)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { if (it > 0) return it }
+    Regex("""\b(\d+)\b""").find(p)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { if (it > 0) return it }
+    return 12
+}
+
 data class Product(
     val id: String,
     val categoryId: String?,
@@ -95,13 +162,11 @@ data class Product(
     val tvaRate: Double = 20.0,
     val stockQuantity: Int = 100,
     val imageUrl: String? = null,
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val explicitUnitsPerBox: Int? = null
 ) {
     val unitsPerBox: Int
-        get() {
-            val match = Regex("""^(\d+)\s*[xX]""").find(packaging.trim())
-            return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 12
-        }
+        get() = parseUnitsPerBox(packaging, explicitUnitsPerBox)
 }
 
 data class OrderItem(
@@ -271,8 +336,11 @@ data class Devis(
     val paymentMethod: String = "Chèque",
     val modeExpedition: String = "Transport Bardahl",
     val remarque: String = "",
+    val promoNote: String? = null,
     val remisePercent: Double = 0.0,
     val remiseMontant: Double = 0.0,
+    val voucherDiscount: Double = 0.0,
+    val totalFreeItems: Int = 0,
     val totalHt: Double = 0.0,
     val totalDiscount: Double = 0.0,
     val totalTva: Double = 0.0,

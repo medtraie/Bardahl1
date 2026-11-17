@@ -529,122 +529,247 @@ object PdfGenerator {
         canvas.drawText("Mode d'Expédition : ${devis.modeExpedition}", 315f, 206f, textPaint)
         canvas.drawText("Statut Devis : ${devis.status.label}", 315f, 220f, textPaint)
 
-        // 4. Products Table
-        var tableTop = 242f
-        paint.color = Color.parseColor("#14171F")
-        canvas.drawRect(30f, tableTop, 565f, tableTop + 24f, paint)
+        // Optional Remarks & Promotions Box
+        var tableTop = 240f
+        val hasRemarque = devis.remarque.isNotBlank()
+        val hasPromoNote = !devis.promoNote.isNullOrBlank()
+        if (hasRemarque || hasPromoNote) {
+            val boxHeight = if (hasRemarque && hasPromoNote) 38f else 24f
+            paint.color = Color.parseColor("#F8F9FA")
+            canvas.drawRoundRect(RectF(30f, 236f, 565f, 236f + boxHeight), 6f, 6f, paint)
+            paint.color = Color.parseColor("#FFD000")
+            paint.style = Paint.Style.STROKE
+            canvas.drawRoundRect(RectF(30f, 236f, 565f, 236f + boxHeight), 6f, 6f, paint)
+            paint.style = Paint.Style.FILL
 
-        textPaint.color = Color.parseColor("#FFD000")
-        textPaint.textSize = 8.8f
-        textPaint.isFakeBoldText = true
-        canvas.drawText("RÉF.", 38f, tableTop + 16f, textPaint)
-        canvas.drawText("DÉSIGNATION DE LA MARCHANDISE", 100f, tableTop + 16f, textPaint)
-        canvas.drawText("QTÉ", 350f, tableTop + 16f, textPaint)
-        canvas.drawText("P.U TTC", 410f, tableTop + 16f, textPaint)
-        canvas.drawText("REMISE", 470f, tableTop + 16f, textPaint)
-        canvas.drawText("TOTAL TTC", 515f, tableTop + 16f, textPaint)
+            var textY = 250f
+            if (hasPromoNote) {
+                textPaint.color = Color.parseColor("#2E7D32")
+                textPaint.textSize = 8.2f
+                textPaint.isFakeBoldText = true
+                val cleanPromo = devis.promoNote!!.take(92)
+                canvas.drawText("OFFRE PROMOTIONNELLE : $cleanPromo", 42f, textY, textPaint)
+                textY += 13f
+            }
+            if (hasRemarque) {
+                textPaint.color = Color.parseColor("#0D0F12")
+                textPaint.textSize = 8.2f
+                textPaint.isFakeBoldText = true
+                canvas.drawText("Remarques : ${devis.remarque.take(95)}", 42f, textY, textPaint)
+            }
+            tableTop = 244f + boxHeight
+        }
 
-        var currentY = tableTop + 24f
-        textPaint.isFakeBoldText = false
-        textPaint.textSize = 8.5f
-        textPaint.color = Color.parseColor("#2D3748")
+        // 4. Products Table (with GRATUIT column & distinct gift rows)
+        fun drawDevisTableHeader(c: Canvas, top: Float) {
+            paint.color = Color.parseColor("#14171F")
+            c.drawRect(30f, top, 565f, top + 22f, paint)
 
-        val itemsList = devis.items
-        for ((idx, item) in itemsList.withIndex()) {
-            if (currentY > 640f) break
-            val isEven = idx % 2 == 0
-            paint.color = if (isEven) Color.WHITE else Color.parseColor("#F7FAFC")
-            canvas.drawRect(30f, currentY, 565f, currentY + 20f, paint)
+            textPaint.color = Color.parseColor("#FFD000")
+            textPaint.textSize = 8.3f
+            textPaint.isFakeBoldText = true
+            c.drawText("RÉF.", 35f, top + 14.5f, textPaint)
+            c.drawText("DÉSIGNATION DE LA MARCHANDISE", 88f, top + 14.5f, textPaint)
+            c.drawText("QTÉ", 290f, top + 14.5f, textPaint)
+            c.drawText("GRATUIT", 332f, top + 14.5f, textPaint)
+            c.drawText("P.U TTC", 398f, top + 14.5f, textPaint)
+            c.drawText("REMISE", 455f, top + 14.5f, textPaint)
+            c.drawText("TOTAL TTC", 502f, top + 14.5f, textPaint)
+        }
+
+        var activePage = page
+        var activeCanvas = canvas
+        var activeTableTop = tableTop
+        drawDevisTableHeader(activeCanvas, activeTableTop)
+
+        var currentY = activeTableTop + 22f
+        val purchasedRows = devis.items.filter { !( (it.quantity == 0 || it.unitPriceTtc == 0.0 || it.promoTag.contains("Offert", ignoreCase = true) || it.promoTag.contains("Cadeau", ignoreCase = true)) && it.freeQuantity > 0 ) }
+        val giftOnlyRows = devis.items.filter { (it.quantity == 0 || it.unitPriceTtc == 0.0 || it.promoTag.contains("Offert", ignoreCase = true) || it.promoTag.contains("Cadeau", ignoreCase = true)) && it.freeQuantity > 0 }
+        val orderedItems = purchasedRows + giftOnlyRows
+
+        for ((idx, item) in orderedItems.withIndex()) {
+            val isGiftOnly = (item.quantity == 0 || item.unitPriceTtc == 0.0 || item.promoTag.contains("Offert", ignoreCase = true) || item.promoTag.contains("Cadeau", ignoreCase = true)) && item.freeQuantity > 0
+            val rowHeight = if (isGiftOnly && item.promoTag.isNotBlank()) 26f else 21f
+
+            if (currentY + rowHeight > 660f) {
+                paint.style = Paint.Style.STROKE
+                paint.color = Color.parseColor("#CBD5E0")
+                activeCanvas.drawRect(30f, activeTableTop, 565f, currentY, paint)
+                paint.style = Paint.Style.FILL
+                pdfDocument.finishPage(activePage)
+
+                activePage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create())
+                activeCanvas = activePage.canvas
+                activeTableTop = 36f
+                drawDevisTableHeader(activeCanvas, activeTableTop)
+                currentY = activeTableTop + 22f
+            }
+
+            paint.color = when {
+                isGiftOnly -> Color.parseColor("#ECFDF5")
+                idx % 2 == 0 -> Color.WHITE
+                else -> Color.parseColor("#F7FAFC")
+            }
+            activeCanvas.drawRect(30f, currentY, 565f, currentY + rowHeight, paint)
+
+            if (isGiftOnly) {
+                paint.color = Color.parseColor("#388E3C")
+                activeCanvas.drawRect(30f, currentY, 33f, currentY + rowHeight, paint)
+            }
 
             paint.color = Color.parseColor("#E2E8F0")
-            canvas.drawLine(30f, currentY + 20f, 565f, currentY + 20f, paint)
+            activeCanvas.drawLine(30f, currentY + rowHeight, 565f, currentY + rowHeight, paint)
 
-            val refText = item.productReference.ifBlank { "REF" }
-            val nameText = if (item.productName.length > 36) item.productName.take(34) + "..." else item.productName
-            val qtyText = "${item.quantity} un."
-            val puText = String.format("%.2f", item.unitPriceTtc)
-            val remiseText = if (item.discountPercentage > 0) "${item.discountPercentage.toInt()}%" else "-"
-            val totalText = String.format("%.2f DH", item.totalTtc)
+            val refText = item.productReference.ifBlank { "REF" }.take(10)
+            val rawName = if (isGiftOnly) "🎁 ${item.productName}" else item.productName
+            val nameText = if (rawName.length > 34) rawName.take(32) + "..." else rawName
 
-            canvas.drawText(refText, 38f, currentY + 14f, textPaint)
-            canvas.drawText(nameText, 100f, currentY + 14f, textPaint)
-            canvas.drawText(qtyText, 350f, currentY + 14f, textPaint)
-            canvas.drawText(puText, 410f, currentY + 14f, textPaint)
-            canvas.drawText(remiseText, 475f, currentY + 14f, textPaint)
-            canvas.drawText(totalText, 515f, currentY + 14f, textPaint)
+            val displayQty = if (isGiftOnly) 0 else item.quantity
+            val displayPrice = if (isGiftOnly) 0.0 else item.unitPriceTtc
+            val displayTotal = if (isGiftOnly) 0.0 else item.totalTtc
 
-            currentY += 20f
+            textPaint.textSize = 8.3f
+            textPaint.isFakeBoldText = isGiftOnly
+            textPaint.color = if (isGiftOnly) Color.parseColor("#1B5E20") else Color.parseColor("#2D3748")
+
+            activeCanvas.drawText(refText, 36f, currentY + 13.5f, textPaint)
+            activeCanvas.drawText(nameText, 88f, currentY + 13.5f, textPaint)
+            if (isGiftOnly && item.promoTag.isNotBlank()) {
+                textPaint.textSize = 7f
+                textPaint.color = Color.parseColor("#2E7D32")
+                activeCanvas.drawText(item.promoTag.take(42), 88f, currentY + 22.5f, textPaint)
+                textPaint.textSize = 8.3f
+            }
+
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+            activeCanvas.drawText("${displayQty}", 294f, currentY + 13.5f, textPaint)
+
+            if (item.freeQuantity > 0) {
+                textPaint.color = Color.parseColor("#2E7D32")
+                textPaint.isFakeBoldText = true
+                activeCanvas.drawText("+${item.freeQuantity} Offert", 332f, currentY + 13.5f, textPaint)
+            } else {
+                activeCanvas.drawText("-", 342f, currentY + 13.5f, textPaint)
+            }
+
+            textPaint.color = if (isGiftOnly) Color.parseColor("#2E7D32") else Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = isGiftOnly
+            activeCanvas.drawText(String.format("%.2f DH", displayPrice), 398f, currentY + 13.5f, textPaint)
+
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+            val remiseText = if (!isGiftOnly && item.discountPercentage > 0) "${item.discountPercentage.toInt()}%" else "-"
+            activeCanvas.drawText(remiseText, 460f, currentY + 13.5f, textPaint)
+
+            textPaint.color = if (isGiftOnly) Color.parseColor("#2E7D32") else Color.parseColor("#1A202C")
+            textPaint.isFakeBoldText = isGiftOnly
+            activeCanvas.drawText(if (isGiftOnly) "0.00 DH" else String.format("%.2f DH", displayTotal), 502f, currentY + 13.5f, textPaint)
+
+            currentY += rowHeight
         }
 
         // Border around table
         paint.style = Paint.Style.STROKE
         paint.color = Color.parseColor("#CBD5E0")
-        canvas.drawRect(30f, tableTop, 565f, currentY, paint)
+        activeCanvas.drawRect(30f, activeTableTop, 565f, currentY, paint)
         paint.style = Paint.Style.FILL
 
         // 5. Totals & Signature
-        val totalsY = currentY + 15f
+        var totalsY = currentY + 16f
+        if (totalsY + 145f > 800f) {
+            pdfDocument.finishPage(activePage)
+            activePage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create())
+            activeCanvas = activePage.canvas
+            totalsY = 40f
+        }
+
+        val totalFreeCount = maxOf(devis.totalFreeItems, devis.items.sumOf { it.freeQuantity })
+        val totalsBoxHeight = 132f
         paint.color = Color.parseColor("#F8F9FA")
-        canvas.drawRoundRect(RectF(345f, totalsY, 555f, totalsY + 115f), 6f, 6f, paint)
+        activeCanvas.drawRoundRect(RectF(335f, totalsY, 565f, totalsY + totalsBoxHeight), 6f, 6f, paint)
         paint.color = Color.parseColor("#CBD5E0")
         paint.style = Paint.Style.STROKE
-        canvas.drawRoundRect(RectF(345f, totalsY, 555f, totalsY + 115f), 6f, 6f, paint)
+        activeCanvas.drawRoundRect(RectF(335f, totalsY, 565f, totalsY + totalsBoxHeight), 6f, 6f, paint)
         paint.style = Paint.Style.FILL
 
         textPaint.color = Color.parseColor("#2D3748")
         textPaint.textSize = 9.5f
         textPaint.isFakeBoldText = false
 
-        canvas.drawText("Total H.T :", 355f, totalsY + 22f, textPaint)
-        canvas.drawText(String.format("%.2f DH", devis.totalHt), 470f, totalsY + 22f, textPaint)
+        var rowLineY = totalsY + 20f
+        activeCanvas.drawText("Total H.T :", 350f, rowLineY, textPaint)
+        activeCanvas.drawText(String.format("%.2f DH", devis.totalHt), 475f, rowLineY, textPaint)
+        rowLineY += 16f
+
+        if (totalFreeCount > 0) {
+            textPaint.color = Color.parseColor("#2E7D32")
+            textPaint.isFakeBoldText = true
+            activeCanvas.drawText("Articles Offerts :", 350f, rowLineY, textPaint)
+            activeCanvas.drawText("+$totalFreeCount U (0.00 DH)", 475f, rowLineY, textPaint)
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+            rowLineY += 16f
+        }
 
         if (devis.totalDiscount > 0) {
             textPaint.color = Color.parseColor("#E53E3E")
             textPaint.isFakeBoldText = true
-            canvas.drawText("Remise Accordée :", 355f, totalsY + 38f, textPaint)
-            canvas.drawText(String.format("-%.2f DH", devis.totalDiscount), 470f, totalsY + 38f, textPaint)
+            activeCanvas.drawText("Remise Accordée :", 350f, rowLineY, textPaint)
+            activeCanvas.drawText(String.format("-%.2f DH", devis.totalDiscount), 475f, rowLineY, textPaint)
             textPaint.color = Color.parseColor("#2D3748")
             textPaint.isFakeBoldText = false
+            rowLineY += 16f
         }
 
-        canvas.drawText("TVA (20%) :", 355f, totalsY + 54f, textPaint)
-        canvas.drawText(String.format("%.2f DH", devis.totalTva), 470f, totalsY + 54f, textPaint)
+        if (devis.voucherDiscount > 0) {
+            textPaint.color = Color.parseColor("#E65100")
+            textPaint.isFakeBoldText = true
+            activeCanvas.drawText("Bon d'Achat :", 350f, rowLineY, textPaint)
+            activeCanvas.drawText(String.format("-%.2f DH", devis.voucherDiscount), 475f, rowLineY, textPaint)
+            textPaint.color = Color.parseColor("#2D3748")
+            textPaint.isFakeBoldText = false
+            rowLineY += 16f
+        }
+
+        activeCanvas.drawText("TVA (20%) :", 350f, rowLineY, textPaint)
+        activeCanvas.drawText(String.format("%.2f DH", devis.totalTva), 475f, rowLineY, textPaint)
 
         // Banner Total Net TTC
         paint.color = Color.parseColor("#FFD000")
-        canvas.drawRoundRect(RectF(345f, totalsY + 70f, 555f, totalsY + 105f), 6f, 6f, paint)
+        activeCanvas.drawRoundRect(RectF(345f, totalsY + 90f, 555f, totalsY + 124f), 6f, 6f, paint)
 
         textPaint.isFakeBoldText = true
         textPaint.textSize = 11.5f
         textPaint.color = Color.parseColor("#0D0F12")
-        canvas.drawText("TOTAL NET TTC :", 355f, totalsY + 92f, textPaint)
-        canvas.drawText(String.format("%.2f DH", devis.totalTtc), 460f, totalsY + 92f, textPaint)
+        activeCanvas.drawText("TOTAL NET TTC :", 355f, totalsY + 111f, textPaint)
+        activeCanvas.drawText(String.format("%.2f DH", devis.totalTtc), 465f, totalsY + 111f, textPaint)
 
         // Signature Left Box
         textPaint.color = Color.parseColor("#1A202C")
         textPaint.textSize = 9f
         textPaint.isFakeBoldText = true
-        canvas.drawText("Pour accord (Cachet & Signature Client) :", 40f, totalsY + 18f, textPaint)
+        activeCanvas.drawText("Pour accord (Cachet & Signature Client) :", 40f, totalsY + 18f, textPaint)
 
         paint.style = Paint.Style.STROKE
         paint.color = Color.parseColor("#CBD5E0")
-        canvas.drawRoundRect(RectF(40f, totalsY + 26f, 255f, totalsY + 105f), 6f, 6f, paint)
+        activeCanvas.drawRoundRect(RectF(40f, totalsY + 26f, 255f, totalsY + 124f), 6f, 6f, paint)
         paint.style = Paint.Style.FILL
 
         textPaint.textSize = 8f
         textPaint.color = Color.parseColor("#718096")
         textPaint.isFakeBoldText = false
-        canvas.drawText("Validité : 30 jours à dater de l'émission", 48f, totalsY + 98f, textPaint)
+        activeCanvas.drawText("Validité : 30 jours à dater de l'émission", 48f, totalsY + 115f, textPaint)
 
         // 6. Footer
         paint.color = Color.parseColor("#FFD000")
-        canvas.drawRect(30f, 810f, 565f, 812f, paint)
+        activeCanvas.drawRect(30f, 810f, 565f, 812f, paint)
 
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#718096")
-        canvas.drawText(CompanyInfo.FOOTER_LEGAL, 70f, 824f, textPaint)
+        activeCanvas.drawText(CompanyInfo.FOOTER_LEGAL, 70f, 824f, textPaint)
 
-        pdfDocument.finishPage(page)
+        pdfDocument.finishPage(activePage)
 
         val safeNumber = devis.devisNumber.replace("/", "-").replace(":", "-").replace(" ", "_")
         val pdfFileName = "Devis_${safeNumber}.pdf"

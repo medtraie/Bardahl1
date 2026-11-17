@@ -1036,32 +1036,54 @@ export function renderDevisPage(doc, devis) {
   doc.text("Mode d'Expédition : " + (devis.modeExpedition || "Transport Bardahl"), 115, 83)
   doc.text("Statut Devis : " + (devis.status || "EN_ATTENTE"), 115, 89)
 
-  // 4. Products Table
+  // 4. Products Table (Harmonized with Order PDF: includes Gratuité & Gifts)
   let itemsList = (devis.items && devis.items.length > 0) ? devis.items : []
-  const rows = itemsList.map(i => {
-    const ref = i.reference || i.code || '-'
-    const name = i.productName || i.name || 'Article Bardahl'
-    const qty = parseInt(i.qty || 0, 10)
-    const cartonUnits = parseInt(i.unitsPerCarton || i.unitsPerBox || 1, 10)
+  const isPureGiftRow = (i) => {
+    const q = parseInt(i.qty !== undefined ? i.qty : (i.quantity || 0), 10)
+    const p = parseFloat(i.priceTtc !== undefined ? i.priceTtc : (i.unitPriceTtc || 0))
+    const g = parseInt(i.qtyGratuit !== undefined ? i.qtyGratuit : (i.freeQuantity || 0), 10)
+    const tag = String(i.promoTag || '')
+    return (q === 0 || p === 0 || tag.includes('Offert') || tag.includes('Cadeau')) && g > 0
+  }
+  const purchasedList = itemsList.filter(i => !isPureGiftRow(i))
+  const giftOnlyList = itemsList.filter(i => isPureGiftRow(i))
+  const orderedList = [...purchasedList, ...giftOnlyList]
+
+  const rows = orderedList.map(i => {
+    const ref = i.reference || i.productReference || i.code || '-'
+    const isPureGift = isPureGiftRow(i)
+    const rawName = i.productName || i.name || 'Article Bardahl'
+    const name = isPureGift && i.promoTag ? `${rawName}\n(${i.promoTag})` : rawName
+    let qty = parseInt(i.qty !== undefined ? i.qty : (i.quantity || 0), 10)
+    const qtyGratuit = parseInt(i.qtyGratuit !== undefined ? i.qtyGratuit : (i.freeQuantity || 0), 10)
+    const cartonUnits = parseInt(i.unitsPerCarton || i.unitsPerBox || 1, 10) || 1
     const cartons = Math.floor(qty / cartonUnits)
-    const colDisplay = cartons > 0 ? `${cartons} ct (${qty} un)` : `${qty} un`
-    const puTtc = parseFloat(i.priceTtc || 0)
-    const remise = parseFloat(i.remise || 0)
+    let puTtc = parseFloat(i.priceTtc !== undefined ? i.priceTtc : (i.unitPriceTtc || 0))
+    const remise = parseFloat(i.remisePercent !== undefined && i.remisePercent !== '' ? i.remisePercent : (i.remise || i.discountPercentage || 0))
+
+    if (isPureGift) {
+      qty = 0
+      puTtc = 0
+    }
+
+    const colDisplay = isPureGift ? '0 un' : (cartons > 0 ? `${cartons} ct (${qty} un)` : `${qty} un`)
+    const gratuitText = qtyGratuit > 0 ? `+${qtyGratuit} Offert` : '-'
     const lineTotal = (qty * puTtc) * (1 - remise / 100)
 
     return [
       ref,
       name,
       colDisplay,
+      gratuitText,
       puTtc.toFixed(2),
-      remise > 0 ? `${remise}%` : '-',
+      isPureGift ? '-' : (remise > 0 ? `${remise}%` : '-'),
       lineTotal.toFixed(2)
     ]
   })
 
   doc.autoTable({
     startY: 96,
-    head: [['Réf.', 'Désignation Produit', 'Qté / Colis', 'P.U TTC (DH)', 'Remise', 'Total TTC (DH)']],
+    head: [['Réf.', 'Désignation Produit', 'Qté / Colis', 'Gratuité', 'P.U TTC', 'Remise', 'Total TTC']],
     body: rows,
     theme: 'grid',
     headStyles: {
@@ -1077,23 +1099,68 @@ export function renderDevisPage(doc, devis) {
       cellPadding: 2.5
     },
     columnStyles: {
-      0: { cellWidth: 22, fontStyle: 'bold' },
+      0: { cellWidth: 20, fontStyle: 'bold' },
       1: { cellWidth: 'auto' },
-      2: { cellWidth: 26, halign: 'center' },
-      3: { cellWidth: 24, halign: 'right' },
-      4: { cellWidth: 18, halign: 'center' },
-      5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
+      2: { cellWidth: 24, halign: 'center' },
+      3: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+      4: { cellWidth: 20, halign: 'right' },
+      5: { cellWidth: 15, halign: 'center' },
+      6: { cellWidth: 24, halign: 'right', fontStyle: 'bold' }
+    },
+    didParseCell: function (data) {
+      if (data.section === 'body' && orderedList[data.row.index] && isPureGiftRow(orderedList[data.row.index])) {
+        data.cell.styles.fillColor = [236, 253, 245]
+        if (data.column.index === 3 || data.column.index === 6) {
+          data.cell.styles.textColor = [22, 163, 74]
+        }
+      }
     },
     margin: { left: 14, right: 14 }
   })
 
   let finalY = doc.lastAutoTable.finalY + 6
 
+  // Promo & Remarques box if present
+  const hasRemarque = devis.remarque && devis.remarque.trim()
+  const hasAppliedPromos = Array.isArray(devis.appliedPromotions) && devis.appliedPromotions.length > 0
+  if (hasRemarque || hasAppliedPromos) {
+    const notes = []
+    if (hasAppliedPromos) {
+      devis.appliedPromotions.forEach(ap => {
+        const parts = []
+        if (ap.discountPercent > 0) parts.push(`Remise: ${ap.discountPercent}%`)
+        if (ap.giftSummary) parts.push(ap.giftSummary)
+        if (ap.voucherAmount > 0) parts.push(`Bon: -${parseFloat(ap.voucherAmount).toFixed(2)} DH`)
+        notes.push(`OFFRE : ${ap.name}${parts.length > 0 ? ' (' + parts.join(', ') + ')' : ''}`)
+      })
+    }
+    if (hasRemarque) {
+      notes.push(`REMARQUES : ${devis.remarque.trim()}`)
+    }
+    const wrapped = doc.splitTextToSize(notes.join(' | '), 174)
+    const noteBoxHeight = Math.max(11, wrapped.length * 4.5 + 5)
+    if (finalY + noteBoxHeight + 44 > 275) {
+      doc.addPage()
+      finalY = 20
+    }
+    doc.setFillColor(254, 252, 243)
+    doc.setDrawColor(255, 208, 0)
+    doc.roundedRect(14, finalY, 182, noteBoxHeight, 2, 2, 'FD')
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(30, 41, 59)
+    doc.text(wrapped, 18, finalY + 5)
+    finalY += noteBoxHeight + 4
+  }
+
   // 5. Financial Summary Box
   const totalTtc = parseFloat(devis.totalTtc || 0)
   const totalHt = parseFloat(devis.totalHt || (totalTtc / 1.20))
   const totalTva = parseFloat(devis.totalTva || (totalTtc - totalHt))
   const totalDiscount = parseFloat(devis.totalDiscount || 0)
+  const totalFreeUnits = orderedList.reduce((sum, i) => sum + parseInt(i.qtyGratuit !== undefined ? i.qtyGratuit : (i.freeQuantity || 0), 10), 0)
+
+  const summaryBoxHeight = 28 + (totalDiscount > 0 ? 6 : 0) + (totalFreeUnits > 0 ? 6 : 0)
 
   if (finalY > 230) {
     doc.addPage()
@@ -1102,12 +1169,22 @@ export function renderDevisPage(doc, devis) {
 
   doc.setFillColor(248, 249, 250)
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(120, finalY, 76, totalDiscount > 0 ? 36 : 28, 2, 2, 'FD')
+  doc.roundedRect(120, finalY, 76, summaryBoxHeight, 2, 2, 'FD')
 
   let rowY = finalY + 6
   doc.setFontSize(8.5)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(74, 85, 104)
+
+  if (totalFreeUnits > 0) {
+    doc.text("Articles Offerts :", 124, rowY)
+    doc.setTextColor(22, 163, 74)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`+${totalFreeUnits} U (0.00 DH)`, 192, rowY, { align: 'right' })
+    rowY += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(74, 85, 104)
+  }
 
   if (totalDiscount > 0) {
     doc.text("Total Remise Accordée :", 124, rowY)
@@ -1136,7 +1213,7 @@ export function renderDevisPage(doc, devis) {
   doc.text(totalTtc.toFixed(2) + " DH", 192, rowY + 1, { align: 'right' })
 
   // Notes & Signatures Box
-  const sigY = finalY + (totalDiscount > 0 ? 42 : 34)
+  const sigY = finalY + summaryBoxHeight + 6
   if (sigY < 240) {
     doc.setFontSize(8)
     doc.setFont('helvetica', 'italic')

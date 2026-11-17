@@ -97,18 +97,34 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       setRemiseMontant(dev.remiseMontant || 0)
       setSelectedPromoId(dev.selectedPromoId || 'AUTO')
       setCommercialPromoChoices({})
-      setSelectedProducts(dev.items ? dev.items.map(it => {
-        const upb = it.unitsPerBox || it.unitsPerCarton || 1
+      const rawItems = dev.items || []
+      const distinctGiftLines = rawItems.filter(i => {
+        const q = parseInt(i.qty !== undefined ? i.qty : (i.quantity !== undefined ? i.quantity : 0), 10)
+        const p = parseFloat(i.priceTtc || i.unitPriceTtc || 0)
+        const g = parseInt(i.qtyGratuit || i.freeQuantity || 0, 10)
+        const tag = String(i.promoTag || '')
+        return (q === 0 || p === 0) && (g > 0 || tag.includes('Offert') || tag.includes('Cadeau'))
+      })
+      const purchasedLines = rawItems.filter(i => !distinctGiftLines.includes(i))
+      setSelectedProducts(purchasedLines.map(it => {
+        const catProd = products.find(p => p.id === it.productId || p.reference === it.reference)
+        const upb = parseInt(it.unitsPerBox || it.unitsPerCarton || catProd?.unitsPerBox || (catProd ? getProductUnitsPerCarton(catProd) : 12) || 12, 10) || 12
+        const unitQty = parseInt(it.qty !== undefined ? it.qty : (it.quantity !== undefined ? it.quantity : 1), 10)
+        const recordedFreeUnits = parseInt(it.qtyGratuit !== undefined ? it.qtyGratuit : (it.freeQuantity || 0), 10)
         return {
           ...it,
           unitsPerBox: upb,
           unitsPerCarton: upb,
-          cartons: it.cartons !== undefined ? it.cartons : Math.floor((parseInt(it.qty, 10) || 0) / upb),
+          cartons: Math.floor(unitQty / upb),
+          qty: unitQty,
+          initialQty: unitQty,
+          initialFreeUnits: recordedFreeUnits,
           remisePercent: it.remisePercent !== undefined ? it.remisePercent : (it.remise !== undefined && it.remise > 0 ? String(it.remise) : ''),
           remise: it.remise !== undefined ? it.remise : (parseFloat(it.remisePercent) || 0),
-          manualGratuit: it.manualGratuit !== undefined ? it.manualGratuit : (it.qtyGratuit || 0)
+          qtyGratuit: recordedFreeUnits,
+          manualGratuit: it.manualGratuit !== undefined ? it.manualGratuit : recordedFreeUnits
         }
-      }) : [])
+      }))
     } else {
       setEditingDevis(null)
       setCustomDevisNumber(suggestedDevisNumber)
@@ -156,14 +172,14 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
     })
   }, [products, productSearchQuery, selectedProductCategoryFilter, activeFamilies])
 
-  // Add product to devis wizard selection
+  // Add product to devis wizard selection (WEB-01: harmonized with Orders.jsx — starts at 1 unit & increments by 1)
   const handleAddProductItem = (prod) => {
     const existingIndex = selectedProducts.findIndex(p => p.productId === prod.id || p.reference === prod.reference)
-    const cartonUnits = prod.unitsPerBox || getProductUnitsPerCarton(prod) || 1
+    const cartonUnits = parseInt(prod.unitsPerBox || getProductUnitsPerCarton(prod) || 1, 10) || 1
     if (existingIndex >= 0) {
       setSelectedProducts(prev => prev.map((item, idx) => {
         if (idx === existingIndex) {
-          const newQty = (parseInt(item.qty, 10) || 0) + cartonUnits
+          const newQty = (parseInt(item.qty, 10) || 0) + 1
           return {
             ...item,
             qty: newQty,
@@ -181,11 +197,12 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
           code: prod.code || prod.reference,
           productName: prod.name,
           category: prod.category || 'FA0015',
+          packaging: prod.packaging || '',
           priceTtc: parseFloat(prod.priceTtc) || 0,
           unitsPerBox: cartonUnits,
           unitsPerCarton: cartonUnits,
-          cartons: 1,
-          qty: cartonUnits,
+          cartons: Math.floor(1 / cartonUnits),
+          qty: 1,
           remise: 0,
           remisePercent: '',
           qtyGratuit: 0,
@@ -484,8 +501,9 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
 
   // Save Devis Handler
   const handleSaveDevis = async (andConvertNow = false) => {
-    if (!selectedClient && !clientSearchQuery) {
-      alert("Veuillez sélectionner un client pour ce devis.")
+    const matchedClient = clients.find(c => c.id === selectedClient || c.dbId === selectedClient)
+    if (!selectedClient || !matchedClient) {
+      alert("Client manquant : veuillez rechercher et sélectionner explicitement un client dans la liste avant d'enregistrer le devis.")
       return
     }
     if (selectedProducts.length === 0) {
@@ -493,12 +511,72 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       return
     }
 
-    const matchedClient = clients.find(c => c.id === selectedClient || c.dbId === selectedClient)
-    const clientName = matchedClient?.companyName || clientSearchQuery.split('(')[0].trim() || 'Client Bardahl'
-    const clientIce = matchedClient?.ice || ''
-    const clientCity = matchedClient?.city || ''
-    const clientAddress = matchedClient?.address || ''
-    const clientPhone = matchedClient?.phone || ''
+    const clientName = matchedClient.companyName || 'Client Bardahl'
+    const clientIce = matchedClient.ice || ''
+    const clientCity = matchedClient.city || ''
+    const clientAddress = matchedClient.address || ''
+    const clientPhone = matchedClient.phone || ''
+
+    // WEB-01 & PROMO-01: Build combinedItems identically to Orders.jsx (including distinct & same-product free gifts)
+    const combinedItems = [
+      ...selectedProducts.map((sp, idx) => {
+        const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
+        const parsed = parsePercent(sp.remisePercent !== undefined && sp.remisePercent !== '' ? sp.remisePercent : sp.remise)
+        const finalRemise = (parsed !== null && parsed > 0) ? parsed : promoDiscount
+        const freeItemForSp = (promoAnalysis.freeItems || []).find(fi => fi.reference === sp.reference || fi.productId === sp.productId)
+        const earnedFreeCartons = freeItemForSp ? (parseInt(freeItemForSp.qtyGratuit, 10) || 0) : 0
+        const upb = parseInt(sp.unitsPerBox || sp.unitsPerCarton || 1, 10) || 1
+
+        let earnedFreeUnits = 0
+        let isAutoGift = false
+        if (earnedFreeCartons > 0) {
+          earnedFreeUnits = earnedFreeCartons * upb
+          isAutoGift = true
+        } else if (sp.manualGratuit !== undefined && sp.manualGratuit !== null && parseInt(sp.manualGratuit, 10) > 0) {
+          earnedFreeUnits = parseInt(sp.manualGratuit, 10) || 0
+        } else if (editingDevis && sp.initialQty === sp.qty && sp.initialFreeUnits > 0) {
+          earnedFreeUnits = sp.initialFreeUnits
+        } else if (sp.qtyGratuit > 0) {
+          earnedFreeUnits = sp.qtyGratuit
+        }
+
+        return {
+          ...sp,
+          qtyGratuit: earnedFreeUnits,
+          remise: finalRemise,
+          remisePercent: sp.remisePercent !== undefined && sp.remisePercent !== '' ? sp.remisePercent : (finalRemise > 0 ? String(finalRemise) : ''),
+          promoTag: earnedFreeUnits > 0
+            ? (isAutoGift ? (freeItemForSp?.promoName || 'Article Offert Promo') : (sp.promoTag || 'Cadeau / Offert manuel'))
+            : sp.promoTag
+        }
+      }),
+      ...(promoAnalysis.freeItems || [])
+        .filter(fi => !selectedProducts.some(sp => sp.reference === fi.reference || sp.productId === fi.productId))
+        .map(fi => {
+          const giftProd = products.find(p => p.reference === fi.reference || p.id === fi.productId)
+          const upb = parseInt(giftProd?.unitsPerBox || (giftProd ? getProductUnitsPerCarton(giftProd) : 12) || 12, 10) || 12
+          const cartons = parseInt(fi.qtyGratuit, 10) || 1
+          const totalUnits = cartons * upb
+          return {
+            productId: fi.productId || giftProd?.id || 'promo_gift',
+            productName: fi.productName || giftProd?.name || fi.reference,
+            reference: fi.reference || giftProd?.reference || '',
+            priceTtc: 0,
+            qty: 0,
+            qtyGratuit: totalUnits,
+            unitsPerBox: upb,
+            unitsPerCarton: upb,
+            remise: 0,
+            remisePercent: '',
+            promoTag: `🎁 Offert : ${fi.promoName}`
+          }
+        })
+    ]
+
+    const totalFreeItemsCount = combinedItems.reduce((sum, it) => sum + (parseInt(it.qtyGratuit, 10) || 0), 0)
+    const autoPromoSummary = (promoAnalysis.appliedPromotions || []).length > 0
+      ? promoAnalysis.appliedPromotions.map(ap => ap.name + (ap.discountPercent > 0 ? ` (${ap.discountPercent}%)` : '') + (ap.giftSummary ? ` [${ap.giftSummary}]` : '') + (ap.voucherAmount > 0 ? ` [Bon -${ap.voucherAmount} DH]` : '')).join(' | ')
+      : ''
 
     const validityDateStr = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000).toISOString().substring(0, 10)
 
@@ -517,21 +595,14 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
       paymentMethod,
       modeExpedition,
       remarque,
+      promoNote: autoPromoSummary,
       remisePercent,
       remiseMontant,
+      voucherDiscount: wizardCalculations.voucherDiscount || 0,
       selectedPromoId,
-      items: selectedProducts.map((sp, idx) => {
-        const promoDiscount = promoAnalysis.lineDiscounts && promoAnalysis.lineDiscounts[idx] ? promoAnalysis.lineDiscounts[idx] : 0
-        const parsed = parsePercent(sp.remisePercent !== undefined && sp.remisePercent !== '' ? sp.remisePercent : sp.remise)
-        const finalRemise = (parsed !== null && parsed > 0) ? parsed : promoDiscount
-        return {
-          ...sp,
-          remise: finalRemise,
-          remisePercent: sp.remisePercent !== undefined && sp.remisePercent !== '' ? sp.remisePercent : (finalRemise > 0 ? String(finalRemise) : '')
-        }
-      }),
+      items: combinedItems,
       appliedPromotions: promoAnalysis.appliedPromotions || [],
-      totalFreeItems: (promoAnalysis.freeItems || []).reduce((sum, fi) => sum + (parseInt(fi.qtyGratuit, 10) || 0), 0),
+      totalFreeItems: totalFreeItemsCount,
       totalHt: wizardCalculations.totalHt,
       totalDiscount: wizardCalculations.totalDiscount,
       totalTva: wizardCalculations.totalTva,
@@ -1211,16 +1282,25 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                       <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--bardahl-yellow)' }} />
                       <input
                         type="text"
-                        placeholder="Rechercher par nom, ville, ICE..."
+                        placeholder="Rechercher par nom, ville, ICE (sélection obligatoire)..."
                         value={clientSearchQuery}
                         onChange={e => {
                           setClientSearchQuery(e.target.value)
                           setShowClientDropdown(true)
-                          if (!e.target.value) setSelectedClient('')
+                          setSelectedClient('')
                         }}
                         onFocus={() => setShowClientDropdown(true)}
                         className="input-field"
-                        style={{ paddingLeft: '36px', paddingRight: '32px', fontSize: '13px', height: '42px', fontWeight: '600', width: '100%', boxSizing: 'border-box' }}
+                        style={{
+                          paddingLeft: '36px',
+                          paddingRight: '32px',
+                          fontSize: '13px',
+                          height: '42px',
+                          fontWeight: '600',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          borderColor: !selectedClient ? 'rgba(255, 149, 0, 0.5)' : 'rgba(52, 199, 89, 0.6)'
+                        }}
                       />
                       {clientSearchQuery && (
                         <button
@@ -3035,6 +3115,7 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                         <th style={{ padding: '8px' }}>Réf.</th>
                         <th style={{ padding: '8px' }}>Désignation Produit</th>
                         <th style={{ padding: '8px', textAlign: 'center' }}>Quantité</th>
+                        <th style={{ padding: '8px', textAlign: 'center' }}>Gratuité</th>
                         <th style={{ padding: '8px', textAlign: 'right' }}>P.U TTC</th>
                         <th style={{ padding: '8px', textAlign: 'center' }}>Remise</th>
                         <th style={{ padding: '8px', textAlign: 'right' }}>Total TTC</th>
@@ -3042,18 +3123,35 @@ export default function Devis({ openWizardTrigger, setActiveTab }) {
                     </thead>
                     <tbody>
                       {(selectedDevisDetails.items || []).map((it, idx) => {
-                        const lineBrut = (it.qty || 0) * (it.priceTtc || 0)
-                        const lineNet = lineBrut * (1 - (it.remise || 0) / 100)
+                        const qty = parseInt(it.qty !== undefined ? it.qty : (it.quantity || 0), 10)
+                        const gratuit = parseInt(it.qtyGratuit !== undefined ? it.qtyGratuit : (it.freeQuantity || 0), 10)
+                        const tag = String(it.promoTag || '')
+                        const isPureGift = (qty === 0 || parseFloat(it.priceTtc || 0) === 0 || tag.includes('Offert') || tag.includes('Cadeau')) && gratuit > 0
+                        const pu = isPureGift ? 0 : (parseFloat(it.priceTtc || it.unitPriceTtc || 0) || 0)
+                        const rem = isPureGift ? 0 : (parseFloat(it.remise || it.remisePercent || it.discountPercentage || 0) || 0)
+                        const lineBrut = (isPureGift ? 0 : qty) * pu
+                        const lineNet = lineBrut * (1 - rem / 100)
                         return (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            <td style={{ padding: '8px', fontWeight: '700', color: 'var(--bardahl-yellow)' }}>{it.reference || it.code}</td>
-                            <td style={{ padding: '8px', color: '#FFFFFF' }}>{it.productName}</td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>
-                              <strong>{it.qty}</strong> un. {it.cartons > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>({it.cartons} ct)</span>}
+                          <tr key={idx} style={{
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            background: isPureGift ? 'rgba(52, 199, 89, 0.08)' : 'transparent'
+                          }}>
+                            <td style={{ padding: '8px', fontWeight: '700', color: isPureGift ? '#34C759' : 'var(--bardahl-yellow)' }}>{it.reference || it.productReference || it.code}</td>
+                            <td style={{ padding: '8px', color: '#FFFFFF' }}>
+                              {isPureGift ? `🎁 ${it.productName}` : it.productName}
+                              {isPureGift && tag && (
+                                <div style={{ fontSize: '10px', color: '#34C759', fontWeight: '700' }}>{tag}</div>
+                              )}
                             </td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{(parseFloat(it.priceTtc) || 0).toFixed(2)} DH</td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>{it.remise > 0 ? `${it.remise}%` : '-'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontWeight: '800', color: 'var(--bardahl-yellow)' }}>
+                            <td style={{ padding: '8px', textAlign: 'center' }}>
+                              <strong>{isPureGift ? 0 : qty}</strong> un. {!isPureGift && it.cartons > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>({it.cartons} ct)</span>}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'center', color: gratuit > 0 ? '#34C759' : 'var(--text-secondary)', fontWeight: gratuit > 0 ? '800' : 'normal' }}>
+                              {gratuit > 0 ? `+${gratuit} Offert` : '-'}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right', color: isPureGift ? '#34C759' : 'inherit' }}>{pu.toFixed(2)} DH</td>
+                            <td style={{ padding: '8px', textAlign: 'center' }}>{rem > 0 ? `${rem}%` : '-'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontWeight: '800', color: isPureGift ? '#34C759' : 'var(--bardahl-yellow)' }}>
                               {lineNet.toFixed(2)} DH
                             </td>
                           </tr>

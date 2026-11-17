@@ -117,6 +117,22 @@ class ProductRepository(
     private val productDao: ProductDao,
     private val supabaseService: SupabaseService
 ) {
+    private fun Product.toEntity() = ProductEntity(
+        id = id,
+        categoryId = categoryId,
+        code = code,
+        reference = reference,
+        name = name,
+        description = description,
+        viscosity = viscosity,
+        volume = volume,
+        packaging = packaging,
+        unitsPerBox = unitsPerBox,
+        unitPriceTtc = unitPriceTtc,
+        stockQuantity = stockQuantity,
+        imageUrl = imageUrl
+    )
+
     fun getProducts(): Flow<List<Product>> {
         return productDao.getAllProducts().map { entities ->
             entities.map { e ->
@@ -132,31 +148,32 @@ class ProductRepository(
                     packaging = e.packaging,
                     unitPriceTtc = e.unitPriceTtc,
                     stockQuantity = e.stockQuantity,
-                    imageUrl = e.imageUrl
+                    imageUrl = e.imageUrl,
+                    explicitUnitsPerBox = e.unitsPerBox
                 )
             }
         }
     }
 
+    suspend fun saveProduct(product: Product) {
+        try { productDao.insertProduct(product.toEntity()) } catch (_: Throwable) {}
+        supabaseService.postProduct(product)
+    }
+
+    suspend fun updateProduct(product: Product) {
+        try { productDao.insertProduct(product.toEntity()) } catch (_: Throwable) {}
+        supabaseService.updateProduct(product)
+    }
+
+    suspend fun deleteProduct(product: Product) {
+        try { productDao.deleteProduct(product.id) } catch (_: Throwable) {}
+        supabaseService.deleteProduct(product)
+    }
+
     suspend fun fetchRemoteProductsDirectly(): List<Product> {
         val remote = supabaseService.fetchProducts()
         if (remote.isNotEmpty()) {
-            val entities = remote.map { p ->
-                ProductEntity(
-                    id = p.id,
-                    categoryId = p.categoryId,
-                    code = p.code,
-                    reference = p.reference,
-                    name = p.name,
-                    description = p.description,
-                    viscosity = p.viscosity,
-                    volume = p.volume,
-                    packaging = p.packaging,
-                    unitPriceTtc = p.unitPriceTtc,
-                    stockQuantity = p.stockQuantity,
-                    imageUrl = p.imageUrl
-                )
-            }
+            val entities = remote.map { it.toEntity() }
             try {
                 entities.chunked(50).forEach { batch ->
                     productDao.insertProducts(batch)

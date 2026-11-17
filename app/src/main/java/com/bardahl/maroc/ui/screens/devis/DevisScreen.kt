@@ -80,6 +80,8 @@ fun DevisScreen(
     val statusFilters = listOf("TOUS", "EN ATTENTE", "VALIDÉ", "CONVERTI", "EXPIRÉ")
 
     var showCreateDialog by remember { mutableStateOf(false) }
+    var editingDevis by remember { mutableStateOf<Devis?>(null) }
+    var deletingDevis by remember { mutableStateOf<Devis?>(null) }
     var selectedDevisForDetails by remember { mutableStateOf<Devis?>(null) }
 
     val filteredDevis = visibleDevis.filter { d ->
@@ -410,14 +412,18 @@ fun DevisScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // 3. Articles Table
+                    // 3. Articles Table (including distinct gifts & free units)
                     Text("ARTICLES DU DEVIS (${devis.items.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextPrimaryDark)
                     Spacer(modifier = Modifier.height(6.dp))
                     devis.items.forEach { item ->
+                        val isGiftOnly = (item.quantity == 0 || item.unitPriceTtc == 0.0 || item.promoTag.contains("Offert", ignoreCase = true) || item.promoTag.contains("Cadeau", ignoreCase = true)) && item.freeQuantity > 0
                         Surface(
-                            color = DarkSurface,
+                            color = if (isGiftOnly) Color(0xFF132A1C) else DarkSurface,
                             shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, BardahlCardBorder),
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (isGiftOnly) 1.dp else 0.5.dp,
+                                if (isGiftOnly) StatusDelivered.copy(alpha = 0.55f) else BardahlCardBorder
+                            ),
                             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
                         ) {
                             Row(
@@ -426,10 +432,37 @@ fun DevisScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("[${item.productReference}] ${item.productName}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1)
-                                    Text("${item.quantity} un. x ${String.format("%.2f", item.unitPriceTtc)} DH", fontSize = 10.sp, color = TextSecondaryDark)
+                                    Text(
+                                        text = if (isGiftOnly) "🎁 [${item.productReference}] ${item.productName}" else "[${item.productReference}] ${item.productName}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isGiftOnly) StatusDelivered else Color.White,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (isGiftOnly) {
+                                        Text(
+                                            text = "+${item.freeQuantity} un. gratuit(s) (${item.promoTag.ifBlank { "Cadeau Offert" }})",
+                                            fontSize = 10.sp,
+                                            color = StatusDelivered,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    } else {
+                                        val freePart = if (item.freeQuantity > 0) " • +${item.freeQuantity} Offert" else ""
+                                        val discPart = if (item.discountPercentage > 0) " • -${item.discountPercentage.toInt()}%" else ""
+                                        Text(
+                                            text = "${item.quantity} un. x ${String.format("%.2f", item.unitPriceTtc)} DH$discPart$freePart",
+                                            fontSize = 10.sp,
+                                            color = if (item.freeQuantity > 0) StatusDelivered else TextSecondaryDark
+                                        )
+                                    }
                                 }
-                                Text(String.format("%.2f DH", item.totalTtc), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BardahlYellow)
+                                Text(
+                                    text = if (isGiftOnly) "0.00 DH" else String.format("%.2f DH", item.totalTtc),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isGiftOnly) StatusDelivered else BardahlYellow
+                                )
                             }
                         }
                     }
@@ -437,6 +470,7 @@ fun DevisScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // 4. Financial Totals Card
+                    val totalFreeInDevis = maxOf(devis.totalFreeItems, devis.items.sumOf { it.freeQuantity })
                     Surface(
                         color = DarkSurface,
                         shape = RoundedCornerShape(12.dp),
@@ -447,6 +481,12 @@ fun DevisScreen(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Total H.T :", fontSize = 11.sp, color = TextSecondaryDark)
                                 Text(String.format("%.2f DH", devis.totalHt), fontSize = 11.sp, color = Color.White)
+                            }
+                            if (totalFreeInDevis > 0) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Articles Offerts :", fontSize = 11.sp, color = StatusDelivered)
+                                    Text("+$totalFreeInDevis U (0.00 DH)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StatusDelivered)
+                                }
                             }
                             if (devis.totalDiscount > 0) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -470,7 +510,12 @@ fun DevisScreen(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // 5. Action Buttons
+                    // 5. Action Buttons (PDF, Convertir, Modifier & Supprimer selon droits)
+                    val isOwner = devis.commercialId == userCommId ||
+                        (userCommName.isNotBlank() && devis.commercialName.contains(userCommName, ignoreCase = true)) ||
+                        (userEmail.isNotBlank() && devis.commercialEmail.equals(userEmail, ignoreCase = true))
+                    val canEditOrDelete = (isAdmin || isOwner) && devis.status != DevisStatus.CONVERTI
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
@@ -507,9 +552,82 @@ fun DevisScreen(
                             }
                         }
                     }
+
+                    if (canEditOrDelete) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    selectedDevisForDetails = null
+                                    editingDevis = devis
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = BardahlYellow.copy(alpha = 0.12f),
+                                    contentColor = BardahlYellow
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BardahlYellow.copy(alpha = 0.6f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Modifier", color = BardahlYellow, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    deletingDevis = devis
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = StatusCancelled.copy(alpha = 0.12f),
+                                    contentColor = StatusCancelled
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, StatusCancelled.copy(alpha = 0.6f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = StatusCancelled, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Supprimer", color = StatusCancelled, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    // Delete Devis Confirmation Dialog (MOB-01)
+    deletingDevis?.let { targetDevis ->
+        AlertDialog(
+            onDismissRequest = { deletingDevis = null },
+            containerColor = DarkSurface,
+            title = { Text("Supprimer ce devis ?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Voulez-vous vraiment supprimer le devis N° ${targetDevis.devisNumber} pour ${targetDevis.clientName} ?",
+                    color = TextSecondaryDark
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        orderViewModel.deleteDevis(targetDevis.id)
+                        deletingDevis = null
+                        selectedDevisForDetails = null
+                        Toast.makeText(context, "Devis ${targetDevis.devisNumber} supprimé.", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusCancelled)
+                ) {
+                    Text("Supprimer", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingDevis = null }) {
+                    Text("Annuler", color = Color.White)
+                }
+            }
+        )
     }
 
     // Create Devis Dialog
@@ -520,11 +638,30 @@ fun DevisScreen(
             orderViewModel = orderViewModel,
             authViewModel = authViewModel,
             existingDevis = devisList,
+            initialDevis = null,
             onDismiss = { showCreateDialog = false },
             onDevisCreated = { newDevis ->
                 orderViewModel.createDevis(newDevis)
                 showCreateDialog = false
                 Toast.makeText(context, "Devis ${newDevis.devisNumber} créé avec succès !", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    // Edit Devis Dialog (MOB-01)
+    editingDevis?.let { devToEdit ->
+        CreateDevisDialog(
+            clientViewModel = clientViewModel,
+            productViewModel = productViewModel,
+            orderViewModel = orderViewModel,
+            authViewModel = authViewModel,
+            existingDevis = devisList,
+            initialDevis = devToEdit,
+            onDismiss = { editingDevis = null },
+            onDevisCreated = { updatedDevis ->
+                orderViewModel.updateDevis(updatedDevis)
+                editingDevis = null
+                Toast.makeText(context, "Devis ${updatedDevis.devisNumber} mis à jour !", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -727,9 +864,12 @@ fun CreateDevisDialog(
     orderViewModel: OrderViewModel,
     authViewModel: AuthViewModel,
     existingDevis: List<Devis> = emptyList(),
+    initialDevis: Devis? = null,
     onDismiss: () -> Unit,
     onDevisCreated: (Devis) -> Unit
 ) {
+    val context = LocalContext.current
+    val isEditMode = initialDevis != null
     val clients by clientViewModel.clientsList.collectAsState()
     val products by productViewModel.products.collectAsState()
     val authState by authViewModel.authState.collectAsState()
@@ -738,25 +878,48 @@ fun CreateDevisDialog(
     val promotions by orderViewModel.promotions.collectAsState()
     var selectedPromoId by remember { mutableStateOf("AUTO") }
 
-    val suggestedDevisNumber = remember(existingDevis) {
-        com.bardahl.maroc.util.NumberGenerator.getNextDevisNumber(existingDevis)
+    val suggestedDevisNumber = remember(existingDevis, initialDevis) {
+        initialDevis?.devisNumber ?: com.bardahl.maroc.util.NumberGenerator.getNextDevisNumber(existingDevis)
     }
-    var selectedClient by remember { mutableStateOf<Client?>(clients.firstOrNull()) }
+
+    // DEV-01: Aucun client présélectionné par défaut lors de la création d'un nouveau devis
+    val initialClientMatch = remember(initialDevis, clients) {
+        if (initialDevis != null) {
+            clients.find { it.id == initialDevis.clientId || it.companyName.equals(initialDevis.clientName, ignoreCase = true) }
+        } else null
+    }
+    var selectedClient by remember(initialDevis) { mutableStateOf<Client?>(initialClientMatch) }
+    LaunchedEffect(initialClientMatch) {
+        if (initialDevis != null && selectedClient == null && initialClientMatch != null) {
+            selectedClient = initialClientMatch
+        }
+    }
     var clientSearch by remember { mutableStateOf("") }
     var showClientPicker by remember { mutableStateOf(false) }
+    var clientError by remember { mutableStateOf(false) }
 
-    var paymentMethod by remember { mutableStateOf("Chèque") }
+    var paymentMethod by remember(initialDevis) { mutableStateOf(initialDevis?.paymentMethod ?: "Chèque") }
     val paymentOptions = listOf("Chèque", "Traite 60J", "Traite 90J", "Virement bancaire", "Espèces")
 
-    var modeExpedition by remember { mutableStateOf("Transport Bardahl") }
+    var modeExpedition by remember(initialDevis) { mutableStateOf(initialDevis?.modeExpedition ?: "Transport Bardahl") }
     val modeOptions = listOf(
         "Transport Bardahl" to "🚚 Transport Bardahl (Livraison directe)",
         "Messagerie CTM / Ghazala" to "📦 Messagerie CTM / Ghazala",
         "Comptoir / Enlèvement" to "🏬 Comptoir / Enlèvement sur place"
     )
 
-    var remarque by remember { mutableStateOf("") }
-    var selectedProductsList by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
+    var remarque by remember(initialDevis) { mutableStateOf(initialDevis?.remarque ?: "") }
+    val initialPurchasedItems = remember(initialDevis, products) {
+        (initialDevis?.items ?: emptyList()).filter { item ->
+            val isGiftOnly = (item.quantity == 0 || item.unitPriceTtc == 0.0 || item.promoTag.contains("Offert", ignoreCase = true) || item.promoTag.contains("Cadeau", ignoreCase = true)) && item.freeQuantity > 0
+            !isGiftOnly
+        }.map { item ->
+            val catProd = products.find { it.id == item.productId || it.reference == item.productReference }
+            val resolvedUpb = catProd?.unitsPerBox ?: item.unitsPerBox.coerceAtLeast(1)
+            item.copy(unitsPerBox = resolvedUpb, initialQuantity = item.quantity, initialFreeQuantity = item.freeQuantity)
+        }
+    }
+    var selectedProductsList by remember(initialDevis) { mutableStateOf(initialPurchasedItems) }
 
     var productSearch by remember { mutableStateOf("") }
     var itemToEditIndex by remember { mutableStateOf<Int?>(null) }
@@ -909,32 +1072,7 @@ fun CreateDevisDialog(
                     unitsPerBox = upb,
                     promoTag = promo.name
                 )
-                val updatedList = selectedProductsList.toMutableList()
-                updatedList.add(newItem)
-
-                if (promo.type == PromotionType.TYPE_2 && promo.freeItemType == FreeItemType.DIFFERENT_PRODUCT && freeUnits > 0) {
-                    val giftRefs = if (promo.freeProductRefs.isNotEmpty()) promo.freeProductRefs else listOfNotNull(promo.freeProductRef ?: promo.freeProductId)
-                    giftRefs.forEach { fRef ->
-                        val freeProd = products.find { it.id == fRef || it.reference.equals(fRef, ignoreCase = true) }
-                        if (freeProd != null) {
-                            val fUpb = if (freeProd.unitsPerBox > 0) freeProd.unitsPerBox else 12
-                            val fUnits = freeCartons * fUpb
-                            updatedList.add(
-                                OrderItem(
-                                    productId = freeProd.id,
-                                    productName = freeProd.name,
-                                    productReference = freeProd.reference,
-                                    quantity = 0,
-                                    freeQuantity = fUnits,
-                                    unitPriceTtc = 0.0,
-                                    unitsPerBox = fUpb,
-                                    promoTag = "Cadeau: ${promo.name}"
-                                )
-                            )
-                        }
-                    }
-                }
-                selectedProductsList = updatedList
+                selectedProductsList = selectedProductsList + newItem
             }
         }
     }
@@ -1047,7 +1185,7 @@ fun CreateDevisDialog(
                         Icon(Icons.Default.Description, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Nouveau Devis • $suggestedDevisNumber",
+                            text = if (isEditMode) "Modifier Devis • $suggestedDevisNumber" else "Nouveau Devis • $suggestedDevisNumber",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Black,
                             color = BardahlYellow
@@ -1065,14 +1203,22 @@ fun CreateDevisDialog(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // 1. Client Bénéficiaire * (Spacieux avec sélection claire)
-                    Text("Client Bénéficiaire *", fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                    // 1. Client Bénéficiaire * (DEV-01: Sélection explicite obligatoire)
+                    Text("Client Bénéficiaire * (Obligatoire)", fontSize = 12.sp, color = if (clientError && selectedClient == null) StatusCancelled else TextPrimaryDark, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Surface(
                         color = DarkSurface,
                         shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (showClientPicker) BardahlYellow else BardahlCardBorder),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            when {
+                                clientError && selectedClient == null -> StatusCancelled
+                                showClientPicker -> BardahlYellow
+                                selectedClient == null -> Color(0xFFFF9500).copy(alpha = 0.7f)
+                                else -> BardahlCardBorder
+                            }
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { showClientPicker = !showClientPicker }
@@ -1085,8 +1231,8 @@ fun CreateDevisDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = selectedClient?.companyName ?: "Sélectionner un client",
-                                        color = if (selectedClient != null) TextPrimaryDark else TextSecondaryDark,
+                                        text = selectedClient?.companyName ?: "Rechercher et sélectionner un client...",
+                                        color = if (selectedClient != null) Color.White else Color(0xFFFF9500),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -1095,6 +1241,12 @@ fun CreateDevisDialog(
                                             text = "${selectedClient?.city ?: "Maroc"} • ICE: ${selectedClient?.ice ?: "-"}",
                                             color = TextSecondaryDark,
                                             fontSize = 11.sp
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Aucun client sélectionné — appuyez ici pour choisir",
+                                            color = if (clientError) StatusCancelled else TextSecondaryDark,
+                                            fontSize = 10.sp
                                         )
                                     }
                                 }
@@ -1146,6 +1298,7 @@ fun CreateDevisDialog(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     selectedClient = c
+                                                    clientError = false
                                                     showClientPicker = false
                                                 }
                                                 .padding(vertical = 8.dp, horizontal = 4.dp),
@@ -1153,7 +1306,7 @@ fun CreateDevisDialog(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(text = c.companyName, fontSize = 12.sp, color = TextPrimaryDark, fontWeight = FontWeight.Bold)
+                                                Text(text = c.companyName, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                                 Text(text = "${c.city} • ICE: ${c.ice}", fontSize = 10.sp, color = TextSecondaryDark)
                                             }
                                             if (selectedClient?.id == c.id) {
@@ -1164,6 +1317,16 @@ fun CreateDevisDialog(
                                 }
                             }
                         }
+                    }
+
+                    if (clientError && selectedClient == null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "⚠️ Client manquant : veuillez rechercher et sélectionner un client avant d'enregistrer.",
+                            color = StatusCancelled,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1280,19 +1443,22 @@ fun CreateDevisDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            val existing = selectedProductsList.find { it.productId == prod.id }
+                                            val prodUpb = prod.unitsPerBox.coerceAtLeast(1)
+                                            val existing = selectedProductsList.find { it.productId == prod.id || it.productReference == prod.reference }
                                             if (existing != null) {
                                                 selectedProductsList = selectedProductsList.map {
-                                                    if (it.productId == prod.id) it.copy(quantity = it.quantity + prod.unitsPerBox) else it
+                                                    if (it.productId == prod.id || it.productReference == prod.reference) {
+                                                        it.copy(quantity = it.quantity + 1, unitsPerBox = prodUpb)
+                                                    } else it
                                                 }
                                             } else {
                                                 selectedProductsList = selectedProductsList + OrderItem(
                                                     productId = prod.id,
                                                     productName = prod.name,
                                                     productReference = prod.reference,
-                                                    quantity = prod.unitsPerBox,
+                                                    quantity = 1,
                                                     unitPriceTtc = prod.unitPriceTtc,
-                                                    unitsPerBox = prod.unitsPerBox
+                                                    unitsPerBox = prodUpb
                                                 )
                                             }
                                         }
@@ -1301,8 +1467,8 @@ fun CreateDevisDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(text = "[${prod.reference}] ${prod.name}", fontSize = 11.sp, color = TextPrimaryDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(text = "${prod.unitPriceTtc} DH TTC - ${prod.packaging}", fontSize = 10.sp, color = TextSecondaryDark)
+                                        Text(text = "[${prod.reference}] ${prod.name}", fontSize = 11.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(text = "${prod.unitPriceTtc} DH TTC • ${prod.packaging} (${prod.unitsPerBox} un./ctn)", fontSize = 10.sp, color = TextSecondaryDark)
                                     }
                                     Icon(Icons.Default.AddCircle, contentDescription = null, tint = BardahlYellow, modifier = Modifier.size(16.dp))
                                 }
@@ -1390,9 +1556,11 @@ fun CreateDevisDialog(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             selectedProductsList.forEachIndexed { idx, item ->
-                                val upb = if (item.unitsPerBox > 0) item.unitsPerBox else 12
+                                val catalogMeta = products.find { it.id == item.productId || it.reference == item.productReference }
+                                val upb = (catalogMeta?.unitsPerBox ?: item.unitsPerBox).coerceAtLeast(1)
                                 val cartons = item.quantity / upb
                                 val earnedFreeItem = promoAnalysis.freeItems.find { it.productId == item.productId || it.productReference == item.productReference }
+                                val hasAutoPromoGift = earnedFreeItem != null && earnedFreeItem.freeQuantity > 0
 
                                 Column(
                                     modifier = Modifier
@@ -1422,11 +1590,17 @@ fun CreateDevisDialog(
                                                     text = item.productName,
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = TextPrimaryDark,
+                                                    color = Color.White,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             }
+                                            Text(
+                                                text = "Cond: $upb un./ctn",
+                                                fontSize = 9.5.sp,
+                                                color = TextSecondaryDark,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
                                             if (item.promoTag.isNotBlank()) {
                                                 Text(
                                                     text = "✓ ${item.promoTag}",
@@ -1539,9 +1713,10 @@ fun CreateDevisDialog(
                                             IconButton(
                                                 onClick = {
                                                     if (cartons > 0) {
-                                                        val newQty = (item.quantity - upb).coerceAtLeast(1)
+                                                        val minAllowed = if (item.freeQuantity > 0 || hasAutoPromoGift) 0 else 1
+                                                        val newQty = (item.quantity - upb).coerceAtLeast(minAllowed)
                                                         selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
-                                                            if (i == idx) itm.copy(quantity = newQty) else itm
+                                                            if (i == idx) itm.copy(quantity = newQty, unitsPerBox = upb) else itm
                                                         }
                                                     }
                                                 },
@@ -1579,7 +1754,7 @@ fun CreateDevisDialog(
                                                 onClick = {
                                                     val newQty = item.quantity + upb
                                                     selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
-                                                        if (i == idx) itm.copy(quantity = newQty) else itm
+                                                        if (i == idx) itm.copy(quantity = newQty, unitsPerBox = upb) else itm
                                                     }
                                                 },
                                                 modifier = Modifier.size(24.dp)
@@ -1598,9 +1773,10 @@ fun CreateDevisDialog(
                                             Text("Unités: ", fontSize = 11.sp, color = TextSecondaryDark)
                                             IconButton(
                                                 onClick = {
-                                                    if (item.quantity > 1) {
+                                                    val minAllowed = if (item.freeQuantity > 0 || hasAutoPromoGift) 0 else 1
+                                                    if (item.quantity > minAllowed) {
                                                         selectedProductsList = selectedProductsList.mapIndexed { i, itm ->
-                                                            if (i == idx) itm.copy(quantity = itm.quantity - 1) else itm
+                                                            if (i == idx) itm.copy(quantity = item.quantity - 1, unitsPerBox = upb) else itm
                                                         }
                                                     }
                                                 },
@@ -2106,37 +2282,87 @@ fun CreateDevisDialog(
 
                     Button(
                         onClick = {
-                            val client = selectedClient ?: clients.firstOrNull() ?: return@Button
-                            val nextDevisNumber = suggestedDevisNumber
-                            val newDevis = Devis(
-                                devisNumber = nextDevisNumber,
-                                commercialId = currentUser?.id ?: "comm_bardahl",
-                                commercialName = currentUser?.firstName ?: "Commercial Bardahl",
-                                commercialEmail = currentUser?.email ?: "",
+                            val client = selectedClient
+                            if (client == null) {
+                                clientError = true
+                                Toast.makeText(context, "Client manquant : veuillez rechercher et sélectionner un client.", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            if (selectedProductsList.isEmpty()) {
+                                Toast.makeText(context, "Veuillez ajouter au moins un produit au devis.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            // PROMO-01 & WEB-01: Conserver et inclure toutes les gratuités (auto & manuelles, multi-références)
+                            val finalPurchasedItems = selectedProductsList.mapIndexed { idx, item ->
+                                val promoDiscount = promoAnalysis.lineDiscounts[idx] ?: 0.0
+                                val finalPct = if (item.discountPercentage > 0.0) item.discountPercentage else promoDiscount
+                                val earnedFreeItem = promoAnalysis.freeItems.find { it.productId == item.productId || it.productReference == item.productReference }
+                                val effectiveFree = when {
+                                    earnedFreeItem != null && earnedFreeItem.freeQuantity > 0 -> earnedFreeItem.freeQuantity
+                                    item.freeQuantity > 0 -> item.freeQuantity
+                                    isEditMode && item.quantity == item.initialQuantity && item.initialFreeQuantity > 0 -> item.initialFreeQuantity
+                                    else -> 0
+                                }
+                                item.copy(
+                                    discountPercentage = finalPct,
+                                    freeQuantity = effectiveFree
+                                )
+                            }
+
+                            val distinctPromoGifts = promoAnalysis.freeItems.filter { fi ->
+                                !selectedProductsList.any { it.productId == fi.productId || it.productReference == fi.productReference }
+                            }
+                            val combinedItems = finalPurchasedItems + distinctPromoGifts
+                            val totalFreeCount = combinedItems.sumOf { it.freeQuantity }
+                            val autoPromoSummary = if (promoAnalysis.appliedPromotions.isNotEmpty()) {
+                                promoAnalysis.appliedPromotions.joinToString(" | ") {
+                                    it.name +
+                                        (if (it.discountPercent > 0) " (${it.discountPercent.toInt()}%)" else "") +
+                                        (if (it.giftSummary != null) " [${it.giftSummary}]" else "") +
+                                        (if (it.voucherAmount > 0) " [Bon -${it.voucherAmount.toInt()} DH]" else "")
+                                }
+                            } else null
+
+                            val finalDevis = Devis(
+                                id = initialDevis?.id ?: java.util.UUID.randomUUID().toString(),
+                                devisNumber = initialDevis?.devisNumber ?: suggestedDevisNumber,
+                                commercialId = initialDevis?.commercialId?.ifBlank { currentUser?.id ?: "comm_bardahl" } ?: (currentUser?.id ?: "comm_bardahl"),
+                                commercialName = initialDevis?.commercialName?.ifBlank { currentUser?.firstName ?: "Commercial Bardahl" } ?: (currentUser?.firstName ?: "Commercial Bardahl"),
+                                commercialEmail = initialDevis?.commercialEmail?.ifBlank { currentUser?.email ?: "" } ?: (currentUser?.email ?: ""),
                                 clientId = client.id,
                                 clientName = client.companyName,
                                 clientIce = client.ice,
                                 clientCity = client.city,
                                 clientAddress = client.address,
                                 clientPhone = client.phone,
-                                date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                                validityDate = "",
-                                status = DevisStatus.EN_ATTENTE,
-                                items = selectedProductsList,
+                                date = initialDevis?.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                                validityDate = initialDevis?.validityDate ?: "",
+                                status = initialDevis?.status ?: DevisStatus.EN_ATTENTE,
+                                items = combinedItems,
                                 paymentMethod = paymentMethod,
                                 modeExpedition = modeExpedition,
                                 remarque = remarque,
+                                promoNote = autoPromoSummary,
+                                remisePercent = initialDevis?.remisePercent ?: 0.0,
+                                remiseMontant = initialDevis?.remiseMontant ?: 0.0,
+                                voucherDiscount = voucherDiscount,
+                                totalFreeItems = totalFreeCount,
                                 totalHt = totalHt,
+                                totalDiscount = totalLineDiscountAmount + voucherDiscount,
                                 totalTva = totalTva,
-                                totalTtc = totalTtc
+                                totalTtc = totalTtc,
+                                convertedOrderNumber = initialDevis?.convertedOrderNumber,
+                                convertedOrderId = initialDevis?.convertedOrderId,
+                                convertedAt = initialDevis?.convertedAt
                             )
-                            onDevisCreated(newDevis)
+                            onDevisCreated(finalDevis)
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = BardahlYellow),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Enregistrer", color = BardahlBlack, fontWeight = FontWeight.Bold)
+                        Text(if (isEditMode) "Mettre à jour" else "Enregistrer", color = BardahlBlack, fontWeight = FontWeight.Bold)
                     }
                 }
             }
